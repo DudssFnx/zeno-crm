@@ -14,11 +14,26 @@ interface WhatsAppSession {
   lastError: string | null;
   messageListenerInterval: NodeJS.Timeout | null;
   companyId?: string;
+  processedMessages: Set<string>;
 }
+
+export interface IncomingMessage {
+  phoneNumber: string;
+  contactName: string;
+  content: string;
+  timestamp: string;
+}
+
+export type MessageHandler = (accountId: string, message: IncomingMessage) => Promise<void>;
 
 class WhatsAppPuppeteerGateway {
   private sessions: Map<string, WhatsAppSession> = new Map();
   private io: SocketServer | null = null;
+  private messageHandler: MessageHandler | null = null;
+
+  setMessageHandler(handler: MessageHandler) {
+    this.messageHandler = handler;
+  }
 
   setSocketServer(io: SocketServer) {
     this.io = io;
@@ -57,6 +72,7 @@ class WhatsAppPuppeteerGateway {
         qrCode: null,
         lastError: null,
         messageListenerInterval: null,
+        processedMessages: new Set<string>(),
       };
       this.sessions.set(accountId, session);
 
@@ -204,6 +220,8 @@ class WhatsAppPuppeteerGateway {
       clearInterval(session.messageListenerInterval);
     }
 
+    console.log(`Starting message listener for account ${accountId}`);
+
     const interval = setInterval(async () => {
       try {
         const currentSession = this.sessions.get(accountId);
@@ -212,41 +230,89 @@ class WhatsAppPuppeteerGateway {
           return;
         }
 
-        const messages = await currentSession.page.evaluate(() => {
-          const msgElements = document.querySelectorAll('[data-testid="msg-container"]');
-          const recentMessages: any[] = [];
-          
-          msgElements.forEach((msg, index) => {
-            if (index > 10) return;
+        const page = currentSession.page;
+
+        const unreadChats = await page.evaluate(() => {
+          const chatItems = document.querySelectorAll('[data-testid="cell-frame-container"]');
+          const unread: Array<{
+            name: string;
+            phoneOrId: string;
+            unreadCount: number;
+            lastMessage: string;
+            time: string;
+          }> = [];
+
+          chatItems.forEach((chat) => {
+            const unreadBadge = chat.querySelector('[data-testid="icon-unread-count"]');
+            const unreadSpan = chat.querySelector('span[aria-label*="unread"]');
             
-            const textEl = msg.querySelector('[data-testid="balloon-text-text"]');
-            const timeEl = msg.querySelector('[data-testid="msg-meta"] span');
-            const isIncoming = msg.classList.contains("message-in");
-            
-            if (textEl) {
-              recentMessages.push({
-                text: textEl.textContent,
-                time: timeEl?.textContent || "",
-                incoming: isIncoming,
+            if (unreadBadge || unreadSpan) {
+              const nameEl = chat.querySelector('[data-testid="cell-frame-title"] span');
+              const lastMsgEl = chat.querySelector('[data-testid="last-msg-status"]')?.parentElement;
+              const timeEl = chat.querySelector('[data-testid="cell-frame-primary-detail"]');
+              
+              const name = nameEl?.textContent || "";
+              const lastMessage = lastMsgEl?.textContent || "";
+              const time = timeEl?.textContent || "";
+              
+              const phoneMatch = name.match(/\+?\d[\d\s-]{8,}/);
+              const phoneOrId = phoneMatch ? phoneMatch[0].replace(/[\s-]/g, "") : name;
+              
+              const countText = unreadSpan?.getAttribute("aria-label") || "";
+              const countMatch = countText.match(/(\d+)/);
+              const unreadCount = countMatch ? parseInt(countMatch[1]) : 1;
+
+              unread.push({
+                name,
+                phoneOrId,
+                unreadCount,
+                lastMessage,
+                time,
               });
             }
           });
-          
-          return recentMessages;
+
+          return unread;
         });
 
-        if (messages.length > 0) {
-          this.emitMessages(accountId, messages);
+        for (const chat of unreadChats) {
+          const messageKey = `${chat.phoneOrId}:${chat.lastMessage}:${chat.time}`;
+          
+          if (!currentSession.processedMessages.has(messageKey) && chat.lastMessage) {
+            currentSession.processedMessages.add(messageKey);
+            
+            console.log(`New message from ${chat.name}: ${chat.lastMessage}`);
+
+            if (this.messageHandler) {
+              const phoneNumber = chat.phoneOrId.replace(/\D/g, "");
+              
+              await this.messageHandler(accountId, {
+                phoneNumber: phoneNumber || chat.name,
+                contactName: chat.name,
+                content: chat.lastMessage,
+                timestamp: new Date().toISOString(),
+              });
+            }
+
+            this.emitMessages(accountId, [{
+              text: chat.lastMessage,
+              time: chat.time,
+              incoming: true,
+              from: chat.name,
+              phone: chat.phoneOrId,
+            }]);
+          }
         }
+
+        if (currentSession.processedMessages.size > 1000) {
+          const messages = Array.from(currentSession.processedMessages);
+          currentSession.processedMessages = new Set(messages.slice(-500));
+        }
+
       } catch (error) {
         console.error("Message listener error:", error);
-        const currentSession = this.sessions.get(accountId);
-        if (currentSession) {
-          clearInterval(interval);
-          currentSession.messageListenerInterval = null;
-        }
       }
-    }, 5000);
+    }, 3000);
 
     session.messageListenerInterval = interval;
     this.sessions.set(accountId, session);

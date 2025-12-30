@@ -45,6 +45,65 @@ export async function registerRoutes(
   // Connect Puppeteer gateway to Socket.IO
   whatsappPuppeteer.setSocketServer(io);
 
+  // Set up message handler to save incoming messages to database
+  whatsappPuppeteer.setMessageHandler(async (accountId, message) => {
+    try {
+      const account = await storage.getWhatsappAccount(accountId);
+      if (!account) {
+        console.error("Account not found for incoming message:", accountId);
+        return;
+      }
+
+      const companyId = account.companyId;
+      const phoneNumber = message.phoneNumber.replace(/\D/g, "");
+
+      // Find or create contact
+      let contact = await storage.getContactByPhone(companyId, phoneNumber);
+      if (!contact) {
+        contact = await storage.createContact({
+          companyId,
+          whatsappAccountId: accountId,
+          name: message.contactName || phoneNumber,
+          phoneNumber,
+        });
+        console.log("Created new contact:", contact.name, phoneNumber);
+      }
+
+      // Find or create open conversation
+      let conversation = await storage.getOpenConversationByContact(contact.id);
+      if (!conversation) {
+        conversation = await storage.createConversation({
+          companyId,
+          whatsappAccountId: accountId,
+          contactId: contact.id,
+          status: "open",
+          inbox: "whatsapp",
+        });
+        console.log("Created new conversation for contact:", contact.name);
+      }
+
+      // Create the message
+      const savedMessage = await storage.createMessage({
+        conversationId: conversation.id,
+        direction: "incoming",
+        content: message.content,
+      });
+
+      console.log(`Saved incoming message from ${message.contactName}: ${message.content.substring(0, 50)}`);
+
+      // Dispatch webhook for incoming message
+      await dispatchWebhook(companyId, "message.incoming", {
+        conversationId: conversation.id,
+        contactId: contact.id,
+        messageId: savedMessage.id,
+        content: message.content,
+        phoneNumber,
+      });
+    } catch (error) {
+      console.error("Error handling incoming message:", error);
+    }
+  });
+
   io.use(async (socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) {
