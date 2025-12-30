@@ -64,6 +64,7 @@ class WhatsAppPuppeteerGateway {
 
       const browser = await puppeteer.launch({
         headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium",
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -71,6 +72,7 @@ class WhatsAppPuppeteerGateway {
           "--disable-accelerated-2d-canvas",
           "--disable-gpu",
           "--window-size=1280,800",
+          "--disable-software-rasterizer",
         ],
         userDataDir: this.getSessionPath(accountId),
       });
