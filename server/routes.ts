@@ -1,8 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { Server as SocketServer } from "socket.io";
 import { storage } from "./storage";
 import { authMiddleware, adminMiddleware, generateToken, hashPassword, comparePassword, type AuthRequest } from "./auth";
 import { whatsappGateway } from "./whatsapp-gateway";
+import { whatsappPuppeteer } from "./whatsapp-puppeteer";
 import { dispatchWebhook } from "./webhook-dispatcher";
 import { loginSchema, insertTagSchema, insertWebhookConfigSchema } from "@shared/schema";
 
@@ -32,6 +34,61 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
+  // Set up Socket.IO
+  const io = new SocketServer(httpServer, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"],
+    },
+  });
+
+  // Connect Puppeteer gateway to Socket.IO
+  whatsappPuppeteer.setSocketServer(io);
+
+  io.use(async (socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+      return next(new Error("Authentication required"));
+    }
+    
+    const sessionSecret = process.env.SESSION_SECRET;
+    if (!sessionSecret) {
+      console.error("SESSION_SECRET not configured - Socket.IO authentication disabled");
+      return next(new Error("Server configuration error"));
+    }
+    
+    try {
+      const jwt = await import("jsonwebtoken");
+      const decoded = jwt.default.verify(token, sessionSecret) as { userId: string; companyId: string };
+      socket.data.userId = decoded.userId;
+      socket.data.companyId = decoded.companyId;
+      next();
+    } catch (error) {
+      next(new Error("Invalid token"));
+    }
+  });
+
+  io.on("connection", (socket) => {
+    console.log("Client connected:", socket.id, "Company:", socket.data.companyId);
+
+    socket.on("whatsapp:join", async (accountId: string) => {
+      const account = await storage.getWhatsappAccount(accountId);
+      if (!account || account.companyId !== socket.data.companyId) {
+        console.log(`Unauthorized join attempt for account ${accountId} by company ${socket.data.companyId}`);
+        return;
+      }
+      whatsappPuppeteer.joinRoom(socket.id, accountId);
+    });
+
+    socket.on("whatsapp:leave", (accountId: string) => {
+      whatsappPuppeteer.leaveRoom(socket.id, accountId);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Client disconnected:", socket.id);
+    });
+  });
+
   // Seed master user
   await seedMasterUser();
   
@@ -204,9 +261,20 @@ export async function registerRoutes(
 
   app.post("/api/whatsapp-accounts/:id/start-session", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      await whatsappGateway.startSession(req.params.id);
-      await storage.updateWhatsappAccount(req.params.id, { status: "pending_qr" });
-      res.json({ success: true });
+      const accountId = req.params.id;
+      
+      // Start Puppeteer session (async, will emit events via Socket.IO)
+      whatsappPuppeteer.startSession(accountId).then(async (result) => {
+        if (result.success) {
+          const status = whatsappPuppeteer.getStatus(accountId);
+          await storage.updateWhatsappAccount(accountId, { 
+            status: status === "connected" ? "connected" : "pending_qr" 
+          });
+        }
+      });
+      
+      await storage.updateWhatsappAccount(accountId, { status: "pending_qr" });
+      res.json({ success: true, message: "Session starting... QR code will appear via WebSocket" });
     } catch (error) {
       console.error("Start session error:", error);
       res.status(500).json({ message: "Failed to start session" });
@@ -215,16 +283,23 @@ export async function registerRoutes(
 
   app.get("/api/whatsapp-accounts/:id/qr", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { qrData } = await whatsappGateway.getQrCode(req.params.id);
+      const accountId = req.params.id;
+      const qrCode = await whatsappPuppeteer.getQRCode(accountId);
+      const status = whatsappPuppeteer.getStatus(accountId);
       
-      setTimeout(async () => {
-        await storage.updateWhatsappAccount(req.params.id, { 
+      if (status === "connected") {
+        await storage.updateWhatsappAccount(accountId, { 
           status: "connected",
           lastConnectionAt: new Date(),
         });
-      }, 2000);
-
-      res.json({ qrData });
+        return res.json({ status: "connected", qrData: null });
+      }
+      
+      if (qrCode) {
+        return res.json({ qrData: qrCode, status });
+      }
+      
+      return res.json({ qrData: null, status, message: "Waiting for QR code..." });
     } catch (error) {
       console.error("Get QR error:", error);
       res.status(500).json({ message: "Failed to get QR code" });
@@ -233,7 +308,7 @@ export async function registerRoutes(
 
   app.post("/api/whatsapp-accounts/:id/disconnect", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      await whatsappGateway.disconnectSession(req.params.id);
+      await whatsappPuppeteer.disconnect(req.params.id);
       await storage.updateWhatsappAccount(req.params.id, { status: "disconnected" });
       res.json({ success: true });
     } catch (error) {

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Smartphone, QrCode, Wifi, WifiOff, RefreshCw } from "lucide-react";
+import { io, Socket } from "socket.io-client";
+import { Plus, Pencil, Trash2, Smartphone, QrCode, Wifi, WifiOff, RefreshCw, Loader2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -34,6 +35,77 @@ export default function AccountsPage() {
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [qrData, setQrData] = useState<string | null>(null);
   const [qrAccountId, setQrAccountId] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
+  const [isPolling, setIsPolling] = useState(false);
+  const socketRef = useRef<Socket | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+
+    socketRef.current = io(window.location.origin, {
+      transports: ["websocket", "polling"],
+      auth: { token },
+    });
+
+    socketRef.current.on("connect", () => {
+      console.log("Socket connected");
+    });
+
+    socketRef.current.on("connect_error", (error) => {
+      console.error("Socket connection error:", error.message);
+    });
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!qrAccountId || !socketRef.current) return;
+
+    socketRef.current.emit("whatsapp:join", qrAccountId);
+
+    const handleQr = (data: { qrCode: string }) => {
+      console.log("QR received via socket");
+      setQrData(data.qrCode);
+      setConnectionStatus("pending_qr");
+    };
+
+    const handleStatus = (data: { status: string; error?: string }) => {
+      console.log("Status received via socket:", data.status);
+      setConnectionStatus(data.status);
+      if (data.status === "connected") {
+        setQrDialogOpen(false);
+        queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-accounts"] });
+        toast({ title: "WhatsApp connected successfully!" });
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+        }
+        setIsPolling(false);
+      }
+      if (data.error) {
+        toast({ title: data.error, variant: "destructive" });
+      }
+    };
+
+    socketRef.current.on(`whatsapp:qr:${qrAccountId}`, handleQr);
+    socketRef.current.on(`whatsapp:status:${qrAccountId}`, handleStatus);
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.emit("whatsapp:leave", qrAccountId);
+        socketRef.current.off(`whatsapp:qr:${qrAccountId}`, handleQr);
+        socketRef.current.off(`whatsapp:status:${qrAccountId}`, handleStatus);
+      }
+    };
+  }, [qrAccountId, toast]);
 
   const form = useForm<AccountFormData>({
     resolver: zodResolver(accountFormSchema),
@@ -128,23 +200,77 @@ export default function AccountsPage() {
 
   const fetchQr = async (id: string) => {
     try {
+      setIsPolling(true);
       const res = await authFetch(`/api/whatsapp-accounts/${id}/qr`);
       if (!res.ok) throw new Error("Failed to fetch QR");
       const data = await res.json();
-      setQrData(data.qrData);
+      
+      if (data.status === "connected") {
+        setConnectionStatus("connected");
+        setQrDialogOpen(false);
+        queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-accounts"] });
+        toast({ title: "WhatsApp connected!" });
+        setIsPolling(false);
+        return;
+      }
+      
+      if (data.qrData) {
+        setQrData(data.qrData);
+        setConnectionStatus(data.status || "pending_qr");
+      } else {
+        setConnectionStatus(data.status || "connecting");
+      }
+      
       setQrAccountId(id);
       setQrDialogOpen(true);
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-accounts"] });
+      
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const pollRes = await authFetch(`/api/whatsapp-accounts/${id}/qr`);
+          if (pollRes.ok) {
+            const pollData = await pollRes.json();
+            if (pollData.status === "connected") {
+              setConnectionStatus("connected");
+              setQrDialogOpen(false);
+              queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-accounts"] });
+              toast({ title: "WhatsApp connected!" });
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+              }
+              setIsPolling(false);
+            } else if (pollData.qrData && pollData.qrData !== qrData) {
+              setQrData(pollData.qrData);
+              setConnectionStatus(pollData.status || "pending_qr");
+            }
+          }
+        } catch (error) {
+          console.error("Poll error:", error);
+        }
       }, 3000);
+      
     } catch {
       toast({ title: "Failed to fetch QR code", variant: "destructive" });
+      setIsPolling(false);
     }
   };
 
   const handleQrDialogClose = (open: boolean) => {
     if (!open) {
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-accounts"] });
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      if (qrAccountId && socketRef.current) {
+        socketRef.current.emit("whatsapp:leave", qrAccountId);
+      }
+      setIsPolling(false);
+      setQrData(null);
+      setConnectionStatus("disconnected");
+      setQrAccountId(null);
     }
     setQrDialogOpen(open);
   };
@@ -263,30 +389,54 @@ export default function AccountsPage() {
           </div>
 
           <Dialog open={qrDialogOpen} onOpenChange={handleQrDialogClose}>
-            <DialogContent className="max-w-sm">
+            <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Scan QR Code</DialogTitle>
+                <DialogTitle>Connect WhatsApp</DialogTitle>
                 <DialogDescription>
                   Open WhatsApp on your phone and scan this QR code to connect.
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col items-center py-6">
-                {qrData ? (
-                  <div className="p-4 bg-white rounded-lg">
-                    <div className="w-64 h-64 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg">
-                      <div className="text-center text-sm text-muted-foreground p-4">
-                        <QrCode className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
-                        <p>Mock QR Code</p>
-                        <p className="text-xs mt-2 font-mono break-all">{qrData.substring(0, 50)}...</p>
+                {connectionStatus === "connecting" && !qrData ? (
+                  <div className="text-center">
+                    <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
+                    <p className="text-sm text-muted-foreground">Starting WhatsApp Web...</p>
+                    <p className="text-xs text-muted-foreground mt-1">This may take a moment</p>
+                  </div>
+                ) : qrData ? (
+                  <div className="p-4 bg-white rounded-lg shadow-sm">
+                    {qrData.startsWith("data:image") ? (
+                      <img 
+                        src={qrData} 
+                        alt="WhatsApp QR Code" 
+                        className="w-64 h-64 object-contain"
+                        data-testid="img-qr-code"
+                      />
+                    ) : (
+                      <div className="w-64 h-64 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg">
+                        <div className="text-center text-sm text-muted-foreground p-4">
+                          <QrCode className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
+                          <p>QR Code Loading...</p>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 ) : (
-                  <LoadingSpinner size="lg" />
+                  <div className="text-center">
+                    <LoadingSpinner size="lg" />
+                    <p className="text-sm text-muted-foreground mt-4">Waiting for QR code...</p>
+                  </div>
                 )}
+                <p className="text-xs text-muted-foreground mt-4 text-center">
+                  Status: {connectionStatus === "pending_qr" ? "Waiting for scan" : connectionStatus}
+                </p>
               </div>
-              <div className="flex justify-center">
-                <Button variant="outline" onClick={() => qrAccountId && fetchQr(qrAccountId)}>
+              <div className="flex justify-center gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => qrAccountId && fetchQr(qrAccountId)}
+                  disabled={isPolling && connectionStatus === "connecting"}
+                >
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Refresh QR
                 </Button>

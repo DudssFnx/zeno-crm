@@ -30,7 +30,8 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 │   ├── db.ts                    # Database connection
 │   ├── routes.ts                # API routes
 │   ├── storage.ts               # Database storage layer
-│   ├── whatsapp-gateway.ts      # Mock WhatsApp gateway
+│   ├── whatsapp-gateway.ts      # Mock WhatsApp gateway (fallback)
+│   ├── whatsapp-puppeteer.ts    # Real WhatsApp Web connection via Puppeteer
 │   └── webhook-dispatcher.ts    # Webhook event dispatcher
 └── shared/
     └── schema.ts                # Database schema and types
@@ -64,8 +65,12 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 
 ### WhatsApp Accounts
 - Connect multiple WhatsApp numbers
-- Mock gateway simulates QR code connection flow
-- Status tracking (connected, disconnected, pending_qr)
+- **Real WhatsApp Web connection via Puppeteer** (browser automation)
+- QR code capture and display for phone scanning
+- Session persistence across restarts
+- Socket.IO for real-time status updates
+- Multi-tenant security with JWT-authenticated sockets
+- Status tracking (connected, disconnected, pending_qr, connecting)
 
 ### Tags
 - Color-coded labels for funnel stages
