@@ -25,7 +25,8 @@ const userFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Enter a valid email"),
   password: z.string().min(6, "Password must be at least 6 characters").optional().or(z.literal("")),
-  role: z.enum(["admin", "agent"]),
+  role: z.enum(["admin", "operator"]),
+  displayName: z.string().optional(),
 });
 
 type UserFormData = z.infer<typeof userFormSchema>;
@@ -39,7 +40,7 @@ export default function UsersPage() {
 
   const form = useForm<UserFormData>({
     resolver: zodResolver(userFormSchema),
-    defaultValues: { name: "", email: "", password: "", role: "agent" },
+    defaultValues: { name: "", email: "", password: "", role: "operator", displayName: "" },
   });
 
   const { data: users = [], isLoading } = useQuery<User[]>({
@@ -128,11 +129,12 @@ export default function UsersPage() {
         name: user.name,
         email: user.email,
         password: "",
-        role: user.role as "admin" | "agent",
+        role: (user.role === "admin" || user.role === "operator") ? user.role : "operator",
+        displayName: user.displayName || "",
       });
     } else {
       setEditingUser(null);
-      form.reset({ name: "", email: "", password: "", role: "agent" });
+      form.reset({ name: "", email: "", password: "", role: "operator", displayName: "" });
     }
     setIsDialogOpen(true);
   };
@@ -215,6 +217,19 @@ export default function UsersPage() {
                     />
                     <FormField
                       control={form.control}
+                      name="displayName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Display Name (shown in messages)</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Name shown to customers" data-testid="input-user-displayname" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
                       name="role"
                       render={({ field }) => (
                         <FormItem>
@@ -226,8 +241,10 @@ export default function UsersPage() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="admin">Admin</SelectItem>
-                              <SelectItem value="agent">Agent</SelectItem>
+                              {currentUser?.role === "master" && (
+                                <SelectItem value="admin">Admin</SelectItem>
+                              )}
+                              <SelectItem value="operator">Operator</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -292,7 +309,12 @@ export default function UsersPage() {
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{user.name}</span>
                             <Badge variant="secondary" className="text-xs">
-                              {user.role === "admin" ? (
+                              {user.role === "master" ? (
+                                <span className="flex items-center gap-1">
+                                  <Shield className="h-3 w-3" />
+                                  Master
+                                </span>
+                              ) : user.role === "admin" ? (
                                 <span className="flex items-center gap-1">
                                   <Shield className="h-3 w-3" />
                                   Admin
@@ -300,12 +322,15 @@ export default function UsersPage() {
                               ) : (
                                 <span className="flex items-center gap-1">
                                   <UserIcon className="h-3 w-3" />
-                                  Agent
+                                  Operator
                                 </span>
                               )}
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">{user.email}</p>
+                          {user.displayName && (
+                            <p className="text-xs text-muted-foreground">Display: {user.displayName}</p>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">

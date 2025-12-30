@@ -22,6 +22,7 @@ import type { Tag as TagType } from "@shared/schema";
 const tagFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Enter a valid hex color"),
+  stageOrder: z.string().optional(),
 });
 
 type TagFormData = z.infer<typeof tagFormSchema>;
@@ -41,7 +42,7 @@ export default function TagsPage() {
 
   const form = useForm<TagFormData>({
     resolver: zodResolver(tagFormSchema),
-    defaultValues: { name: "", color: "#3B82F6" },
+    defaultValues: { name: "", color: "#3B82F6", stageOrder: "" },
   });
 
   const { data: tags = [], isLoading } = useQuery<TagType[]>({
@@ -57,7 +58,11 @@ export default function TagsPage() {
     mutationFn: async (data: TagFormData) => {
       const res = await authFetch("/api/tags", {
         method: "POST",
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          name: data.name,
+          color: data.color,
+          stageOrder: data.stageOrder || null,
+        }),
       });
       if (!res.ok) {
         const error = await res.json();
@@ -80,7 +85,11 @@ export default function TagsPage() {
     mutationFn: async (data: TagFormData & { id: string }) => {
       const res = await authFetch(`/api/tags/${data.id}`, {
         method: "PUT",
-        body: JSON.stringify({ name: data.name, color: data.color }),
+        body: JSON.stringify({
+          name: data.name,
+          color: data.color,
+          stageOrder: data.stageOrder || null,
+        }),
       });
       if (!res.ok) {
         const error = await res.json();
@@ -118,10 +127,10 @@ export default function TagsPage() {
   const handleOpenDialog = (tag?: TagType) => {
     if (tag) {
       setEditingTag(tag);
-      form.reset({ name: tag.name, color: tag.color });
+      form.reset({ name: tag.name, color: tag.color, stageOrder: tag.stageOrder || "" });
     } else {
       setEditingTag(null);
-      form.reset({ name: "", color: "#3B82F6" });
+      form.reset({ name: "", color: "#3B82F6", stageOrder: "" });
     }
     setIsDialogOpen(true);
   };
@@ -211,10 +220,31 @@ export default function TagsPage() {
                         </FormItem>
                       )}
                     />
+                    <FormField
+                      control={form.control}
+                      name="stageOrder"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Stage Order (optional)</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type="number"
+                              placeholder="1, 2, 3..."
+                              data-testid="input-tag-stage-order"
+                            />
+                          </FormControl>
+                          <p className="text-xs text-muted-foreground">
+                            Set a number to show this tag as a column in the Kanban board
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <div className="pt-2">
                       <p className="text-sm text-muted-foreground mb-2">Preview:</p>
                       <TagChip
-                        tag={{ id: "preview", name: form.watch("name") || "Tag Name", color: selectedColor, companyId: "", createdAt: new Date(), updatedAt: new Date() }}
+                        tag={{ id: "preview", name: form.watch("name") || "Tag Name", color: selectedColor, companyId: "", createdAt: new Date(), updatedAt: new Date(), stageOrder: null }}
                         size="md"
                       />
                     </div>

@@ -13,6 +13,8 @@ import UsersPage from "@/pages/settings/users";
 import AccountsPage from "@/pages/settings/accounts";
 import TagsPage from "@/pages/settings/tags";
 import WebhooksPage from "@/pages/settings/webhooks";
+import ContactsPage from "@/pages/settings/contacts";
+import KanbanPage from "@/pages/kanban";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -39,7 +41,7 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
     return <Redirect to="/login" />;
   }
 
-  if (user.role !== "admin") {
+  if (user.role !== "admin" && user.role !== "master") {
     return <Redirect to="/" />;
   }
 
@@ -80,6 +82,12 @@ function Router() {
       </Route>
       <Route path="/settings/webhooks">
         <ProtectedRoute component={WebhooksPage} />
+      </Route>
+      <Route path="/contacts">
+        <ProtectedRoute component={ContactsPage} />
+      </Route>
+      <Route path="/kanban">
+        <ProtectedRoute component={KanbanPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>

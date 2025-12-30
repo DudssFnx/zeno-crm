@@ -27,7 +27,8 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
-  role: text("role").notNull().default("agent"), // admin | agent
+  role: text("role").notNull().default("operator"), // master | admin | operator
+  displayName: text("display_name"), // Name shown in messages
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -82,6 +83,7 @@ export const tags = pgTable("tags", {
   companyId: varchar("company_id").notNull().references(() => companies.id),
   name: text("name").notNull(),
   color: text("color").notNull().default("#6B7280"),
+  stageOrder: text("stage_order"), // Order for Kanban stages (1, 2, 3, etc.)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -132,6 +134,7 @@ export const messages = pgTable("messages", {
   conversationId: varchar("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
   direction: text("direction").notNull(), // incoming | outgoing | internal_note
   senderUserId: varchar("sender_user_id").references(() => users.id),
+  senderDisplayName: text("sender_display_name"), // Agent display name snapshot
   content: text("content").notNull(),
   mediaUrl: text("media_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

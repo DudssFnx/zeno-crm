@@ -58,8 +58,15 @@ export function authMiddleware(storage: any) {
 }
 
 export function adminMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
-  if (req.user?.role !== "admin") {
+  if (req.user?.role !== "admin" && req.user?.role !== "master") {
     return res.status(403).json({ message: "Admin access required" });
+  }
+  next();
+}
+
+export function masterMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+  if (req.user?.role !== "master") {
+    return res.status(403).json({ message: "Master access required" });
   }
   next();
 }

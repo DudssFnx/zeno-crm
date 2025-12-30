@@ -30,7 +30,7 @@ export interface IStorage {
   createWhatsappAccount(data: InsertWhatsappAccount): Promise<WhatsappAccount>;
   getWhatsappAccount(id: string): Promise<WhatsappAccount | undefined>;
   getWhatsappAccounts(companyId: string): Promise<WhatsappAccount[]>;
-  updateWhatsappAccount(id: string, data: Partial<InsertWhatsappAccount>): Promise<WhatsappAccount | undefined>;
+  updateWhatsappAccount(id: string, data: Partial<WhatsappAccount>): Promise<WhatsappAccount | undefined>;
   deleteWhatsappAccount(id: string): Promise<void>;
 
   // Contacts
@@ -138,7 +138,7 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(whatsappAccounts).where(eq(whatsappAccounts.companyId, companyId));
   }
 
-  async updateWhatsappAccount(id: string, data: Partial<InsertWhatsappAccount>): Promise<WhatsappAccount | undefined> {
+  async updateWhatsappAccount(id: string, data: Partial<WhatsappAccount>): Promise<WhatsappAccount | undefined> {
     const [account] = await db
       .update(whatsappAccounts)
       .set({ ...data, updatedAt: new Date() })

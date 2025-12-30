@@ -298,6 +298,11 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                               : "bg-primary text-primary-foreground rounded-br-md"
                           )}
                         >
+                          {msg.direction === "outgoing" && msg.senderDisplayName && (
+                            <p className="text-[11px] font-medium text-primary-foreground/80 mb-0.5">
+                              {msg.senderDisplayName}
+                            </p>
+                          )}
                           <p className="text-[15px] whitespace-pre-wrap break-words">{msg.content}</p>
                           <span
                             className={cn(

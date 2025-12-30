@@ -4,46 +4,38 @@ import { storage } from "./storage";
 import { authMiddleware, adminMiddleware, generateToken, hashPassword, comparePassword, type AuthRequest } from "./auth";
 import { whatsappGateway } from "./whatsapp-gateway";
 import { dispatchWebhook } from "./webhook-dispatcher";
-import { registerSchema, loginSchema, insertTagSchema, insertWebhookConfigSchema } from "@shared/schema";
+import { loginSchema, insertTagSchema, insertWebhookConfigSchema } from "@shared/schema";
+
+// Seed master user on startup
+async function seedMasterUser() {
+  const masterEmail = "mike@mike.com.br";
+  const existingUser = await storage.getUserByEmail(masterEmail);
+  
+  if (!existingUser) {
+    console.log("Creating master user...");
+    const company = await storage.createCompany({ name: "Master Company" });
+    const passwordHash = await hashPassword("123456");
+    await storage.createUser({
+      companyId: company.id,
+      name: "Mike",
+      email: masterEmail,
+      passwordHash,
+      role: "master",
+      displayName: "Mike",
+    });
+    console.log("Master user created: mike@mike.com.br / 123456");
+  }
+}
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   
-  // Auth routes
-  app.post("/api/auth/register", async (req, res) => {
-    try {
-      const parsed = registerSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors[0].message });
-      }
-
-      const { companyName, name, email, password } = parsed.data;
-
-      const existingUser = await storage.getUserByEmail(email);
-      if (existingUser) {
-        return res.status(400).json({ message: "Email already registered" });
-      }
-
-      const company = await storage.createCompany({ name: companyName });
-      const passwordHash = await hashPassword(password);
-      const user = await storage.createUser({
-        companyId: company.id,
-        name,
-        email,
-        passwordHash,
-        role: "admin",
-      });
-
-      const token = generateToken(user);
-      res.json({ token, user: { ...user, passwordHash: undefined } });
-    } catch (error) {
-      console.error("Register error:", error);
-      res.status(500).json({ message: "Registration failed" });
-    }
-  });
-
+  // Seed master user
+  await seedMasterUser();
+  
+  // Auth routes (no public registration - only admin can create users)
   app.post("/api/auth/login", async (req, res) => {
     try {
       const parsed = loginSchema.safeParse(req.body);
@@ -78,10 +70,19 @@ export async function registerRoutes(
 
   app.post("/api/users", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
     try {
-      const { name, email, password, role } = req.body;
+      const { name, email, password, role, displayName } = req.body;
       
       if (!name || !email || !password) {
         return res.status(400).json({ message: "Name, email and password are required" });
+      }
+
+      // Validate role
+      const validRoles = ["admin", "operator"];
+      const userRole = validRoles.includes(role) ? role : "operator";
+      
+      // Only master can create admin users
+      if (userRole === "admin" && req.user!.role !== "master") {
+        return res.status(403).json({ message: "Only master can create admin users" });
       }
 
       const existingUser = await storage.getUserByEmail(email);
@@ -95,7 +96,8 @@ export async function registerRoutes(
         name,
         email,
         passwordHash,
-        role: role || "agent",
+        role: userRole,
+        displayName: displayName || name,
       });
 
       res.json({ ...user, passwordHash: undefined });
@@ -107,13 +109,25 @@ export async function registerRoutes(
 
   app.put("/api/users/:id", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
     try {
-      const { name, email, password, role } = req.body;
+      const { name, email, password, role, displayName } = req.body;
       const updateData: Record<string, any> = {};
       
       if (name) updateData.name = name;
       if (email) updateData.email = email;
-      if (role) updateData.role = role;
+      if (displayName !== undefined) updateData.displayName = displayName;
       if (password) updateData.passwordHash = await hashPassword(password);
+      
+      // Validate role changes
+      if (role) {
+        const validRoles = ["admin", "operator"];
+        if (validRoles.includes(role)) {
+          // Only master can assign admin role
+          if (role === "admin" && req.user!.role !== "master") {
+            return res.status(403).json({ message: "Only master can assign admin role" });
+          }
+          updateData.role = role;
+        }
+      }
 
       const user = await storage.updateUser(req.params.id, updateData);
       if (!user) {
@@ -230,7 +244,18 @@ export async function registerRoutes(
 
   // Contacts routes
   app.get("/api/contacts", authMiddleware(storage), async (req: AuthRequest, res) => {
-    const contacts = await storage.getContacts(req.user!.companyId);
+    const { search } = req.query;
+    let contacts = await storage.getContacts(req.user!.companyId);
+    
+    // Filter by search term if provided
+    if (search && typeof search === "string") {
+      const searchLower = search.toLowerCase();
+      contacts = contacts.filter(c => 
+        c.name.toLowerCase().includes(searchLower) ||
+        c.phoneNumber.includes(search)
+      );
+    }
+    
     res.json(contacts);
   });
 
@@ -240,6 +265,52 @@ export async function registerRoutes(
       return res.status(404).json({ message: "Contact not found" });
     }
     res.json(contact);
+  });
+
+  // Start conversation by phone number
+  app.post("/api/contacts/start-conversation", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { phoneNumber, whatsappAccountId, name } = req.body;
+      
+      if (!phoneNumber || !whatsappAccountId) {
+        return res.status(400).json({ message: "Phone number and WhatsApp account are required" });
+      }
+
+      // Check if account exists and is connected
+      const account = await storage.getWhatsappAccount(whatsappAccountId);
+      if (!account || account.status !== "connected") {
+        return res.status(400).json({ message: "WhatsApp account not connected" });
+      }
+
+      // Find or create contact
+      let contact = await storage.getContactByPhone(req.user!.companyId, phoneNumber);
+      if (!contact) {
+        contact = await storage.createContact({
+          companyId: req.user!.companyId,
+          whatsappAccountId,
+          name: name || phoneNumber,
+          phoneNumber,
+        });
+      }
+
+      // Find or create conversation
+      let conversation = await storage.getOpenConversationByContact(contact.id);
+      if (!conversation) {
+        conversation = await storage.createConversation({
+          companyId: req.user!.companyId,
+          whatsappAccountId,
+          contactId: contact.id,
+          assignedToUserId: req.user!.id,
+          status: "open",
+          inbox: "whatsapp",
+        });
+      }
+
+      res.json({ contact, conversation });
+    } catch (error) {
+      console.error("Start conversation error:", error);
+      res.status(500).json({ message: "Failed to start conversation" });
+    }
   });
 
   app.put("/api/contacts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
@@ -449,6 +520,9 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Contact not found" });
       }
 
+      // Get agent display name
+      const senderDisplayName = req.user!.displayName || req.user!.name;
+
       await whatsappGateway.sendMessage(
         conversation.whatsappAccountId,
         contact.phoneNumber,
@@ -459,6 +533,7 @@ export async function registerRoutes(
         conversationId: req.params.id,
         direction: "outgoing",
         senderUserId: req.user!.id,
+        senderDisplayName,
         content,
       });
 
@@ -476,10 +551,14 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Content is required" });
       }
 
+      // Get agent display name for internal notes too
+      const senderDisplayName = req.user!.displayName || req.user!.name;
+
       const message = await storage.createMessage({
         conversationId: req.params.id,
         direction: "internal_note",
         senderUserId: req.user!.id,
+        senderDisplayName,
         content,
       });
 

@@ -9,6 +9,8 @@ import {
   Settings,
   LogOut,
   Menu,
+  Contact,
+  LayoutGrid,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -30,6 +32,8 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { icon: MessageSquare, label: "Inbox", path: "/" },
+  { icon: Contact, label: "Contacts", path: "/contacts" },
+  { icon: LayoutGrid, label: "Kanban", path: "/kanban" },
   { icon: Users, label: "Users", path: "/settings/users", adminOnly: true },
   { icon: Smartphone, label: "WhatsApp Accounts", path: "/settings/accounts" },
   { icon: Tag, label: "Tags", path: "/settings/tags" },
@@ -46,7 +50,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   if (!user) return null;
 
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "admin" || user.role === "master";
 
   return (
     <div className="flex h-screen bg-background">
