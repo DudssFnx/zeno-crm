@@ -381,23 +381,94 @@ class WhatsAppPuppeteerGateway {
 
     try {
       const page = session.page;
-      
       const cleanNumber = phoneNumber.replace(/\D/g, "");
+      
+      // Navigate to the send URL with pre-filled message
       const chatUrl = `https://web.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
       
-      await page.goto(chatUrl, { waitUntil: "networkidle2", timeout: 30000 });
-
-      await page.waitForSelector('[data-testid="conversation-compose-box-input"]', { timeout: 15000 });
-
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      await page.click('[data-testid="send"]');
-
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      return { success: true, message: "Message sent" };
+      console.log(`[WhatsApp] Navigating to chat URL...`);
+      await page.goto(chatUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+      
+      // Wait for page to be ready - use multiple possible selectors
+      const inputSelectors = [
+        'div[contenteditable="true"][data-tab="10"]',
+        'div[contenteditable="true"][title="Digite uma mensagem"]',
+        'div[contenteditable="true"][title="Type a message"]',
+        'footer div[contenteditable="true"]',
+        'div[data-testid="compose-box"] div[contenteditable="true"]',
+        '#main footer div[contenteditable="true"]',
+      ];
+      
+      let inputFound = false;
+      for (let i = 0; i < 20 && !inputFound; i++) {
+        for (const selector of inputSelectors) {
+          try {
+            const element = await page.$(selector);
+            if (element) {
+              inputFound = true;
+              console.log(`[WhatsApp] Found input with selector: ${selector}`);
+              break;
+            }
+          } catch {
+            // ignore
+          }
+        }
+        if (!inputFound) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+      
+      if (!inputFound) {
+        // Check if there's an "invalid phone" dialog
+        const invalidPhone = await page.$('div[data-testid="popup-contents"]');
+        if (invalidPhone) {
+          return { success: false, message: "Número de telefone inválido ou não está no WhatsApp" };
+        }
+        return { success: false, message: "Não foi possível abrir a conversa. Tente novamente." };
+      }
+      
+      // Wait a bit more for the text to load from URL parameter
+      await new Promise(r => setTimeout(r, 1500));
+      
+      // Find and click the send button
+      const sendButtonSelectors = [
+        'button[data-testid="send"]',
+        'span[data-testid="send"]',
+        'div[data-testid="send"]',
+        'button[aria-label="Enviar"]',
+        'button[aria-label="Send"]',
+        'span[data-icon="send"]',
+      ];
+      
+      let sendClicked = false;
+      for (const selector of sendButtonSelectors) {
+        try {
+          const sendBtn = await page.$(selector);
+          if (sendBtn) {
+            await sendBtn.click();
+            sendClicked = true;
+            console.log(`[WhatsApp] Clicked send button with selector: ${selector}`);
+            break;
+          }
+        } catch {
+          // continue
+        }
+      }
+      
+      if (!sendClicked) {
+        // Try pressing Enter as fallback
+        console.log(`[WhatsApp] Send button not found, trying Enter key...`);
+        await page.keyboard.press("Enter");
+        sendClicked = true;
+      }
+      
+      // Brief wait to confirm send
+      await new Promise(r => setTimeout(r, 500));
+      
+      console.log(`[WhatsApp] Message sent successfully`);
+      return { success: true, message: "Mensagem enviada" };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to send message";
+      const errorMessage = error instanceof Error ? error.message : "Falha ao enviar mensagem";
       console.error("Send message error:", errorMessage);
       return { success: false, message: errorMessage };
     }
