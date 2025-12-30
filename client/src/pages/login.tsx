@@ -14,8 +14,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { LoadingSpinner } from "@/components/loading-spinner";
 
 const loginSchema = z.object({
-  email: z.string().email("Enter a valid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: z.string().email("Digite um email válido"),
+  password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres"),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -38,8 +38,8 @@ export default function LoginPage() {
       setLocation("/");
     } catch (error) {
       toast({
-        title: "Login failed",
-        description: error instanceof Error ? error.message : "Invalid credentials",
+        title: "Falha no login",
+        description: error instanceof Error ? error.message : "Credenciais inválidas",
         variant: "destructive",
       });
     } finally {
@@ -54,7 +54,7 @@ export default function LoginPage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
             <MessageSquare className="h-5 w-5 text-primary-foreground" />
           </div>
-          <span className="text-lg font-semibold">InboxFlow</span>
+          <span className="text-lg font-semibold">Atendimentos Madrugadão</span>
         </div>
         <ThemeToggle />
       </header>
@@ -62,9 +62,9 @@ export default function LoginPage() {
       <main className="flex-1 flex items-center justify-center p-6">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center pb-2">
-            <CardTitle className="text-2xl font-semibold">Welcome</CardTitle>
+            <CardTitle className="text-2xl font-semibold">Bem-vindo</CardTitle>
             <CardDescription>
-              Sign in to access your account
+              Entre para acessar sua conta
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -82,7 +82,7 @@ export default function LoginPage() {
                           <Input
                             {...field}
                             type="email"
-                            placeholder="you@example.com"
+                            placeholder="seu@email.com"
                             className="pl-10"
                             data-testid="input-login-email"
                           />
@@ -97,14 +97,14 @@ export default function LoginPage() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Password</FormLabel>
+                      <FormLabel>Senha</FormLabel>
                       <FormControl>
                         <div className="relative">
                           <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                           <Input
                             {...field}
                             type="password"
-                            placeholder="Enter your password"
+                            placeholder="Digite sua senha"
                             className="pl-10"
                             data-testid="input-login-password"
                           />
@@ -120,19 +120,19 @@ export default function LoginPage() {
                   disabled={isLoading}
                   data-testid="button-login-submit"
                 >
-                  {isLoading ? <LoadingSpinner size="sm" className="text-primary-foreground" /> : "Sign In"}
+                  {isLoading ? <LoadingSpinner size="sm" className="text-primary-foreground" /> : "Entrar"}
                 </Button>
               </form>
             </Form>
             <p className="text-xs text-muted-foreground text-center mt-4">
-              Contact your administrator to request access
+              Entre em contato com seu administrador para solicitar acesso
             </p>
           </CardContent>
         </Card>
       </main>
 
       <footer className="py-4 text-center text-sm text-muted-foreground border-t">
-        Multi-account WhatsApp CRM for teams
+        CRM WhatsApp multi-contas para equipes
       </footer>
     </div>
   );

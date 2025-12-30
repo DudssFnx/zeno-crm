@@ -22,8 +22,8 @@ import { queryClient } from "@/lib/queryClient";
 import type { Contact, WhatsappAccount } from "@shared/schema";
 
 const startConversationSchema = z.object({
-  phoneNumber: z.string().min(10, "Enter a valid phone number"),
-  whatsappAccountId: z.string().min(1, "Select a WhatsApp account"),
+  phoneNumber: z.string().min(10, "Digite um número de telefone válido"),
+  whatsappAccountId: z.string().min(1, "Selecione uma conta WhatsApp"),
   name: z.string().optional(),
 });
 
@@ -79,11 +79,11 @@ export default function ContactsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
       setIsDialogOpen(false);
       form.reset();
-      toast({ title: "Conversation started" });
+      toast({ title: "Conversa iniciada" });
       setLocation(`/?conversation=${data.conversation.id}`);
     },
     onError: (error: Error) => {
-      toast({ title: error.message, variant: "destructive" });
+      toast({ title: error.message || "Falha ao iniciar conversa", variant: "destructive" });
     },
   });
 
@@ -93,7 +93,7 @@ export default function ContactsPage() {
 
   const handleContactClick = async (contact: Contact) => {
     if (connectedAccounts.length === 0) {
-      toast({ title: "No WhatsApp account connected", variant: "destructive" });
+      toast({ title: "Nenhuma conta WhatsApp conectada", variant: "destructive" });
       return;
     }
     
@@ -110,23 +110,23 @@ export default function ContactsPage() {
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
             <div>
-              <h1 className="text-2xl font-semibold">Contacts</h1>
+              <h1 className="text-2xl font-semibold">Contatos</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Search contacts or start a new conversation
+                Busque contatos ou inicie uma nova conversa
               </p>
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button data-testid="button-new-conversation">
                   <MessageSquare className="h-4 w-4 mr-2" />
-                  New Conversation
+                  Nova Conversa
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Start New Conversation</DialogTitle>
+                  <DialogTitle>Iniciar Nova Conversa</DialogTitle>
                   <DialogDescription>
-                    Enter the phone number to start a conversation
+                    Digite o número de telefone para iniciar uma conversa
                   </DialogDescription>
                 </DialogHeader>
                 <Form {...form}>
@@ -136,7 +136,7 @@ export default function ContactsPage() {
                       name="phoneNumber"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Phone Number</FormLabel>
+                          <FormLabel>Número de Telefone</FormLabel>
                           <FormControl>
                             <div className="relative">
                               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -157,9 +157,9 @@ export default function ContactsPage() {
                       name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Contact Name (optional)</FormLabel>
+                          <FormLabel>Nome do Contato (opcional)</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="John Doe" data-testid="input-contact-name" />
+                            <Input {...field} placeholder="João Silva" data-testid="input-contact-name" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -170,11 +170,11 @@ export default function ContactsPage() {
                       name="whatsappAccountId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>WhatsApp Account</FormLabel>
+                          <FormLabel>Conta WhatsApp</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger data-testid="select-whatsapp-account">
-                                <SelectValue placeholder="Select account" />
+                                <SelectValue placeholder="Selecione a conta" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
@@ -186,7 +186,7 @@ export default function ContactsPage() {
                             </SelectContent>
                           </Select>
                           {connectedAccounts.length === 0 && (
-                            <p className="text-xs text-destructive">No connected WhatsApp accounts</p>
+                            <p className="text-xs text-destructive">Nenhuma conta WhatsApp conectada</p>
                           )}
                           <FormMessage />
                         </FormItem>
@@ -194,14 +194,14 @@ export default function ContactsPage() {
                     />
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Cancel
+                        Cancelar
                       </Button>
                       <Button
                         type="submit"
                         disabled={startConversation.isPending || connectedAccounts.length === 0}
                         data-testid="button-start-conversation"
                       >
-                        Start Conversation
+                        Iniciar Conversa
                       </Button>
                     </div>
                   </form>
@@ -214,7 +214,7 @@ export default function ContactsPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name or phone..."
+                placeholder="Buscar por nome ou telefone..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -230,12 +230,12 @@ export default function ContactsPage() {
               <CardContent className="p-0">
                 <EmptyState
                   icon={Users}
-                  title={searchQuery ? "No contacts found" : "No contacts yet"}
-                  description={searchQuery ? "Try a different search term" : "Start a conversation to create your first contact"}
+                  title={searchQuery ? "Nenhum contato encontrado" : "Nenhum contato ainda"}
+                  description={searchQuery ? "Tente um termo de busca diferente" : "Inicie uma conversa para criar seu primeiro contato"}
                   action={
                     <Button onClick={() => setIsDialogOpen(true)}>
                       <MessageSquare className="h-4 w-4 mr-2" />
-                      New Conversation
+                      Nova Conversa
                     </Button>
                   }
                 />

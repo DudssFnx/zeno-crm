@@ -22,9 +22,9 @@ import { queryClient } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
 
 const userFormSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Enter a valid email"),
-  password: z.string().min(6, "Password must be at least 6 characters").optional().or(z.literal("")),
+  name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
+  email: z.string().email("Digite um email válido"),
+  password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres").optional().or(z.literal("")),
   role: z.enum(["admin", "operator"]),
   displayName: z.string().optional(),
 });
@@ -68,10 +68,10 @@ export default function UsersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setIsDialogOpen(false);
       form.reset();
-      toast({ title: "User created successfully" });
+      toast({ title: "Usuário criado com sucesso" });
     },
     onError: (error: Error) => {
-      toast({ title: error.message, variant: "destructive" });
+      toast({ title: error.message || "Falha ao criar usuário", variant: "destructive" });
     },
   });
 
@@ -100,10 +100,10 @@ export default function UsersPage() {
       setIsDialogOpen(false);
       setEditingUser(null);
       form.reset();
-      toast({ title: "User updated successfully" });
+      toast({ title: "Usuário atualizado com sucesso" });
     },
     onError: (error: Error) => {
-      toast({ title: error.message, variant: "destructive" });
+      toast({ title: error.message || "Falha ao atualizar usuário", variant: "destructive" });
     },
   });
 
@@ -115,10 +115,10 @@ export default function UsersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      toast({ title: "User deleted successfully" });
+      toast({ title: "Usuário excluído com sucesso" });
     },
     onError: () => {
-      toast({ title: "Failed to delete user", variant: "destructive" });
+      toast({ title: "Falha ao excluir usuário", variant: "destructive" });
     },
   });
 
@@ -153,25 +153,25 @@ export default function UsersPage() {
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-semibold">Team Members</h1>
+              <h1 className="text-2xl font-semibold">Equipe</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Manage your team's access and roles
+                Gerencie o acesso e funções da sua equipe
               </p>
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button onClick={() => handleOpenDialog()} data-testid="button-add-user">
                   <Plus className="h-4 w-4 mr-2" />
-                  Add User
+                  Adicionar Usuário
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>{editingUser ? "Edit User" : "Add New User"}</DialogTitle>
+                  <DialogTitle>{editingUser ? "Editar Usuário" : "Novo Usuário"}</DialogTitle>
                   <DialogDescription>
                     {editingUser
-                      ? "Update user information. Leave password blank to keep current."
-                      : "Add a new team member to your organization."}
+                      ? "Atualize as informações do usuário. Deixe a senha em branco para manter a atual."
+                      : "Adicione um novo membro à sua equipe."}
                   </DialogDescription>
                 </DialogHeader>
                 <Form {...form}>
@@ -181,9 +181,9 @@ export default function UsersPage() {
                       name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Name</FormLabel>
+                          <FormLabel>Nome</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="John Doe" data-testid="input-user-name" />
+                            <Input {...field} placeholder="João Silva" data-testid="input-user-name" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -196,7 +196,7 @@ export default function UsersPage() {
                         <FormItem>
                           <FormLabel>Email</FormLabel>
                           <FormControl>
-                            <Input {...field} type="email" placeholder="john@example.com" data-testid="input-user-email" />
+                            <Input {...field} type="email" placeholder="joao@exemplo.com" data-testid="input-user-email" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -207,7 +207,7 @@ export default function UsersPage() {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{editingUser ? "New Password (optional)" : "Password"}</FormLabel>
+                          <FormLabel>{editingUser ? "Nova Senha (opcional)" : "Senha"}</FormLabel>
                           <FormControl>
                             <Input {...field} type="password" placeholder="••••••" data-testid="input-user-password" />
                           </FormControl>
@@ -220,9 +220,9 @@ export default function UsersPage() {
                       name="displayName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Display Name (shown in messages)</FormLabel>
+                          <FormLabel>Nome de Exibição (mostrado nas mensagens)</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="Name shown to customers" data-testid="input-user-displayname" />
+                            <Input {...field} placeholder="Nome mostrado aos clientes" data-testid="input-user-displayname" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -233,18 +233,18 @@ export default function UsersPage() {
                       name="role"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Role</FormLabel>
+                          <FormLabel>Função</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger data-testid="select-user-role">
-                                <SelectValue placeholder="Select role" />
+                                <SelectValue placeholder="Selecione a função" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
                               {currentUser?.role === "master" && (
-                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="admin">Administrador</SelectItem>
                               )}
-                              <SelectItem value="operator">Operator</SelectItem>
+                              <SelectItem value="operator">Operador</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -253,7 +253,7 @@ export default function UsersPage() {
                     />
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Cancel
+                        Cancelar
                       </Button>
                       <Button
                         type="submit"
@@ -263,9 +263,9 @@ export default function UsersPage() {
                         {(createUser.isPending || updateUser.isPending) ? (
                           <LoadingSpinner size="sm" className="text-primary-foreground" />
                         ) : editingUser ? (
-                          "Save Changes"
+                          "Salvar Alterações"
                         ) : (
-                          "Add User"
+                          "Adicionar Usuário"
                         )}
                       </Button>
                     </div>
@@ -282,12 +282,12 @@ export default function UsersPage() {
               <CardContent className="p-0">
                 <EmptyState
                   icon={Users}
-                  title="No team members"
-                  description="Add your first team member to get started"
+                  title="Nenhum membro na equipe"
+                  description="Adicione o primeiro membro para começar"
                   action={
                     <Button onClick={() => handleOpenDialog()}>
                       <Plus className="h-4 w-4 mr-2" />
-                      Add User
+                      Adicionar Usuário
                     </Button>
                   }
                 />
@@ -317,19 +317,19 @@ export default function UsersPage() {
                               ) : user.role === "admin" ? (
                                 <span className="flex items-center gap-1">
                                   <Shield className="h-3 w-3" />
-                                  Admin
+                                  Administrador
                                 </span>
                               ) : (
                                 <span className="flex items-center gap-1">
                                   <UserIcon className="h-3 w-3" />
-                                  Operator
+                                  Operador
                                 </span>
                               )}
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">{user.email}</p>
                           {user.displayName && (
-                            <p className="text-xs text-muted-foreground">Display: {user.displayName}</p>
+                            <p className="text-xs text-muted-foreground">Exibição: {user.displayName}</p>
                           )}
                         </div>
                       </div>
@@ -355,18 +355,18 @@ export default function UsersPage() {
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Delete User</AlertDialogTitle>
+                                <AlertDialogTitle>Excluir Usuário</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Are you sure you want to delete {user.name}? This action cannot be undone.
+                                  Tem certeza que deseja excluir {user.name}? Esta ação não pode ser desfeita.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                 <AlertDialogAction
                                   onClick={() => deleteUser.mutate(user.id)}
                                   className="bg-destructive text-destructive-foreground"
                                 >
-                                  Delete
+                                  Excluir
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>

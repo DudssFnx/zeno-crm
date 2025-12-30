@@ -130,11 +130,11 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
   };
 
   const formatTime = (date: Date | string) => {
-    return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return new Date(date).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   };
 
   const formatDate = (date: Date | string) => {
-    return new Date(date).toLocaleDateString([], {
+    return new Date(date).toLocaleDateString("pt-BR", {
       weekday: "long",
       month: "long",
       day: "numeric",
@@ -163,8 +163,8 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
       <div className="flex-1 flex items-center justify-center bg-muted/30">
         <EmptyState
           icon={Phone}
-          title="Select a conversation"
-          description="Choose a conversation from the list to start messaging"
+          title="Selecione uma conversa"
+          description="Escolha uma conversa da lista para começar a conversar"
         />
       </div>
     );
@@ -183,8 +183,8 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
       <div className="flex-1 flex items-center justify-center">
         <EmptyState
           icon={Phone}
-          title="Conversation not found"
-          description="This conversation may have been deleted"
+          title="Conversa não encontrada"
+          description="Esta conversa pode ter sido excluída"
         />
       </div>
     );
@@ -220,10 +220,10 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="open">Open</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="resolved">Resolved</SelectItem>
-              <SelectItem value="closed">Closed</SelectItem>
+              <SelectItem value="open">Aberto</SelectItem>
+              <SelectItem value="pending">Pendente</SelectItem>
+              <SelectItem value="resolved">Resolvido</SelectItem>
+              <SelectItem value="closed">Fechado</SelectItem>
             </SelectContent>
           </Select>
 
@@ -232,10 +232,10 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
             onValueChange={(v) => assignAgent.mutate(v === "unassigned" ? null : v)}
           >
             <SelectTrigger className="w-[150px]" data-testid="select-assign-agent">
-              <SelectValue placeholder="Assign to..." />
+              <SelectValue placeholder="Atribuir para..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="unassigned">Unassigned</SelectItem>
+              <SelectItem value="unassigned">Não atribuído</SelectItem>
               {agents.map((agent) => (
                 <SelectItem key={agent.id} value={agent.id}>
                   {agent.name}
@@ -254,8 +254,8 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
         ) : messages.length === 0 ? (
           <EmptyState
             icon={Phone}
-            title="No messages yet"
-            description="Start the conversation by sending a message"
+            title="Nenhuma mensagem ainda"
+            description="Inicie a conversa enviando uma mensagem"
             className="h-full"
           />
         ) : (
@@ -281,8 +281,8 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                         <div className="max-w-lg bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg px-4 py-2">
                           <div className="flex items-center gap-2 text-xs text-yellow-700 dark:text-yellow-400 mb-1">
                             <StickyNote className="h-3 w-3" />
-                            <span>Internal Note</span>
-                            {msg.sender && <span>by {msg.sender.name}</span>}
+                            <span>Nota Interna</span>
+                            {msg.sender && <span>por {msg.sender.name}</span>}
                           </div>
                           <p className="text-sm text-yellow-800 dark:text-yellow-300">{msg.content}</p>
                           <span className="text-[11px] text-yellow-600 dark:text-yellow-500 mt-1 block">
@@ -336,11 +336,11 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                 data-testid="button-toggle-internal-note"
               >
                 <StickyNote className="h-4 w-4 mr-1" />
-                Internal Note
+                Nota Interna
               </Button>
               {isInternalNote && (
                 <span className="text-xs text-muted-foreground">
-                  This note is only visible to your team
+                  Esta nota é visível apenas para sua equipe
                 </span>
               )}
             </div>
@@ -349,7 +349,7 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isInternalNote ? "Write an internal note..." : "Type a message..."}
+              placeholder={isInternalNote ? "Escreva uma nota interna..." : "Digite uma mensagem..."}
               className={cn(
                 "min-h-[48px] max-h-32 resize-none",
                 isInternalNote && "border-yellow-400 dark:border-yellow-600"

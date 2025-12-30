@@ -75,10 +75,10 @@ export default function KanbanPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contact-tags-map"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      toast({ title: "Contact moved" });
+      toast({ title: "Contato movido" });
     },
     onError: () => {
-      toast({ title: "Failed to move contact", variant: "destructive" });
+      toast({ title: "Falha ao mover contato", variant: "destructive" });
     },
   });
 
@@ -137,9 +137,9 @@ export default function KanbanPage() {
     <DashboardLayout>
       <div className="flex-1 p-6 overflow-hidden">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold">Order Pipeline</h1>
+          <h1 className="text-2xl font-semibold">Pipeline de Pedidos</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Drag contacts between stages to update their status
+            Arraste os contatos entre os estágios para atualizar o status
           </p>
         </div>
 
@@ -150,8 +150,8 @@ export default function KanbanPage() {
             <CardContent className="p-0">
               <EmptyState
                 icon={LayoutGrid}
-                title="No pipeline stages"
-                description="Create tags with stage order numbers in Settings > Tags to set up your pipeline"
+                title="Nenhum estágio do pipeline"
+                description="Crie etiquetas com números de ordem em Configurações > Etiquetas para configurar seu pipeline"
               />
             </CardContent>
           </Card>
@@ -205,7 +205,7 @@ export default function KanbanPage() {
                       ))}
                       {tagContacts.length === 0 && (
                         <div className="text-center py-8 text-muted-foreground text-sm">
-                          No contacts
+                          Nenhum contato
                         </div>
                       )}
                     </div>
@@ -219,7 +219,7 @@ export default function KanbanPage() {
                 <div className="p-3 border-b flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <User className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-medium text-sm text-muted-foreground">Unassigned</span>
+                    <span className="font-medium text-sm text-muted-foreground">Não Atribuído</span>
                   </div>
                   <Badge variant="outline" className="text-xs">
                     {untaggedContacts.length}

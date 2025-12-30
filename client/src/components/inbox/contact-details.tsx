@@ -131,7 +131,7 @@ export function ContactDetails({ conversationId, onClose }: ContactDetailsProps)
   return (
     <div className="w-80 border-l flex flex-col bg-background">
       <header className="h-14 border-b flex items-center justify-between px-4 shrink-0">
-        <h2 className="font-medium">Contact Details</h2>
+        <h2 className="font-medium">Detalhes do Contato</h2>
         <Button variant="ghost" size="icon" onClick={onClose} data-testid="button-close-details">
           <X className="h-4 w-4" />
         </Button>
@@ -163,17 +163,17 @@ export function ContactDetails({ conversationId, onClose }: ContactDetailsProps)
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <StickyNote className="h-4 w-4 text-muted-foreground" />
-                <h4 className="text-sm font-medium">Notes</h4>
+                <h4 className="text-sm font-medium">Observações</h4>
               </div>
               <Textarea
                 value={notes}
                 onChange={(e) => handleNotesChange(e.target.value)}
-                placeholder="Add notes about this contact..."
+                placeholder="Adicione observações sobre este contato..."
                 className="min-h-[120px] resize-none"
                 data-testid="textarea-contact-notes"
               />
               {updateNotes.isPending && (
-                <p className="text-xs text-muted-foreground mt-1">Saving...</p>
+                <p className="text-xs text-muted-foreground mt-1">Salvando...</p>
               )}
             </div>
 
@@ -182,7 +182,7 @@ export function ContactDetails({ conversationId, onClose }: ContactDetailsProps)
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <TagIcon className="h-4 w-4 text-muted-foreground" />
-                <h4 className="text-sm font-medium">Tags</h4>
+                <h4 className="text-sm font-medium">Etiquetas</h4>
               </div>
 
               {contactWithTags.tags.length > 0 && (
@@ -203,7 +203,7 @@ export function ContactDetails({ conversationId, onClose }: ContactDetailsProps)
                   <SelectTrigger data-testid="select-add-tag">
                     <div className="flex items-center gap-2">
                       <Plus className="h-4 w-4" />
-                      <span>Add tag</span>
+                      <span>Adicionar etiqueta</span>
                     </div>
                   </SelectTrigger>
                   <SelectContent>
@@ -226,10 +226,10 @@ export function ContactDetails({ conversationId, onClose }: ContactDetailsProps)
             <Separator />
 
             <div>
-              <h4 className="text-sm font-medium mb-3">Activity</h4>
+              <h4 className="text-sm font-medium mb-3">Atividade</h4>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p>Created: {new Date(contactWithTags.createdAt).toLocaleDateString()}</p>
-                <p>Last updated: {new Date(contactWithTags.updatedAt).toLocaleDateString()}</p>
+                <p>Criado em: {new Date(contactWithTags.createdAt).toLocaleDateString("pt-BR")}</p>
+                <p>Atualizado em: {new Date(contactWithTags.updatedAt).toLocaleDateString("pt-BR")}</p>
               </div>
             </div>
           </div>

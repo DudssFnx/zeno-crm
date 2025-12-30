@@ -31,12 +31,12 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { icon: MessageSquare, label: "Inbox", path: "/" },
-  { icon: Contact, label: "Contacts", path: "/contacts" },
+  { icon: MessageSquare, label: "Atendimentos", path: "/" },
+  { icon: Contact, label: "Contatos", path: "/contacts" },
   { icon: LayoutGrid, label: "Kanban", path: "/kanban" },
-  { icon: Users, label: "Users", path: "/settings/users", adminOnly: true },
-  { icon: Smartphone, label: "WhatsApp Accounts", path: "/settings/accounts" },
-  { icon: Tag, label: "Tags", path: "/settings/tags" },
+  { icon: Users, label: "Usuários", path: "/settings/users", adminOnly: true },
+  { icon: Smartphone, label: "Contas WhatsApp", path: "/settings/accounts" },
+  { icon: Tag, label: "Etiquetas", path: "/settings/tags" },
   { icon: Webhook, label: "Webhooks", path: "/settings/webhooks" },
 ];
 
@@ -72,6 +72,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     "w-10 h-10",
                     isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
                   )}
+                  title={item.label}
                   data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
                 >
                   <item.icon className="h-5 w-5" />
@@ -101,7 +102,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 data-testid="button-logout"
               >
                 <LogOut className="h-4 w-4 mr-2" />
-                Sign out
+                Sair
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

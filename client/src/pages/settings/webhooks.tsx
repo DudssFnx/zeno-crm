@@ -22,15 +22,15 @@ import { queryClient } from "@/lib/queryClient";
 import type { WebhookConfig } from "@shared/schema";
 
 const webhookEvents = [
-  { id: "message.incoming", label: "Incoming Message", description: "When a new message is received" },
-  { id: "contact.tag.changed", label: "Tag Changed", description: "When a contact's tags are modified" },
-  { id: "conversation.status.changed", label: "Status Changed", description: "When a conversation status changes" },
+  { id: "message.incoming", label: "Mensagem Recebida", description: "Quando uma nova mensagem é recebida" },
+  { id: "contact.tag.changed", label: "Etiqueta Alterada", description: "Quando as etiquetas de um contato são modificadas" },
+  { id: "conversation.status.changed", label: "Status Alterado", description: "Quando o status de uma conversa muda" },
 ];
 
 const webhookFormSchema = z.object({
-  url: z.string().url("Enter a valid URL"),
+  url: z.string().url("Digite uma URL válida"),
   secret: z.string().optional(),
-  events: z.array(z.string()).min(1, "Select at least one event"),
+  events: z.array(z.string()).min(1, "Selecione pelo menos um evento"),
   isActive: z.boolean(),
 });
 
@@ -72,10 +72,10 @@ export default function WebhooksPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/webhooks"] });
       setIsDialogOpen(false);
       form.reset();
-      toast({ title: "Webhook created successfully" });
+      toast({ title: "Webhook criado com sucesso" });
     },
     onError: (error: Error) => {
-      toast({ title: error.message, variant: "destructive" });
+      toast({ title: error.message || "Falha ao criar webhook", variant: "destructive" });
     },
   });
 
@@ -101,10 +101,10 @@ export default function WebhooksPage() {
       setIsDialogOpen(false);
       setEditingWebhook(null);
       form.reset();
-      toast({ title: "Webhook updated successfully" });
+      toast({ title: "Webhook atualizado com sucesso" });
     },
     onError: (error: Error) => {
-      toast({ title: error.message, variant: "destructive" });
+      toast({ title: error.message || "Falha ao atualizar webhook", variant: "destructive" });
     },
   });
 
@@ -116,10 +116,10 @@ export default function WebhooksPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/webhooks"] });
-      toast({ title: "Webhook deleted successfully" });
+      toast({ title: "Webhook excluído com sucesso" });
     },
     onError: () => {
-      toast({ title: "Failed to delete webhook", variant: "destructive" });
+      toast({ title: "Falha ao excluir webhook", variant: "destructive" });
     },
   });
 
@@ -169,23 +169,23 @@ export default function WebhooksPage() {
             <div>
               <h1 className="text-2xl font-semibold">Webhooks</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Receive real-time notifications for events
+                Receba notificações em tempo real para eventos
               </p>
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button onClick={() => handleOpenDialog()} data-testid="button-add-webhook">
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Webhook
+                  Novo Webhook
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg">
                 <DialogHeader>
-                  <DialogTitle>{editingWebhook ? "Edit Webhook" : "Create Webhook"}</DialogTitle>
+                  <DialogTitle>{editingWebhook ? "Editar Webhook" : "Criar Webhook"}</DialogTitle>
                   <DialogDescription>
                     {editingWebhook
-                      ? "Update webhook configuration."
-                      : "Set up a webhook to receive event notifications."}
+                      ? "Atualize a configuração do webhook."
+                      : "Configure um webhook para receber notificações de eventos."}
                   </DialogDescription>
                 </DialogHeader>
                 <Form {...form}>
@@ -195,7 +195,7 @@ export default function WebhooksPage() {
                       name="url"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Endpoint URL</FormLabel>
+                          <FormLabel>URL do Endpoint</FormLabel>
                           <FormControl>
                             <div className="relative">
                               <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -216,21 +216,21 @@ export default function WebhooksPage() {
                       name="secret"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Secret (optional)</FormLabel>
+                          <FormLabel>Chave Secreta (opcional)</FormLabel>
                           <FormControl>
                             <div className="relative">
                               <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                               <Input
                                 {...field}
                                 type="password"
-                                placeholder="HMAC signing secret"
+                                placeholder="Chave de assinatura HMAC"
                                 className="pl-10"
                                 data-testid="input-webhook-secret"
                               />
                             </div>
                           </FormControl>
                           <FormDescription>
-                            Used to sign webhook payloads with HMAC-SHA256
+                            Usada para assinar payloads do webhook com HMAC-SHA256
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -241,7 +241,7 @@ export default function WebhooksPage() {
                       name="events"
                       render={() => (
                         <FormItem>
-                          <FormLabel>Events</FormLabel>
+                          <FormLabel>Eventos</FormLabel>
                           <div className="space-y-3 pt-2">
                             {webhookEvents.map((event) => (
                               <FormField
@@ -285,9 +285,9 @@ export default function WebhooksPage() {
                       render={({ field }) => (
                         <FormItem className="flex items-center justify-between rounded-lg border p-3">
                           <div>
-                            <FormLabel>Active</FormLabel>
+                            <FormLabel>Ativo</FormLabel>
                             <FormDescription>
-                              Enable or disable this webhook
+                              Ativar ou desativar este webhook
                             </FormDescription>
                           </div>
                           <FormControl>
@@ -302,7 +302,7 @@ export default function WebhooksPage() {
                     />
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Cancel
+                        Cancelar
                       </Button>
                       <Button
                         type="submit"
@@ -312,9 +312,9 @@ export default function WebhooksPage() {
                         {(createWebhook.isPending || updateWebhook.isPending) ? (
                           <LoadingSpinner size="sm" className="text-primary-foreground" />
                         ) : editingWebhook ? (
-                          "Save Changes"
+                          "Salvar Alterações"
                         ) : (
-                          "Create Webhook"
+                          "Criar Webhook"
                         )}
                       </Button>
                     </div>
@@ -331,12 +331,12 @@ export default function WebhooksPage() {
               <CardContent className="p-0">
                 <EmptyState
                   icon={Webhook}
-                  title="No webhooks configured"
-                  description="Set up webhooks to receive real-time event notifications"
+                  title="Nenhum webhook configurado"
+                  description="Configure webhooks para receber notificações de eventos em tempo real"
                   action={
                     <Button onClick={() => handleOpenDialog()}>
                       <Plus className="h-4 w-4 mr-2" />
-                      Add Webhook
+                      Novo Webhook
                     </Button>
                   }
                 />
@@ -355,12 +355,12 @@ export default function WebhooksPage() {
                           {webhook.isActive ? (
                             <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 shrink-0">
                               <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Active
+                              Ativo
                             </Badge>
                           ) : (
                             <Badge variant="secondary" className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 shrink-0">
                               <XCircle className="h-3 w-3 mr-1" />
-                              Inactive
+                              Inativo
                             </Badge>
                           )}
                         </div>
@@ -374,7 +374,7 @@ export default function WebhooksPage() {
                         {webhook.secret && (
                           <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
                             <Key className="h-3 w-3" />
-                            HMAC signing enabled
+                            Assinatura HMAC ativada
                           </div>
                         )}
                       </div>
@@ -406,18 +406,18 @@ export default function WebhooksPage() {
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Webhook</AlertDialogTitle>
+                              <AlertDialogTitle>Excluir Webhook</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Are you sure you want to delete this webhook? You will no longer receive notifications.
+                                Tem certeza que deseja excluir este webhook? Você não receberá mais notificações.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
                               <AlertDialogAction
                                 onClick={() => deleteWebhook.mutate(webhook.id)}
                                 className="bg-destructive text-destructive-foreground"
                               >
-                                Delete
+                                Excluir
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>

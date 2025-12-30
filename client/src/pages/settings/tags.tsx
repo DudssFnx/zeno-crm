@@ -20,8 +20,8 @@ import { queryClient } from "@/lib/queryClient";
 import type { Tag as TagType } from "@shared/schema";
 
 const tagFormSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Enter a valid hex color"),
+  name: z.string().min(1, "Nome é obrigatório"),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Digite uma cor hexadecimal válida"),
   stageOrder: z.string().optional(),
 });
 
@@ -74,10 +74,10 @@ export default function TagsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/tags"] });
       setIsDialogOpen(false);
       form.reset();
-      toast({ title: "Tag created successfully" });
+      toast({ title: "Etiqueta criada com sucesso" });
     },
     onError: (error: Error) => {
-      toast({ title: error.message, variant: "destructive" });
+      toast({ title: error.message || "Falha ao criar etiqueta", variant: "destructive" });
     },
   });
 
@@ -102,10 +102,10 @@ export default function TagsPage() {
       setIsDialogOpen(false);
       setEditingTag(null);
       form.reset();
-      toast({ title: "Tag updated successfully" });
+      toast({ title: "Etiqueta atualizada com sucesso" });
     },
     onError: (error: Error) => {
-      toast({ title: error.message, variant: "destructive" });
+      toast({ title: error.message || "Falha ao atualizar etiqueta", variant: "destructive" });
     },
   });
 
@@ -117,10 +117,10 @@ export default function TagsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tags"] });
-      toast({ title: "Tag deleted successfully" });
+      toast({ title: "Etiqueta excluída com sucesso" });
     },
     onError: () => {
-      toast({ title: "Failed to delete tag", variant: "destructive" });
+      toast({ title: "Falha ao excluir etiqueta", variant: "destructive" });
     },
   });
 
@@ -151,25 +151,25 @@ export default function TagsPage() {
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-semibold">Tags</h1>
+              <h1 className="text-2xl font-semibold">Etiquetas</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Organize contacts with labels and funnel stages
+                Organize contatos com etiquetas e estágios do funil
               </p>
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button onClick={() => handleOpenDialog()} data-testid="button-add-tag">
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Tag
+                  Nova Etiqueta
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>{editingTag ? "Edit Tag" : "Create New Tag"}</DialogTitle>
+                  <DialogTitle>{editingTag ? "Editar Etiqueta" : "Nova Etiqueta"}</DialogTitle>
                   <DialogDescription>
                     {editingTag
-                      ? "Update tag name and color."
-                      : "Create a tag to organize your contacts."}
+                      ? "Atualize o nome e cor da etiqueta."
+                      : "Crie uma etiqueta para organizar seus contatos."}
                   </DialogDescription>
                 </DialogHeader>
                 <Form {...form}>
@@ -179,9 +179,9 @@ export default function TagsPage() {
                       name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Name</FormLabel>
+                          <FormLabel>Nome</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="New Lead" data-testid="input-tag-name" />
+                            <Input {...field} placeholder="Novo Lead" data-testid="input-tag-name" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -192,7 +192,7 @@ export default function TagsPage() {
                       name="color"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Color</FormLabel>
+                          <FormLabel>Cor</FormLabel>
                           <FormControl>
                             <div className="space-y-3">
                               <div className="flex gap-2 flex-wrap">
@@ -225,7 +225,7 @@ export default function TagsPage() {
                       name="stageOrder"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Stage Order (optional)</FormLabel>
+                          <FormLabel>Ordem do Estágio (opcional)</FormLabel>
                           <FormControl>
                             <Input
                               {...field}
@@ -235,22 +235,22 @@ export default function TagsPage() {
                             />
                           </FormControl>
                           <p className="text-xs text-muted-foreground">
-                            Set a number to show this tag as a column in the Kanban board
+                            Defina um número para mostrar esta etiqueta como coluna no Kanban
                           </p>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                     <div className="pt-2">
-                      <p className="text-sm text-muted-foreground mb-2">Preview:</p>
+                      <p className="text-sm text-muted-foreground mb-2">Prévia:</p>
                       <TagChip
-                        tag={{ id: "preview", name: form.watch("name") || "Tag Name", color: selectedColor, companyId: "", createdAt: new Date(), updatedAt: new Date(), stageOrder: null }}
+                        tag={{ id: "preview", name: form.watch("name") || "Nome da Etiqueta", color: selectedColor, companyId: "", createdAt: new Date(), updatedAt: new Date(), stageOrder: null }}
                         size="md"
                       />
                     </div>
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Cancel
+                        Cancelar
                       </Button>
                       <Button
                         type="submit"
@@ -260,9 +260,9 @@ export default function TagsPage() {
                         {(createTag.isPending || updateTag.isPending) ? (
                           <LoadingSpinner size="sm" className="text-primary-foreground" />
                         ) : editingTag ? (
-                          "Save Changes"
+                          "Salvar Alterações"
                         ) : (
-                          "Create Tag"
+                          "Criar Etiqueta"
                         )}
                       </Button>
                     </div>
@@ -279,12 +279,12 @@ export default function TagsPage() {
               <CardContent className="p-0">
                 <EmptyState
                   icon={Tag}
-                  title="No tags yet"
-                  description="Create tags to organize your contacts and track funnel stages"
+                  title="Nenhuma etiqueta ainda"
+                  description="Crie etiquetas para organizar seus contatos e acompanhar estágios do funil"
                   action={
                     <Button onClick={() => handleOpenDialog()}>
                       <Plus className="h-4 w-4 mr-2" />
-                      Create Tag
+                      Criar Etiqueta
                     </Button>
                   }
                 />
@@ -322,18 +322,18 @@ export default function TagsPage() {
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Tag</AlertDialogTitle>
+                              <AlertDialogTitle>Excluir Etiqueta</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Are you sure you want to delete this tag? It will be removed from all contacts.
+                                Tem certeza que deseja excluir esta etiqueta? Ela será removida de todos os contatos.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
                               <AlertDialogAction
                                 onClick={() => deleteTag.mutate(tag.id)}
                                 className="bg-destructive text-destructive-foreground"
                               >
-                                Delete
+                                Excluir
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>

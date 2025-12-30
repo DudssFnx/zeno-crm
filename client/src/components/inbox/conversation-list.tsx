@@ -12,7 +12,7 @@ import { LoadingSpinner } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-import type { ConversationWithDetails, WhatsappAccount, User } from "@shared/schema";
+import type { ConversationWithDetails, WhatsappAccount, User, Tag } from "@shared/schema";
 
 interface ConversationListProps {
   selectedId: string | null;
@@ -26,6 +26,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [accountFilter, setAccountFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  const [tagFilter, setTagFilter] = useState<string>("all");
 
   const { data: conversations = [], isLoading } = useQuery<ConversationWithDetails[]>({
     queryKey: ["/api/conversations", statusFilter, accountFilter, assigneeFilter],
@@ -49,13 +50,29 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
     },
   });
 
+  const { data: tags = [] } = useQuery<Tag[]>({
+    queryKey: ["/api/tags"],
+    queryFn: async () => {
+      const res = await authFetch("/api/tags");
+      if (!res.ok) throw new Error("Failed to fetch tags");
+      return res.json();
+    },
+  });
+
   const filteredConversations = conversations.filter((conv) => {
-    if (!search) return true;
-    const searchLower = search.toLowerCase();
-    return (
-      conv.contact.name.toLowerCase().includes(searchLower) ||
-      conv.contact.phoneNumber.includes(search)
-    );
+    if (search) {
+      const searchLower = search.toLowerCase();
+      const matchesSearch = conv.contact.name.toLowerCase().includes(searchLower) ||
+        conv.contact.phoneNumber.includes(search);
+      if (!matchesSearch) return false;
+    }
+    
+    if (tagFilter !== "all") {
+      const hasTag = conv.tags?.some(t => t.id === tagFilter);
+      if (!hasTag) return false;
+    }
+    
+    return true;
   });
 
   const formatTime = (date: Date | string) => {
@@ -65,13 +82,13 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     
     if (days === 0) {
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
     } else if (days === 1) {
-      return "Yesterday";
+      return "Ontem";
     } else if (days < 7) {
-      return d.toLocaleDateString([], { weekday: "short" });
+      return d.toLocaleDateString("pt-BR", { weekday: "short" });
     } else {
-      return d.toLocaleDateString([], { month: "short", day: "numeric" });
+      return d.toLocaleDateString("pt-BR", { month: "short", day: "numeric" });
     }
   };
 
@@ -81,7 +98,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search conversations..."
+            placeholder="Buscar conversas..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10 bg-background"
@@ -95,20 +112,20 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="open">Open</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="resolved">Resolved</SelectItem>
-              <SelectItem value="closed">Closed</SelectItem>
+              <SelectItem value="all">Todos Status</SelectItem>
+              <SelectItem value="open">Aberto</SelectItem>
+              <SelectItem value="pending">Pendente</SelectItem>
+              <SelectItem value="resolved">Resolvido</SelectItem>
+              <SelectItem value="closed">Fechado</SelectItem>
             </SelectContent>
           </Select>
 
           <Select value={accountFilter} onValueChange={setAccountFilter}>
             <SelectTrigger className="flex-1 min-w-[100px]" data-testid="select-account-filter">
-              <SelectValue placeholder="Account" />
+              <SelectValue placeholder="Conta" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Accounts</SelectItem>
+              <SelectItem value="all">Todas Contas</SelectItem>
               {accounts.map((acc) => (
                 <SelectItem key={acc.id} value={acc.id}>
                   {acc.name}
@@ -116,14 +133,36 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
               ))}
             </SelectContent>
           </Select>
+        </div>
 
+        <div className="flex gap-2 flex-wrap">
           <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
             <SelectTrigger className="flex-1 min-w-[100px]" data-testid="select-assignee-filter">
-              <SelectValue placeholder="Assignee" />
+              <SelectValue placeholder="Atribuído" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Conversations</SelectItem>
-              <SelectItem value="mine">My Conversations</SelectItem>
+              <SelectItem value="all">Todas Conversas</SelectItem>
+              <SelectItem value="mine">Minhas Conversas</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={tagFilter} onValueChange={setTagFilter}>
+            <SelectTrigger className="flex-1 min-w-[100px]" data-testid="select-tag-filter">
+              <SelectValue placeholder="Etiqueta" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas Etiquetas</SelectItem>
+              {tags.map((tag) => (
+                <SelectItem key={tag.id} value={tag.id}>
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    {tag.name}
+                  </div>
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -137,8 +176,8 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
         ) : filteredConversations.length === 0 ? (
           <EmptyState
             icon={MessageSquare}
-            title="No conversations"
-            description="Conversations will appear here when customers message you"
+            title="Sem conversas"
+            description="As conversas aparecerão aqui quando os clientes enviarem mensagens"
           />
         ) : (
           <div className="divide-y">
@@ -172,12 +211,12 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                         {conv.contact.phoneNumber}
                       </span>
                       {conv.assignedToUserId === currentUserId && (
-                        <span className="w-2 h-2 rounded-full bg-primary shrink-0" title="Assigned to you" />
+                        <span className="w-2 h-2 rounded-full bg-primary shrink-0" title="Atribuído a você" />
                       )}
                     </div>
                     {conv.lastMessage && (
                       <p className="text-sm text-muted-foreground truncate">
-                        {conv.lastMessage.direction === "outgoing" && "You: "}
+                        {conv.lastMessage.direction === "outgoing" && "Você: "}
                         {conv.lastMessage.content}
                       </p>
                     )}

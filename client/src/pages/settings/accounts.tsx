@@ -21,8 +21,8 @@ import { queryClient } from "@/lib/queryClient";
 import type { WhatsappAccount } from "@shared/schema";
 
 const accountFormSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  phoneNumber: z.string().min(10, "Enter a valid phone number"),
+  name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
+  phoneNumber: z.string().min(10, "Digite um número de telefone válido"),
 });
 
 type AccountFormData = z.infer<typeof accountFormSchema>;
@@ -84,7 +84,7 @@ export default function AccountsPage() {
       if (data.status === "connected") {
         setQrDialogOpen(false);
         queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-accounts"] });
-        toast({ title: "WhatsApp connected successfully!" });
+        toast({ title: "WhatsApp conectado com sucesso!" });
         if (pollIntervalRef.current) {
           clearInterval(pollIntervalRef.current);
         }
@@ -137,10 +137,10 @@ export default function AccountsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-accounts"] });
       setIsDialogOpen(false);
       form.reset();
-      toast({ title: "Account created successfully" });
+      toast({ title: "Conta criada com sucesso" });
     },
     onError: (error: Error) => {
-      toast({ title: error.message, variant: "destructive" });
+      toast({ title: error.message || "Falha ao criar conta", variant: "destructive" });
     },
   });
 
@@ -161,10 +161,10 @@ export default function AccountsPage() {
       setIsDialogOpen(false);
       setEditingAccount(null);
       form.reset();
-      toast({ title: "Account updated successfully" });
+      toast({ title: "Conta atualizada com sucesso" });
     },
     onError: (error: Error) => {
-      toast({ title: error.message, variant: "destructive" });
+      toast({ title: error.message || "Falha ao atualizar conta", variant: "destructive" });
     },
   });
 
@@ -176,10 +176,10 @@ export default function AccountsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-accounts"] });
-      toast({ title: "Account deleted successfully" });
+      toast({ title: "Conta excluída com sucesso" });
     },
     onError: () => {
-      toast({ title: "Failed to delete account", variant: "destructive" });
+      toast({ title: "Falha ao excluir conta", variant: "destructive" });
     },
   });
 
@@ -209,7 +209,7 @@ export default function AccountsPage() {
         setConnectionStatus("connected");
         setQrDialogOpen(false);
         queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-accounts"] });
-        toast({ title: "WhatsApp connected!" });
+        toast({ title: "WhatsApp conectado!" });
         setIsPolling(false);
         return;
       }
@@ -236,7 +236,7 @@ export default function AccountsPage() {
               setConnectionStatus("connected");
               setQrDialogOpen(false);
               queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-accounts"] });
-              toast({ title: "WhatsApp connected!" });
+              toast({ title: "WhatsApp conectado!" });
               if (pollIntervalRef.current) {
                 clearInterval(pollIntervalRef.current);
               }
@@ -252,7 +252,7 @@ export default function AccountsPage() {
       }, 3000);
       
     } catch {
-      toast({ title: "Failed to fetch QR code", variant: "destructive" });
+      toast({ title: "Falha ao obter código QR", variant: "destructive" });
       setIsPolling(false);
     }
   };
@@ -283,10 +283,10 @@ export default function AccountsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-accounts"] });
-      toast({ title: "Session disconnected" });
+      toast({ title: "Sessão desconectada" });
     },
     onError: () => {
-      toast({ title: "Failed to disconnect session", variant: "destructive" });
+      toast({ title: "Falha ao desconectar sessão", variant: "destructive" });
     },
   });
 
@@ -315,25 +315,25 @@ export default function AccountsPage() {
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-semibold">WhatsApp Accounts</h1>
+              <h1 className="text-2xl font-semibold">Contas WhatsApp</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Manage your WhatsApp connections
+                Gerencie suas conexões do WhatsApp
               </p>
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button onClick={() => handleOpenDialog()} data-testid="button-add-account">
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Account
+                  Nova Conta
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>{editingAccount ? "Edit Account" : "Add WhatsApp Account"}</DialogTitle>
+                  <DialogTitle>{editingAccount ? "Editar Conta" : "Nova Conta WhatsApp"}</DialogTitle>
                   <DialogDescription>
                     {editingAccount
-                      ? "Update account information."
-                      : "Add a new WhatsApp account to manage."}
+                      ? "Atualize as informações da conta."
+                      : "Adicione uma nova conta WhatsApp para gerenciar."}
                   </DialogDescription>
                 </DialogHeader>
                 <Form {...form}>
@@ -343,9 +343,9 @@ export default function AccountsPage() {
                       name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Account Name</FormLabel>
+                          <FormLabel>Nome da Conta</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="Sales Team" data-testid="input-account-name" />
+                            <Input {...field} placeholder="Equipe de Vendas" data-testid="input-account-name" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -356,7 +356,7 @@ export default function AccountsPage() {
                       name="phoneNumber"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Phone Number</FormLabel>
+                          <FormLabel>Número de Telefone</FormLabel>
                           <FormControl>
                             <Input {...field} placeholder="+55 11 99999-9999" data-testid="input-account-phone" />
                           </FormControl>
@@ -366,7 +366,7 @@ export default function AccountsPage() {
                     />
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Cancel
+                        Cancelar
                       </Button>
                       <Button
                         type="submit"
@@ -376,9 +376,9 @@ export default function AccountsPage() {
                         {(createAccount.isPending || updateAccount.isPending) ? (
                           <LoadingSpinner size="sm" className="text-primary-foreground" />
                         ) : editingAccount ? (
-                          "Save Changes"
+                          "Salvar Alterações"
                         ) : (
-                          "Add Account"
+                          "Adicionar Conta"
                         )}
                       </Button>
                     </div>
@@ -391,17 +391,17 @@ export default function AccountsPage() {
           <Dialog open={qrDialogOpen} onOpenChange={handleQrDialogClose}>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Connect WhatsApp</DialogTitle>
+                <DialogTitle>Conectar WhatsApp</DialogTitle>
                 <DialogDescription>
-                  Open WhatsApp on your phone and scan this QR code to connect.
+                  Abra o WhatsApp no seu celular e escaneie este código QR para conectar.
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col items-center py-6">
                 {connectionStatus === "connecting" && !qrData ? (
                   <div className="text-center">
                     <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
-                    <p className="text-sm text-muted-foreground">Starting WhatsApp Web...</p>
-                    <p className="text-xs text-muted-foreground mt-1">This may take a moment</p>
+                    <p className="text-sm text-muted-foreground">Iniciando WhatsApp Web...</p>
+                    <p className="text-xs text-muted-foreground mt-1">Isso pode levar um momento</p>
                   </div>
                 ) : qrData ? (
                   <div className="p-4 bg-white rounded-lg shadow-sm">
@@ -416,7 +416,7 @@ export default function AccountsPage() {
                       <div className="w-64 h-64 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg">
                         <div className="text-center text-sm text-muted-foreground p-4">
                           <QrCode className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
-                          <p>QR Code Loading...</p>
+                          <p>Carregando código QR...</p>
                         </div>
                       </div>
                     )}
@@ -424,11 +424,11 @@ export default function AccountsPage() {
                 ) : (
                   <div className="text-center">
                     <LoadingSpinner size="lg" />
-                    <p className="text-sm text-muted-foreground mt-4">Waiting for QR code...</p>
+                    <p className="text-sm text-muted-foreground mt-4">Aguardando código QR...</p>
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground mt-4 text-center">
-                  Status: {connectionStatus === "pending_qr" ? "Waiting for scan" : connectionStatus}
+                  Status: {connectionStatus === "pending_qr" ? "Aguardando leitura" : connectionStatus === "connected" ? "Conectado" : connectionStatus === "connecting" ? "Conectando" : connectionStatus}
                 </p>
               </div>
               <div className="flex justify-center gap-2">
@@ -438,7 +438,7 @@ export default function AccountsPage() {
                   disabled={isPolling && connectionStatus === "connecting"}
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh QR
+                  Atualizar QR
                 </Button>
               </div>
             </DialogContent>
@@ -451,12 +451,12 @@ export default function AccountsPage() {
               <CardContent className="p-0">
                 <EmptyState
                   icon={Smartphone}
-                  title="No WhatsApp accounts"
-                  description="Add your first WhatsApp account to start receiving messages"
+                  title="Nenhuma conta WhatsApp"
+                  description="Adicione sua primeira conta WhatsApp para começar a receber mensagens"
                   action={
                     <Button onClick={() => handleOpenDialog()}>
                       <Plus className="h-4 w-4 mr-2" />
-                      Add Account
+                      Adicionar Conta
                     </Button>
                   }
                 />
@@ -490,7 +490,7 @@ export default function AccountsPage() {
                             data-testid={`button-disconnect-${account.id}`}
                           >
                             <WifiOff className="h-4 w-4 mr-2" />
-                            Disconnect
+                            Desconectar
                           </Button>
                         ) : (
                           <Button
@@ -501,7 +501,7 @@ export default function AccountsPage() {
                             data-testid={`button-connect-${account.id}`}
                           >
                             <Wifi className="h-4 w-4 mr-2" />
-                            Connect
+                            Conectar
                           </Button>
                         )}
                         <Button
@@ -524,18 +524,18 @@ export default function AccountsPage() {
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Account</AlertDialogTitle>
+                              <AlertDialogTitle>Excluir Conta</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Are you sure you want to delete "{account.name}"? This will remove all associated conversations and messages.
+                                Tem certeza que deseja excluir "{account.name}"? Isso removerá todas as conversas e mensagens associadas.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
                               <AlertDialogAction
                                 onClick={() => deleteAccount.mutate(account.id)}
                                 className="bg-destructive text-destructive-foreground"
                               >
-                                Delete
+                                Excluir
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
