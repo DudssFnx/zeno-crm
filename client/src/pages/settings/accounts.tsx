@@ -36,6 +36,20 @@ export default function AccountsPage() {
   const [qrData, setQrData] = useState<string | null>(null);
   const [qrAccountId, setQrAccountId] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
+  const [timeLeft, setTimeLeft] = useState(120);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (qrData && timeLeft > 0 && connectionStatus === "pending_qr") {
+      timer = setInterval(() => {
+        setTimeLeft((prev) => prev - 1);
+      }, 1000);
+    } else if (timeLeft === 0) {
+      if (qrAccountId) fetchQr(qrAccountId);
+      setTimeLeft(120);
+    }
+    return () => clearInterval(timer);
+  }, [qrData, timeLeft, qrAccountId, connectionStatus]);
   const [isPolling, setIsPolling] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -428,7 +442,7 @@ export default function AccountsPage() {
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground mt-4 text-center">
-                  Status: {connectionStatus === "pending_qr" ? "Aguardando leitura" : connectionStatus === "connected" ? "Conectado" : connectionStatus === "connecting" ? "Conectando" : connectionStatus}
+                  Status: {connectionStatus === "pending_qr" ? `Aguardando leitura (${timeLeft}s)` : connectionStatus === "connected" ? "Conectado" : connectionStatus === "connecting" ? "Conectando" : connectionStatus}
                 </p>
               </div>
               <div className="flex justify-center gap-2">

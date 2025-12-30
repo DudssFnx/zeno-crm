@@ -339,7 +339,7 @@ class WhatsAppPuppeteerGateway {
       } catch (error) {
         console.error("Message listener error:", error);
       }
-    }, 3000);
+    }, 2000);
 
     session.messageListenerInterval = interval;
     this.sessions.set(accountId, session);
@@ -397,10 +397,11 @@ class WhatsAppPuppeteerGateway {
         'footer div[contenteditable="true"]',
         'div[data-testid="compose-box"] div[contenteditable="true"]',
         '#main footer div[contenteditable="true"]',
+        'div.lexical-rich-text-input div[contenteditable="true"]',
       ];
       
       let inputFound = false;
-      for (let i = 0; i < 20 && !inputFound; i++) {
+      for (let i = 0; i < 40 && !inputFound; i++) {
         for (const selector of inputSelectors) {
           try {
             const element = await page.$(selector);
@@ -414,6 +415,14 @@ class WhatsAppPuppeteerGateway {
           }
         }
         if (!inputFound) {
+          // Check for "invalid phone" or "click to reload"
+          const popup = await page.$('div[data-testid="popup-contents"]');
+          if (popup) {
+            const text = await page.evaluate(el => el.textContent, popup);
+            if (text?.includes("inválido") || text?.includes("invalid")) {
+              return { success: false, message: "Número de telefone inválido ou não está no WhatsApp" };
+            }
+          }
           await new Promise(r => setTimeout(r, 500));
         }
       }
@@ -463,11 +472,46 @@ class WhatsAppPuppeteerGateway {
       }
       
       // Brief wait to confirm send
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 1000));
       
       console.log(`[WhatsApp] Message sent successfully`);
       return { success: true, message: "Mensagem enviada" };
     } catch (error) {
+      // Improved connection detection logic to be more proactive
+      const checkConnection = async () => {
+        const session = this.sessions.get(accountId);
+        if (!session || !session.page) return false;
+        const page = session.page;
+        const selectors = [
+          'div[data-testid="chat-list"]',
+          'div[data-testid="side-pane"]',
+          'div[data-testid="menu-bar"]',
+          '#pane-side',
+          '#side',
+          'div[data-testid="intro-text"]',
+        ];
+        for (const selector of selectors) {
+          try {
+            if (await page.$(selector)) return true;
+          } catch (e) {}
+        }
+        return false;
+      };
+
+      const session = this.sessions.get(accountId);
+      if (session && session.page) {
+        // Watch for connection state
+        const connectionTimer = setInterval(async () => {
+          if (await checkConnection()) {
+            console.log(`[WhatsApp] Connection detected for account ${accountId}`);
+            session.status = "connected";
+            session.qrCode = null;
+            this.emitStatus(accountId, "connected");
+            clearInterval(connectionTimer);
+          }
+        }, 2000);
+      }
+
       const errorMessage = error instanceof Error ? error.message : "Falha ao enviar mensagem";
       console.error("Send message error:", errorMessage);
       return { success: false, message: errorMessage };
