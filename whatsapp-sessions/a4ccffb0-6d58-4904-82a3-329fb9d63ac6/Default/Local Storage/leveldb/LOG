@@ -1,0 +1,6 @@
+2025/12/30-19:29:07.529 3fff Reusing MANIFEST /home/runner/workspace/whatsapp-sessions/a4ccffb0-6d58-4904-82a3-329fb9d63ac6/Default/Local Storage/leveldb/MANIFEST-000001
+2025/12/30-19:29:07.535 3fff Recovering log #3
+2025/12/30-19:29:07.536 3fff Reusing old log /home/runner/workspace/whatsapp-sessions/a4ccffb0-6d58-4904-82a3-329fb9d63ac6/Default/Local Storage/leveldb/000003.log 
+2025/12/30-19:31:08.035 4002 Level-0 table #5: started
+2025/12/30-19:31:08.046 4002 Level-0 table #5: 22235 bytes OK
+2025/12/30-19:31:08.051 4002 Delete type=0 #3

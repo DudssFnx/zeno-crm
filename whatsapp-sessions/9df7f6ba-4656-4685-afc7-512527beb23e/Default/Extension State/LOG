@@ -1,2 +1,3 @@
-2025/12/30-18:13:07.420 2aba Creating DB /home/runner/workspace/whatsapp-sessions/9df7f6ba-4656-4685-afc7-512527beb23e/Default/Extension State since it was missing.
-2025/12/30-18:13:07.433 2aba Reusing MANIFEST /home/runner/workspace/whatsapp-sessions/9df7f6ba-4656-4685-afc7-512527beb23e/Default/Extension State/MANIFEST-000001
+2025/12/30-18:45:43.440 3ab9 Reusing MANIFEST /home/runner/workspace/whatsapp-sessions/9df7f6ba-4656-4685-afc7-512527beb23e/Default/Extension State/MANIFEST-000001
+2025/12/30-18:45:43.441 3ab9 Recovering log #3
+2025/12/30-18:45:43.441 3ab9 Reusing old log /home/runner/workspace/whatsapp-sessions/9df7f6ba-4656-4685-afc7-512527beb23e/Default/Extension State/000003.log 

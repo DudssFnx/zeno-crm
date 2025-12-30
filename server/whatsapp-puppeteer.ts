@@ -138,9 +138,36 @@ class WhatsAppPuppeteerGateway {
     const checkConnection = async (): Promise<boolean> => {
       try {
         const isConnected = await page.evaluate(() => {
-          const sidePanel = document.querySelector('[data-testid="chat-list"]');
-          const conversationList = document.querySelector('[aria-label="Chat list"]');
-          return !!(sidePanel || conversationList);
+          // Multiple selectors to detect successful connection
+          const selectors = [
+            '[data-testid="chat-list"]',
+            '[aria-label="Chat list"]',
+            '[data-testid="chatlist-header"]',
+            '[data-testid="menu-bar-menu"]',
+            'div[data-tab="3"]', // Chat tab
+            '#pane-side', // Main side panel
+            '[data-testid="default-user"]', // User profile area
+            'header span[data-testid]', // Header with user info
+          ];
+          
+          for (const selector of selectors) {
+            if (document.querySelector(selector)) {
+              return true;
+            }
+          }
+          
+          // Check if QR code is NOT present (means we're connected)
+          const qrCanvas = document.querySelector('canvas');
+          const loginScreen = document.querySelector('[data-testid="qrcode"]');
+          const isOnLoginScreen = !!(qrCanvas || loginScreen);
+          
+          // If there's no QR/login screen AND there's some content
+          const hasContent = document.querySelector('div[role="application"]');
+          if (!isOnLoginScreen && hasContent) {
+            return true;
+          }
+          
+          return false;
         });
         return isConnected;
       } catch {

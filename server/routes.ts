@@ -657,11 +657,17 @@ export async function registerRoutes(
       // Get agent display name
       const senderDisplayName = req.user!.displayName || req.user!.name;
 
-      await whatsappGateway.sendMessage(
+      // Send message via real WhatsApp Puppeteer gateway
+      const sendResult = await whatsappPuppeteer.sendMessage(
         conversation.whatsappAccountId,
         contact.phoneNumber,
         content
       );
+
+      if (!sendResult.success) {
+        console.error("WhatsApp send failed:", sendResult.message);
+        return res.status(400).json({ message: `Falha ao enviar: ${sendResult.message}` });
+      }
 
       const message = await storage.createMessage({
         conversationId: req.params.id,
@@ -671,10 +677,13 @@ export async function registerRoutes(
         content,
       });
 
+      // Update conversation lastMessageAt
+      await storage.updateConversation(req.params.id, {});
+
       res.json(message);
     } catch (error) {
       console.error("Send message error:", error);
-      res.status(500).json({ message: "Failed to send message" });
+      res.status(500).json({ message: "Falha ao enviar mensagem" });
     }
   });
 

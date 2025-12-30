@@ -1,2 +1,3 @@
-2025/12/30-18:13:07.223 2ac4 Creating DB /home/runner/workspace/whatsapp-sessions/9df7f6ba-4656-4685-afc7-512527beb23e/Default/Site Characteristics Database since it was missing.
-2025/12/30-18:13:07.238 2ac4 Reusing MANIFEST /home/runner/workspace/whatsapp-sessions/9df7f6ba-4656-4685-afc7-512527beb23e/Default/Site Characteristics Database/MANIFEST-000001
+2025/12/30-18:45:43.209 3ac1 Reusing MANIFEST /home/runner/workspace/whatsapp-sessions/9df7f6ba-4656-4685-afc7-512527beb23e/Default/Site Characteristics Database/MANIFEST-000001
+2025/12/30-18:45:43.213 3ac1 Recovering log #3
+2025/12/30-18:45:43.213 3ac1 Reusing old log /home/runner/workspace/whatsapp-sessions/9df7f6ba-4656-4685-afc7-512527beb23e/Default/Site Characteristics Database/000003.log 
