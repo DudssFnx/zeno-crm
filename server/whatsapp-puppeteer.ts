@@ -360,10 +360,23 @@ class WhatsAppPuppeteerGateway {
     phoneNumber: string,
     message: string
   ): Promise<{ success: boolean; message: string }> {
+    console.log(`[WhatsApp] Attempting to send message to ${phoneNumber} via account ${accountId}`);
+    
     const session = this.sessions.get(accountId);
     
-    if (!session || session.status !== "connected" || !session.page) {
-      return { success: false, message: "WhatsApp not connected" };
+    if (!session) {
+      console.log(`[WhatsApp] No session found for account ${accountId}`);
+      return { success: false, message: "Sessão do WhatsApp não encontrada. Conecte a conta primeiro." };
+    }
+    
+    if (session.status !== "connected") {
+      console.log(`[WhatsApp] Session status is ${session.status}, not connected`);
+      return { success: false, message: `WhatsApp não conectado. Status atual: ${session.status}` };
+    }
+    
+    if (!session.page) {
+      console.log(`[WhatsApp] No page available for session`);
+      return { success: false, message: "Página do WhatsApp não disponível" };
     }
 
     try {

@@ -68,7 +68,10 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
         method: "POST",
         body: JSON.stringify({ content: data.content }),
       });
-      if (!res.ok) throw new Error("Failed to send message");
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: "Falha ao enviar mensagem" }));
+        throw new Error(error.message || "Falha ao enviar mensagem");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -76,8 +79,8 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     },
-    onError: () => {
-      toast({ title: "Failed to send message", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: error.message || "Falha ao enviar mensagem", variant: "destructive" });
     },
   });
 
