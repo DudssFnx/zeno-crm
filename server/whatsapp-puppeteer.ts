@@ -17,6 +17,7 @@ interface WhatsAppSession {
   companyId?: string;
   processedMessages: Set<string>;
   lastChatMessages: Map<string, string>;
+  lastChatProcessedAt: Map<string, number>;
 }
 
 interface SavedSessionStatus {
@@ -165,6 +166,7 @@ class WhatsAppPuppeteerGateway {
         messageListenerInterval: null,
         processedMessages: new Set<string>(),
         lastChatMessages: new Map<string, string>(),
+        lastChatProcessedAt: new Map<string, number>(),
       };
       this.sessions.set(accountId, session!);
 
@@ -425,6 +427,7 @@ class WhatsAppPuppeteerGateway {
             hasUnread: boolean;
             lastMessagePreview: string;
             hasOutgoingStatus: boolean;
+            debugInfo?: string;
           }> = [];
 
           // Process only first 10 chats for performance
@@ -448,39 +451,72 @@ class WhatsAppPuppeteerGateway {
             const name = nameEl?.textContent || "";
             if (!name) continue;
             
-            // Check for unread badge - multiple selectors for different WA versions
-            const unreadBadge = chat.querySelector('[data-testid="icon-unread-count"]');
-            const unreadSpan = chat.querySelector('span[aria-label*="unread"]');
-            const unreadCount2 = chat.querySelector('[data-testid="unread-count"]');
-            // Additional selectors for unread indicator
-            const unreadCountBadge = chat.querySelector('span._ahlk'); // WhatsApp internal class
-            const unreadBadgeAlt = chat.querySelector('div[aria-label*="mensag"]'); // Portuguese "mensagens não lidas"
-            // Check for any element with a number indicating unread count
-            const allSpans = chat.querySelectorAll('span');
-            let hasNumericBadge = false;
-            for (const span of Array.from(allSpans)) {
-              const text = span.textContent?.trim() || '';
-              // If span contains only a number (1-999) and has small font, it's likely unread count
-              if (/^[1-9]\d{0,2}$/.test(text) && span.closest('div[style*="background"]')) {
-                hasNumericBadge = true;
+            // Check for unread badge - UPDATED for WhatsApp Web 145.x
+            let debugInfo = '';
+            if (index === 0) {
+              // Get all data-testid attributes in this chat for debugging
+              const allTestIds = Array.from(chat.querySelectorAll('[data-testid]'))
+                .map(el => el.getAttribute('data-testid')).slice(0, 20);
+              debugInfo = `testids:[${allTestIds.join(',')}]`;
+              
+              // Check for any badge-like elements
+              const allSpans = Array.from(chat.querySelectorAll('span'));
+              const spansWithNumbers = allSpans.filter(s => /^\d+$/.test(s.textContent?.trim() || ''))
+                .map(s => s.textContent);
+              if (spansWithNumbers.length > 0) {
+                debugInfo += ` numSpans:[${spansWithNumbers.join(',')}]`;
+              }
+              
+              // Get all aria-labels
+              const ariaLabels = Array.from(chat.querySelectorAll('[aria-label]'))
+                .map(el => el.getAttribute('aria-label')).slice(0, 5);
+              if (ariaLabels.length > 0) {
+                debugInfo += ` arias:[${ariaLabels.join('|')}]`;
+              }
+            }
+            
+            // Primary: notification-badge is the current unread indicator
+            const notificationBadge = chat.querySelector('span[data-testid="notification-badge"]');
+            // Check aria-label on all elements for unread indicators
+            const elementsWithAriaLabel = chat.querySelectorAll('[aria-label]');
+            let hasUnreadInAriaLabel = false;
+            for (const el of Array.from(elementsWithAriaLabel)) {
+              const label = el.getAttribute('aria-label') || '';
+              if (label.includes('não lida') || label.includes('unread') || 
+                  /\d+\s*(mensage|message)/i.test(label)) {
+                hasUnreadInAriaLabel = true;
                 break;
               }
             }
-            const hasUnread = !!(unreadBadge || unreadSpan || unreadCount2 || unreadCountBadge || unreadBadgeAlt || hasNumericBadge);
+            // Fallback: legacy selectors that might still work on some versions
+            const unreadBadge = chat.querySelector('[data-testid="icon-unread-count"]');
+            const unreadSpan = chat.querySelector('span[aria-label*="unread"]');
+            const unreadCount2 = chat.querySelector('[data-testid="unread-count"]');
+            // Also look for any span that contains just a number (1-999)
+            const allSpansForBadge = chat.querySelectorAll('span');
+            let numericBadgeFound = false;
+            for (const span of Array.from(allSpansForBadge)) {
+              const text = span.textContent?.trim() || '';
+              if (/^[1-9]\d{0,2}$/.test(text)) {
+                numericBadgeFound = true;
+                break;
+              }
+            }
+            const hasUnread = !!(notificationBadge || hasUnreadInAriaLabel || unreadBadge || unreadSpan || unreadCount2 || numericBadgeFound);
             
-            // Check for outgoing status icons (to detect if last message was sent from phone)
-            const msgStatusIcon = chat.querySelector('[data-testid="msg-dblcheck"]') ||
-                                  chat.querySelector('[data-testid="msg-check"]') ||
-                                  chat.querySelector('[data-testid="msg-time"]') ||
-                                  chat.querySelector('[data-icon="msg-dblcheck"]') ||
-                                  chat.querySelector('[data-icon="msg-check"]') ||
-                                  chat.querySelector('[data-icon="msg-time"]');
-            const hasOutgoingStatus = !!msgStatusIcon;
+            // Get last message preview - UPDATED for WhatsApp Web 145.x
+            // Primary: conversation-last-message-body contains the actual text
+            const lastMsgBody = chat.querySelector('[data-testid="conversation-last-message-body"] span') ||
+                               chat.querySelector('[data-testid="conversation-last-message-body"]');
+            // Fallback: older selectors
+            const lastMsgFallback = chat.querySelector('[data-testid="last-msg-status"]') ||
+                                    chat.querySelector('[data-testid="conversation-last-message"]');
+            const lastMessagePreview = (lastMsgBody?.textContent || lastMsgFallback?.textContent || "").trim();
             
-            // Get last message preview
-            const lastMsgEl = chat.querySelector('[data-testid="last-msg-status"]') ||
-                             chat.querySelector('[data-testid="conversation-last-message"]');
-            const lastMessagePreview = lastMsgEl?.textContent || "";
+            // Check if last message was sent by us by checking for "Você:" prefix
+            // This is more reliable than checking for status icons which may not exist
+            const hasOutgoingStatus = lastMessagePreview.startsWith('Você:') || 
+                                      lastMessagePreview.startsWith('You:');
             
             // Get avatar
             const avatarSelectors = [
@@ -505,6 +541,7 @@ class WhatsAppPuppeteerGateway {
               hasUnread,
               lastMessagePreview,
               hasOutgoingStatus,
+              debugInfo: debugInfo || undefined,
             });
           }
 
@@ -514,20 +551,39 @@ class WhatsAppPuppeteerGateway {
         // Log found chats for debugging
         const unreadChats = allChats.filter(c => c.hasUnread);
         console.log(`[WhatsApp] Scan: ${allChats.length} chats, ${unreadChats.length} não lidos`);
+        // Log debug info from first chat
+        const firstChat = allChats[0];
+        if (firstChat?.debugInfo) {
+          console.log(`[WhatsApp-DOM] ${firstChat.debugInfo}`);
+        }
+        if (firstChat) {
+          console.log(`[WhatsApp-Preview] ${firstChat.name}: "${firstChat.lastMessagePreview}" outgoing:${firstChat.hasOutgoingStatus}`);
+        }
 
         // NEW APPROACH: Process ALL chats and check for new messages
         // Track last processed message per chat to detect new ones
         if (!currentSession.lastChatMessages) {
           currentSession.lastChatMessages = new Map<string, string>();
         }
+        if (!currentSession.lastChatProcessedAt) {
+          currentSession.lastChatProcessedAt = new Map<string, number>();
+        }
 
         // Step 2: Process chats - check for new messages by comparing preview text
+        const CHAT_COOLDOWN_MS = 30000; // 30 seconds cooldown to avoid reprocessing
         for (const chat of allChats) {
           const lastKnownMessage = currentSession.lastChatMessages.get(chat.phoneOrId);
           const currentPreview = chat.lastMessagePreview?.trim() || '';
+          const lastProcessedAt = currentSession.lastChatProcessedAt.get(chat.phoneOrId) || 0;
+          const now = Date.now();
+          
+          // Check if chat is on cooldown
+          if (now - lastProcessedAt < CHAT_COOLDOWN_MS) {
+            continue; // Skip this chat, still on cooldown
+          }
           
           // Detect if there's a new message:
-          // 1. Chat has unread badge
+          // 1. Chat has unread badge AND we haven't processed it recently
           // 2. OR last message preview changed AND it's not from us (no outgoing status)
           const hasNewMessage = chat.hasUnread || 
             (currentPreview && currentPreview !== lastKnownMessage && !chat.hasOutgoingStatus);
@@ -695,8 +751,9 @@ class WhatsAppPuppeteerGateway {
             }
           }
           
-          // Update last known message for this chat
+          // Update last known message and timestamp for this chat
           currentSession.lastChatMessages.set(chat.phoneOrId, currentPreview);
+          currentSession.lastChatProcessedAt.set(chat.phoneOrId, Date.now());
         }
 
         if (currentSession.processedMessages.size > 1000) {
@@ -713,24 +770,55 @@ class WhatsAppPuppeteerGateway {
             errorMessage.includes("Target closed") ||
             errorMessage.includes("Session closed") ||
             errorMessage.includes("Protocol error")) {
-          console.log(`[WhatsApp] Fatal error for ${accountId}, stopping listener: ${errorMessage.substring(0, 100)}`);
+          console.log(`[WhatsApp] Erro recuperável para ${accountId}: ${errorMessage.substring(0, 60)}`);
           clearInterval(interval);
           const currentSession = this.sessions.get(accountId);
           if (currentSession) {
             currentSession.messageListenerInterval = null;
-            currentSession.status = "disconnected";
             this.sessions.set(accountId, currentSession);
-            this.emitStatus(accountId, "disconnected", "Conexão perdida");
-            if (this.statusUpdateHandler) {
-              this.statusUpdateHandler(accountId, "disconnected").catch(console.error);
-            }
           }
+          
+          // Try to auto-reconnect after a short delay
+          console.log(`[WhatsApp] Tentando reconectar ${accountId} em 5 segundos...`);
+          setTimeout(async () => {
+            try {
+              const session = this.sessions.get(accountId);
+              if (session?.browser && !session.browser.process()?.killed) {
+                // Browser still alive, try to get a new page
+                const pages = await session.browser.pages();
+                if (pages.length > 0) {
+                  const validPage = pages.find(p => !p.isClosed());
+                  if (validPage) {
+                    session.page = validPage;
+                    session.status = "connected";
+                    this.sessions.set(accountId, session);
+                    console.log(`[WhatsApp] Reconectado ${accountId} com página existente`);
+                    this.startMessageListener(accountId);
+                    return;
+                  }
+                }
+              }
+              
+              // If we can't recover, mark as disconnected but don't close browser
+              console.log(`[WhatsApp] Não foi possível reconectar ${accountId}, aguardando nova conexão manual`);
+              if (session) {
+                session.status = "disconnected";
+                this.sessions.set(accountId, session);
+                this.emitStatus(accountId, "disconnected", "Conexão perdida - reconecte");
+                if (this.statusUpdateHandler) {
+                  this.statusUpdateHandler(accountId, "disconnected").catch(console.error);
+                }
+              }
+            } catch (reconnectError) {
+              console.error(`[WhatsApp] Erro ao tentar reconectar ${accountId}:`, reconnectError);
+            }
+          }, 5000);
           return;
         }
         
         console.error("Message listener error:", errorMessage.substring(0, 200));
       }
-    }, 2000);
+    }, 3000); // Increased to 3s to reduce load
 
     session.messageListenerInterval = interval;
     this.sessions.set(accountId, session);
