@@ -136,7 +136,7 @@ export async function registerRoutes(
         conversationId: conversation.id,
         direction: direction,
         content: message.content,
-        senderDisplayName: direction === "outgoing" ? "Celular" : undefined,
+        senderDisplayName: message.senderDisplayName || (direction === "outgoing" ? "Celular" : undefined),
       });
 
       const dirLabel = direction === "outgoing" ? "enviada para" : "recebida de";

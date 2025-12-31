@@ -370,8 +370,8 @@ class WhatsAppPuppeteerGateway {
           return;
         }
 
-        // Step 1: Find chats with unread messages
-        const unreadChats = await page.evaluate(() => {
+        // Step 1: Find all visible chats (first 10 for performance)
+        const allChats = await page.evaluate(() => {
           const chatItemSelectors = [
             '[data-testid="cell-frame-container"]',
             '[data-testid="list-item-container"]',
@@ -391,16 +391,15 @@ class WhatsAppPuppeteerGateway {
             name: string;
             phoneOrId: string;
             avatarUrl: string | null;
-            unreadCount: number;
+            hasUnread: boolean;
+            lastMessagePreview: string;
+            hasOutgoingStatus: boolean;
           }> = [];
 
-          chatItems.forEach((chat, index) => {
-            // Check for unread badge
-            const unreadBadge = chat.querySelector('[data-testid="icon-unread-count"]');
-            const unreadSpan = chat.querySelector('span[aria-label*="unread"]');
-            const unreadCount2 = chat.querySelector('[data-testid="unread-count"]');
-            
-            if (!unreadBadge && !unreadSpan && !unreadCount2) return;
+          // Process only first 10 chats for performance
+          const maxChats = Math.min(chatItems.length, 10);
+          for (let index = 0; index < maxChats; index++) {
+            const chat = chatItems[index];
             
             // Get contact name
             const nameSelectors = [
@@ -416,7 +415,27 @@ class WhatsAppPuppeteerGateway {
             }
             
             const name = nameEl?.textContent || "";
-            if (!name) return;
+            if (!name) continue;
+            
+            // Check for unread badge
+            const unreadBadge = chat.querySelector('[data-testid="icon-unread-count"]');
+            const unreadSpan = chat.querySelector('span[aria-label*="unread"]');
+            const unreadCount2 = chat.querySelector('[data-testid="unread-count"]');
+            const hasUnread = !!(unreadBadge || unreadSpan || unreadCount2);
+            
+            // Check for outgoing status icons (to detect if last message was sent from phone)
+            const msgStatusIcon = chat.querySelector('[data-testid="msg-dblcheck"]') ||
+                                  chat.querySelector('[data-testid="msg-check"]') ||
+                                  chat.querySelector('[data-testid="msg-time"]') ||
+                                  chat.querySelector('[data-icon="msg-dblcheck"]') ||
+                                  chat.querySelector('[data-icon="msg-check"]') ||
+                                  chat.querySelector('[data-icon="msg-time"]');
+            const hasOutgoingStatus = !!msgStatusIcon;
+            
+            // Get last message preview
+            const lastMsgEl = chat.querySelector('[data-testid="last-msg-status"]') ||
+                             chat.querySelector('[data-testid="conversation-last-message"]');
+            const lastMessagePreview = lastMsgEl?.textContent || "";
             
             // Get avatar
             const avatarSelectors = [
@@ -432,26 +451,38 @@ class WhatsAppPuppeteerGateway {
             
             const phoneMatch = name.match(/\+?\d[\d\s-]{8,}/);
             const phoneOrId = phoneMatch ? phoneMatch[0].replace(/[\s-]/g, "") : name;
-            
-            const countEl = unreadBadge || unreadSpan || unreadCount2;
-            const countText = countEl?.textContent || "1";
-            const unreadCount = parseInt(countText) || 1;
 
             chats.push({
               index,
               name,
               phoneOrId,
               avatarUrl: avatarImg?.src || null,
-              unreadCount,
+              hasUnread,
+              lastMessagePreview,
+              hasOutgoingStatus,
             });
-          });
+          }
 
           return chats;
         });
 
-        // Step 2: Process each unread chat
-        for (const chat of unreadChats) {
-          console.log(`[WhatsApp] Chat não lido encontrado: ${chat.name} (${chat.unreadCount} mensagens)`);
+        // Step 2: Process chats that need attention (unread or with recent outgoing)
+        for (const chat of allChats) {
+          // Create a key for this chat's last message preview
+          const previewKey = `preview:${chat.phoneOrId}:${chat.lastMessagePreview}`;
+          
+          // Skip if we already processed this exact state
+          if (currentSession.processedMessages.has(previewKey)) continue;
+          
+          // Check if this chat needs processing (has unread OR has new outgoing message)
+          const needsProcessing = chat.hasUnread || !currentSession.processedMessages.has(`lastSeen:${chat.phoneOrId}`);
+          
+          if (!needsProcessing && !chat.hasOutgoingStatus) continue;
+          
+          currentSession.processedMessages.add(previewKey);
+          currentSession.processedMessages.add(`lastSeen:${chat.phoneOrId}`);
+          
+          console.log(`[WhatsApp] Processando chat: ${chat.name} (não lido: ${chat.hasUnread})`);
           
           // Click on the chat to open it
           const clicked = await page.evaluate((chatIndex: number) => {
@@ -531,7 +562,7 @@ class WhatsAppPuppeteerGateway {
             return msgs;
           });
           
-          // Process new messages
+          // Process new messages (both incoming AND outgoing from phone)
           for (const msg of messages) {
             const direction = msg.isOutgoing ? "outgoing" : "incoming";
             const messageKey = `${chat.phoneOrId}:${msg.content}:${direction}`;
@@ -539,8 +570,33 @@ class WhatsAppPuppeteerGateway {
             if (!currentSession.processedMessages.has(messageKey) && msg.content) {
               currentSession.processedMessages.add(messageKey);
               
-              // Only process incoming messages (the ones we haven't sent from CRM)
-              if (!msg.isOutgoing) {
+              if (msg.isOutgoing) {
+                // Outgoing message from phone (not CRM)
+                console.log(`[WhatsApp] Mensagem enviada do celular para ${chat.name}: ${msg.content.substring(0, 50)}`);
+
+                if (this.messageHandler) {
+                  const phoneNumber = chat.phoneOrId.replace(/\D/g, "");
+                  
+                  await this.messageHandler(accountId, {
+                    phoneNumber: phoneNumber || chat.name,
+                    contactName: chat.name,
+                    content: msg.content,
+                    timestamp: new Date().toISOString(),
+                    avatarUrl: chat.avatarUrl || undefined,
+                    direction: "outgoing",
+                    senderDisplayName: "Celular",
+                  });
+                }
+
+                this.emitMessages(accountId, [{
+                  text: msg.content,
+                  time: msg.time,
+                  incoming: false,
+                  from: "Celular",
+                  phone: chat.phoneOrId,
+                }]);
+              } else {
+                // Incoming message
                 console.log(`[WhatsApp] Mensagem recebida de ${chat.name}: ${msg.content.substring(0, 50)}`);
 
                 if (this.messageHandler) {
