@@ -55,17 +55,18 @@ export async function registerRoutes(
     }
   });
 
-  // Set up message handler to save incoming messages to database
+  // Set up message handler to save messages to database (both incoming and outgoing from phone)
   whatsappPuppeteer.setMessageHandler(async (accountId, message) => {
     try {
       const account = await storage.getWhatsappAccount(accountId);
       if (!account) {
-        console.error("Account not found for incoming message:", accountId);
+        console.error("Account not found for message:", accountId);
         return;
       }
 
       const companyId = account.companyId;
       const phoneNumber = message.phoneNumber.replace(/\D/g, "");
+      const direction = message.direction || "incoming";
 
       // Find or create contact
       let contact = await storage.getContactByPhone(companyId, phoneNumber);
@@ -97,25 +98,62 @@ export async function registerRoutes(
         console.log("Created new conversation for contact:", contact.name);
       }
 
+      // Check if we already have this message (to avoid duplicates)
+      const existingMessages = await storage.getMessages(conversation.id);
+      
+      // Get the last message in this conversation
+      const lastMessage = existingMessages.length > 0 
+        ? existingMessages[existingMessages.length - 1] 
+        : null;
+      
+      // Skip if the last message is the same content and direction
+      // This prevents re-importing old messages when session restarts
+      if (lastMessage && 
+          lastMessage.content === message.content && 
+          lastMessage.direction === direction) {
+        // Only log if this is a fresh duplicate (within last 5 minutes)
+        const messageAge = Date.now() - new Date(lastMessage.createdAt).getTime();
+        if (messageAge < 300000) {
+          console.log(`Skipping duplicate ${direction} message: ${message.content.substring(0, 30)}`);
+        }
+        return;
+      }
+      
+      // Also check if this exact message already exists anywhere in recent history
+      const recentDuplicate = existingMessages.some(m => 
+        m.content === message.content && 
+        m.direction === direction &&
+        Math.abs(new Date(m.createdAt).getTime() - Date.now()) < 300000 // Within 5 minutes
+      );
+      
+      if (recentDuplicate) {
+        console.log(`Skipping recent duplicate ${direction} message: ${message.content.substring(0, 30)}`);
+        return;
+      }
+
       // Create the message
       const savedMessage = await storage.createMessage({
         conversationId: conversation.id,
-        direction: "incoming",
+        direction: direction,
         content: message.content,
+        senderDisplayName: direction === "outgoing" ? "Celular" : undefined,
       });
 
-      console.log(`Saved incoming message from ${message.contactName}: ${message.content.substring(0, 50)}`);
+      const dirLabel = direction === "outgoing" ? "enviada para" : "recebida de";
+      console.log(`Mensagem ${dirLabel} ${message.contactName}: ${message.content.substring(0, 50)}`);
 
-      // Dispatch webhook for incoming message
-      await dispatchWebhook(companyId, "message.incoming", {
-        conversationId: conversation.id,
-        contactId: contact.id,
-        messageId: savedMessage.id,
-        content: message.content,
-        phoneNumber,
-      });
+      // Dispatch webhook for incoming message only
+      if (direction === "incoming") {
+        await dispatchWebhook(companyId, "message.incoming", {
+          conversationId: conversation.id,
+          contactId: contact.id,
+          messageId: savedMessage.id,
+          content: message.content,
+          phoneNumber,
+        });
+      }
     } catch (error) {
-      console.error("Error handling incoming message:", error);
+      console.error("Error handling message:", error);
     }
   });
 

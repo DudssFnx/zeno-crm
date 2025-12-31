@@ -30,6 +30,7 @@ export interface IncomingMessage {
   content: string;
   timestamp: string;
   avatarUrl?: string;
+  direction?: "incoming" | "outgoing";
 }
 
 export type MessageHandler = (accountId: string, message: IncomingMessage) => Promise<void>;
@@ -370,7 +371,7 @@ class WhatsAppPuppeteerGateway {
           return;
         }
 
-        const unreadChats = await page.evaluate(() => {
+        const allChats = await page.evaluate(() => {
           const chatItemSelectors = [
             '[data-testid="cell-frame-container"]',
             '[data-testid="list-item-container"]',
@@ -386,102 +387,114 @@ class WhatsAppPuppeteerGateway {
           
           if (!chatItems) return [];
           
-          const unread: Array<{
+          const chats: Array<{
             name: string;
             phoneOrId: string;
-            unreadCount: number;
+            isUnread: boolean;
             lastMessage: string;
             time: string;
             avatarUrl: string | null;
+            isOutgoing: boolean;
           }> = [];
 
           chatItems.forEach((chat) => {
+            const nameSelectors = [
+              '[data-testid="cell-frame-title"] span',
+              '[data-testid="conversation-info-header-chat-title"]',
+              'span[dir="auto"][title]',
+              'span[title]',
+            ];
+            
+            let nameEl: Element | null = null;
+            for (const sel of nameSelectors) {
+              nameEl = chat.querySelector(sel);
+              if (nameEl?.textContent) break;
+            }
+            
+            const name = nameEl?.textContent || "";
+            if (!name) return;
+            
+            const lastMsgSelectors = [
+              '[data-testid="last-msg-status"]',
+              '[data-testid="conversation-last-message"]',
+              'span[data-testid="last-msg-status"]',
+            ];
+            
+            let lastMsgEl: Element | null = null;
+            let lastMsgContainer: Element | null = null;
+            for (const sel of lastMsgSelectors) {
+              lastMsgEl = chat.querySelector(sel);
+              if (lastMsgEl) {
+                lastMsgContainer = lastMsgEl.parentElement || lastMsgEl;
+                break;
+              }
+            }
+            
+            const lastMessage = lastMsgContainer?.textContent || "";
+            if (!lastMessage) return;
+            
+            const timeEl = chat.querySelector('[data-testid="cell-frame-primary-detail"]') || 
+                           chat.querySelector('div[class*="time"]') ||
+                           chat.querySelector('span[class*="time"]');
+            
+            const avatarSelectors = [
+              'img[data-testid="user-avatar"]',
+              'img[data-testid="default-user"]',
+              'img[data-testid="image-thumb"]',
+              '[data-testid="cell-frame-photo"] img',
+              'div[data-testid="avatar"] img',
+              'img[src*="pps.whatsapp.net"]',
+            ];
+            
+            let avatarImg: HTMLImageElement | null = null;
+            for (const sel of avatarSelectors) {
+              avatarImg = chat.querySelector(sel) as HTMLImageElement | null;
+              if (avatarImg?.src) break;
+            }
+            
+            const time = timeEl?.textContent || "";
+            const avatarUrl = avatarImg?.src || null;
+            
+            const phoneMatch = name.match(/\+?\d[\d\s-]{8,}/);
+            const phoneOrId = phoneMatch ? phoneMatch[0].replace(/[\s-]/g, "") : name;
+            
             const unreadBadge = chat.querySelector('[data-testid="icon-unread-count"]');
             const unreadSpan = chat.querySelector('span[aria-label*="unread"]');
             const unreadCount2 = chat.querySelector('[data-testid="unread-count"]');
+            const isUnread = !!(unreadBadge || unreadSpan || unreadCount2);
             
-            if (unreadBadge || unreadSpan || unreadCount2) {
-              const nameSelectors = [
-                '[data-testid="cell-frame-title"] span',
-                '[data-testid="conversation-info-header-chat-title"]',
-                'span[dir="auto"][title]',
-                'span[title]',
-              ];
-              
-              let nameEl: Element | null = null;
-              for (const sel of nameSelectors) {
-                nameEl = chat.querySelector(sel);
-                if (nameEl?.textContent) break;
-              }
-              
-              const lastMsgSelectors = [
-                '[data-testid="last-msg-status"]',
-                '[data-testid="conversation-last-message"]',
-                'span[data-testid="last-msg-status"]',
-              ];
-              
-              let lastMsgEl: Element | null = null;
-              for (const sel of lastMsgSelectors) {
-                lastMsgEl = chat.querySelector(sel);
-                if (lastMsgEl) {
-                  lastMsgEl = lastMsgEl.parentElement || lastMsgEl;
-                  break;
-                }
-              }
-              
-              const timeEl = chat.querySelector('[data-testid="cell-frame-primary-detail"]') || 
-                             chat.querySelector('div[class*="time"]') ||
-                             chat.querySelector('span[class*="time"]');
-              
-              const avatarSelectors = [
-                'img[data-testid="user-avatar"]',
-                'img[data-testid="default-user"]',
-                'img[data-testid="image-thumb"]',
-                '[data-testid="cell-frame-photo"] img',
-                'div[data-testid="avatar"] img',
-                'img[src*="pps.whatsapp.net"]',
-              ];
-              
-              let avatarImg: HTMLImageElement | null = null;
-              for (const sel of avatarSelectors) {
-                avatarImg = chat.querySelector(sel) as HTMLImageElement | null;
-                if (avatarImg?.src) break;
-              }
-              
-              const name = nameEl?.textContent || "";
-              const lastMessage = lastMsgEl?.textContent || "";
-              const time = timeEl?.textContent || "";
-              const avatarUrl = avatarImg?.src || null;
-              
-              const phoneMatch = name.match(/\+?\d[\d\s-]{8,}/);
-              const phoneOrId = phoneMatch ? phoneMatch[0].replace(/[\s-]/g, "") : name;
-              
-              const countText = unreadSpan?.getAttribute("aria-label") || 
-                               unreadCount2?.textContent || "";
-              const countMatch = countText.match(/(\d+)/);
-              const unreadCount = countMatch ? parseInt(countMatch[1]) : 1;
+            const msgStatusIcon = chat.querySelector('[data-testid="msg-dblcheck"]') ||
+                                  chat.querySelector('[data-testid="msg-check"]') ||
+                                  chat.querySelector('[data-testid="msg-time"]') ||
+                                  chat.querySelector('[data-icon="msg-dblcheck"]') ||
+                                  chat.querySelector('[data-icon="msg-check"]') ||
+                                  chat.querySelector('[data-icon="msg-time"]') ||
+                                  chat.querySelector('span[data-icon*="status"]');
+            const isOutgoing = !!msgStatusIcon;
 
-              unread.push({
-                name,
-                phoneOrId,
-                unreadCount,
-                lastMessage,
-                time,
-                avatarUrl,
-              });
-            }
+            chats.push({
+              name,
+              phoneOrId,
+              isUnread,
+              lastMessage,
+              time,
+              avatarUrl,
+              isOutgoing,
+            });
           });
 
-          return unread;
+          return chats;
         });
 
-        for (const chat of unreadChats) {
-          const messageKey = `${chat.phoneOrId}:${chat.lastMessage}:${chat.time}`;
+        for (const chat of allChats) {
+          const direction = chat.isOutgoing ? "outgoing" : "incoming";
+          const messageKey = `${chat.phoneOrId}:${chat.lastMessage}:${chat.time}:${direction}`;
           
           if (!currentSession.processedMessages.has(messageKey) && chat.lastMessage) {
             currentSession.processedMessages.add(messageKey);
             
-            console.log(`New message from ${chat.name}: ${chat.lastMessage}`);
+            const dirLabel = chat.isOutgoing ? "enviada para" : "recebida de";
+            console.log(`Mensagem ${dirLabel} ${chat.name}: ${chat.lastMessage.substring(0, 50)}`);
 
             if (this.messageHandler) {
               const phoneNumber = chat.phoneOrId.replace(/\D/g, "");
@@ -492,13 +505,14 @@ class WhatsAppPuppeteerGateway {
                 content: chat.lastMessage,
                 timestamp: new Date().toISOString(),
                 avatarUrl: chat.avatarUrl || undefined,
+                direction: direction,
               });
             }
 
             this.emitMessages(accountId, [{
               text: chat.lastMessage,
               time: chat.time,
-              incoming: true,
+              incoming: !chat.isOutgoing,
               from: chat.name,
               phone: chat.phoneOrId,
             }]);
