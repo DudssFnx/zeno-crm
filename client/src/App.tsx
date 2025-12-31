@@ -13,6 +13,7 @@ import UsersPage from "@/pages/settings/users";
 import AccountsPage from "@/pages/settings/accounts";
 import TagsPage from "@/pages/settings/tags";
 import WebhooksPage from "@/pages/settings/webhooks";
+import CannedResponsesPage from "@/pages/settings/canned-responses";
 import ContactsPage from "@/pages/settings/contacts";
 import KanbanPage from "@/pages/kanban";
 
@@ -82,6 +83,9 @@ function Router() {
       </Route>
       <Route path="/settings/webhooks">
         <ProtectedRoute component={WebhooksPage} />
+      </Route>
+      <Route path="/settings/canned-responses">
+        <ProtectedRoute component={CannedResponsesPage} />
       </Route>
       <Route path="/contacts">
         <ProtectedRoute component={ContactsPage} />

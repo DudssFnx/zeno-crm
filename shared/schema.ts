@@ -174,6 +174,19 @@ export const automationLogs = pgTable("automation_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Canned Responses (Respostas Rápidas)
+export const cannedResponses = pgTable("canned_responses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id),
+  shortcut: text("shortcut").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const cannedResponsesRelations = relations(cannedResponses, ({ one }) => ({
+  company: one(companies, { fields: [cannedResponses.companyId], references: [companies.id] }),
+}));
+
 // Insert schemas
 export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
@@ -185,6 +198,7 @@ export const insertConversationSchema = createInsertSchema(conversations).omit({
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 export const insertWebhookConfigSchema = createInsertSchema(webhookConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAutomationLogSchema = createInsertSchema(automationLogs).omit({ id: true, createdAt: true });
+export const insertCannedResponseSchema = createInsertSchema(cannedResponses).omit({ id: true, createdAt: true });
 
 // Types
 export type Company = typeof companies.$inferSelect;
@@ -216,6 +230,9 @@ export type InsertWebhookConfig = z.infer<typeof insertWebhookConfigSchema>;
 
 export type AutomationLog = typeof automationLogs.$inferSelect;
 export type InsertAutomationLog = z.infer<typeof insertAutomationLogSchema>;
+
+export type CannedResponse = typeof cannedResponses.$inferSelect;
+export type InsertCannedResponse = z.infer<typeof insertCannedResponseSchema>;
 
 // Auth schemas
 export const loginSchema = z.object({

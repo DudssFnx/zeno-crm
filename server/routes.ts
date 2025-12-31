@@ -834,6 +834,62 @@ export async function registerRoutes(
     }
   });
 
+  // Canned Responses routes
+  app.get("/api/canned-responses", authMiddleware(storage), async (req: AuthRequest, res) => {
+    const responses = await storage.getCannedResponses(req.user!.companyId);
+    res.json(responses);
+  });
+
+  app.post("/api/canned-responses", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { shortcut, content } = req.body;
+      if (!shortcut || !content) {
+        return res.status(400).json({ message: "Shortcut and content are required" });
+      }
+
+      const response = await storage.createCannedResponse({
+        companyId: req.user!.companyId,
+        shortcut,
+        content,
+      });
+
+      res.json(response);
+    } catch (error) {
+      console.error("Create canned response error:", error);
+      res.status(500).json({ message: "Failed to create canned response" });
+    }
+  });
+
+  app.put("/api/canned-responses/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { shortcut, content } = req.body;
+      const updateData: Record<string, any> = {};
+      
+      if (shortcut !== undefined) updateData.shortcut = shortcut;
+      if (content !== undefined) updateData.content = content;
+
+      const response = await storage.updateCannedResponse(req.params.id, updateData);
+      if (!response) {
+        return res.status(404).json({ message: "Canned response not found" });
+      }
+
+      res.json(response);
+    } catch (error) {
+      console.error("Update canned response error:", error);
+      res.status(500).json({ message: "Failed to update canned response" });
+    }
+  });
+
+  app.delete("/api/canned-responses/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteCannedResponse(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete canned response error:", error);
+      res.status(500).json({ message: "Failed to delete canned response" });
+    }
+  });
+
   // Dev endpoint: Simulate incoming message
   app.post("/api/dev/simulate-incoming-message", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {

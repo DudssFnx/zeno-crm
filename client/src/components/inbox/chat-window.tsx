@@ -1,20 +1,18 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Send, StickyNote, Phone, MoreVertical, ChevronDown } from "lucide-react";
+import { Send, StickyNote, Phone, Check, CheckCheck, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
-import { StatusBadge } from "@/components/status-badge";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
-import type { ConversationWithDetails, MessageWithSender, User } from "@shared/schema";
+import type { ConversationWithDetails, MessageWithSender, User, CannedResponse } from "@shared/schema";
 
 interface ChatWindowProps {
   conversationId: string | null;
@@ -27,8 +25,14 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
   const { toast } = useToast();
   const [message, setMessage] = useState("");
   const [isInternalNote, setIsInternalNote] = useState(false);
+  const [showCannedResponses, setShowCannedResponses] = useState(false);
+  const [cannedSearchTerm, setCannedSearchTerm] = useState("");
+  const [selectedCannedIndex, setSelectedCannedIndex] = useState(0);
+  const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const cannedDropdownRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { data: conversation, isLoading: convLoading } = useQuery<ConversationWithDetails>({
     queryKey: ["/api/conversations", conversationId],
@@ -59,6 +63,25 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
     },
   });
 
+  const { data: cannedResponses = [] } = useQuery<CannedResponse[]>({
+    queryKey: ["/api/canned-responses"],
+    queryFn: async () => {
+      const res = await authFetch("/api/canned-responses");
+      if (!res.ok) throw new Error("Failed to fetch canned responses");
+      return res.json();
+    },
+  });
+
+  const filteredCannedResponses = useMemo(() => {
+    if (!cannedSearchTerm) return cannedResponses;
+    const searchLower = cannedSearchTerm.toLowerCase();
+    return cannedResponses.filter(
+      (r) =>
+        r.shortcut.toLowerCase().includes(searchLower) ||
+        r.content.toLowerCase().includes(searchLower)
+    );
+  }, [cannedResponses, cannedSearchTerm]);
+
   const sendMessage = useMutation({
     mutationFn: async (data: { content: string; isInternalNote: boolean }) => {
       const endpoint = data.isInternalNote
@@ -76,6 +99,7 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
     },
     onSuccess: () => {
       setMessage("");
+      setIsTyping(false);
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     },
@@ -120,12 +144,92 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
     }
   }, [messages]);
 
+  useEffect(() => {
+    setSelectedCannedIndex(0);
+  }, [filteredCannedResponses]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        cannedDropdownRef.current &&
+        !cannedDropdownRef.current.contains(event.target as Node) &&
+        textareaRef.current &&
+        !textareaRef.current.contains(event.target as Node)
+      ) {
+        setShowCannedResponses(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleMessageChange = (value: string) => {
+    setMessage(value);
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    if (value.trim()) {
+      setIsTyping(true);
+      typingTimeoutRef.current = setTimeout(() => {
+        setIsTyping(false);
+      }, 2000);
+    } else {
+      setIsTyping(false);
+    }
+
+    if (value.startsWith("/")) {
+      const searchTerm = value.slice(1);
+      setCannedSearchTerm(searchTerm);
+      setShowCannedResponses(true);
+    } else {
+      setShowCannedResponses(false);
+      setCannedSearchTerm("");
+    }
+  };
+
+  const selectCannedResponse = (response: CannedResponse) => {
+    setMessage(response.content);
+    setShowCannedResponses(false);
+    setCannedSearchTerm("");
+    textareaRef.current?.focus();
+  };
+
   const handleSend = () => {
     if (!message.trim()) return;
     sendMessage.mutate({ content: message.trim(), isInternalNote });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showCannedResponses && filteredCannedResponses.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedCannedIndex((prev) =>
+          prev < filteredCannedResponses.length - 1 ? prev + 1 : 0
+        );
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedCannedIndex((prev) =>
+          prev > 0 ? prev - 1 : filteredCannedResponses.length - 1
+        );
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        selectCannedResponse(filteredCannedResponses[selectedCannedIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowCannedResponses(false);
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -281,21 +385,27 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                       )}
                     >
                       {msg.direction === "internal_note" ? (
-                        <div className="max-w-lg bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg px-4 py-2">
-                          <div className="flex items-center gap-2 text-xs text-yellow-700 dark:text-yellow-400 mb-1">
-                            <StickyNote className="h-3 w-3" />
+                        <div className="max-w-lg bg-amber-50 dark:bg-amber-950/40 border-2 border-dashed border-amber-300 dark:border-amber-700 rounded-lg px-4 py-3 shadow-sm">
+                          <div className="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">
+                            <StickyNote className="h-4 w-4" />
                             <span>Nota Interna</span>
-                            {msg.sender && <span>por {msg.sender.name}</span>}
+                            {msg.sender && (
+                              <span className="ml-auto text-amber-600 dark:text-amber-500">
+                                {msg.sender.name}
+                              </span>
+                            )}
                           </div>
-                          <p className="text-sm text-yellow-800 dark:text-yellow-300">{msg.content}</p>
-                          <span className="text-[11px] text-yellow-600 dark:text-yellow-500 mt-1 block">
+                          <p className="text-sm text-amber-900 dark:text-amber-200 whitespace-pre-wrap">
+                            {msg.content}
+                          </p>
+                          <span className="text-[11px] text-amber-600 dark:text-amber-500 mt-2 block">
                             {formatTime(msg.createdAt)}
                           </span>
                         </div>
                       ) : (
                         <div
                           className={cn(
-                            "max-w-[65%] rounded-2xl px-4 py-2",
+                            "max-w-[65%] rounded-2xl px-4 py-2 shadow-sm",
                             msg.direction === "incoming"
                               ? "bg-muted rounded-bl-md"
                               : "bg-primary text-primary-foreground rounded-br-md"
@@ -307,16 +417,19 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                             </p>
                           )}
                           <p className="text-[15px] whitespace-pre-wrap break-words">{msg.content}</p>
-                          <span
+                          <div
                             className={cn(
-                              "text-[11px] mt-1 block",
+                              "flex items-center gap-1 mt-1",
                               msg.direction === "incoming"
                                 ? "text-muted-foreground"
                                 : "text-primary-foreground/70"
                             )}
                           >
-                            {formatTime(msg.createdAt)}
-                          </span>
+                            <span className="text-[11px]">{formatTime(msg.createdAt)}</span>
+                            {msg.direction === "outgoing" && (
+                              <CheckCheck className="h-3.5 w-3.5 ml-0.5" />
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -324,13 +437,27 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                 </div>
               </div>
             ))}
+            {isTyping && (
+              <div className="flex justify-start">
+                <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"></span>
+                    </div>
+                    <span className="text-xs text-muted-foreground ml-1">Digitando...</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </ScrollArea>
 
       <footer className="border-t p-4 shrink-0">
         <div className="flex items-end gap-2">
-          <div className="flex-1">
+          <div className="flex-1 relative">
             <div className="flex items-center gap-2 mb-2">
               <Button
                 variant={isInternalNote ? "default" : "outline"}
@@ -346,16 +473,56 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                   Esta nota é visível apenas para sua equipe
                 </span>
               )}
+              {!isInternalNote && cannedResponses.length > 0 && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Zap className="h-3 w-3" />
+                  Digite "/" para respostas rápidas
+                </span>
+              )}
             </div>
+            {showCannedResponses && filteredCannedResponses.length > 0 && (
+              <div
+                ref={cannedDropdownRef}
+                className="absolute bottom-full left-0 right-0 mb-2 bg-popover border rounded-lg shadow-lg max-h-60 overflow-auto z-50"
+                data-testid="canned-responses-dropdown"
+              >
+                <div className="p-2 border-b">
+                  <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                    <Zap className="h-3 w-3" />
+                    Respostas Rápidas
+                  </div>
+                </div>
+                <div className="py-1">
+                  {filteredCannedResponses.map((response, index) => (
+                    <button
+                      key={response.id}
+                      onClick={() => selectCannedResponse(response)}
+                      className={cn(
+                        "w-full text-left px-3 py-2 text-sm",
+                        index === selectedCannedIndex
+                          ? "bg-accent text-accent-foreground"
+                          : "hover-elevate"
+                      )}
+                      data-testid={`canned-response-option-${response.id}`}
+                    >
+                      <div className="font-mono text-xs text-muted-foreground mb-0.5">
+                        /{response.shortcut}
+                      </div>
+                      <div className="line-clamp-2">{response.content}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <Textarea
               ref={textareaRef}
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(e) => handleMessageChange(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={isInternalNote ? "Escreva uma nota interna..." : "Digite uma mensagem..."}
               className={cn(
                 "min-h-[48px] max-h-32 resize-none",
-                isInternalNote && "border-yellow-400 dark:border-yellow-600"
+                isInternalNote && "border-amber-400 dark:border-amber-600"
               )}
               data-testid="textarea-message"
             />

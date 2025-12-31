@@ -11,6 +11,7 @@ import {
   Menu,
   Contact,
   LayoutGrid,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,6 +38,7 @@ const navItems = [
   { icon: Users, label: "Usuários", path: "/settings/users", adminOnly: true },
   { icon: Smartphone, label: "Contas WhatsApp", path: "/settings/accounts" },
   { icon: Tag, label: "Etiquetas", path: "/settings/tags" },
+  { icon: Zap, label: "Respostas Rápidas", path: "/settings/canned-responses" },
   { icon: Webhook, label: "Webhooks", path: "/settings/webhooks" },
 ];
 

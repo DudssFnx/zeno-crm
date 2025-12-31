@@ -345,13 +345,13 @@ class WhatsAppPuppeteerGateway {
       clearInterval(session.messageListenerInterval);
     }
 
-    console.log(`Starting message listener for account ${accountId}`);
+    console.log(`[WhatsApp] Iniciando listener de mensagens para ${accountId}`);
 
     const interval = setInterval(async () => {
       try {
         const currentSession = this.sessions.get(accountId);
         if (!currentSession || currentSession.status !== "connected" || !currentSession.page) {
-          console.log(`[WhatsApp] Stopping message listener for ${accountId} - session not connected`);
+          console.log(`[WhatsApp] Parando listener para ${accountId} - sessão não conectada`);
           clearInterval(interval);
           if (currentSession) {
             currentSession.messageListenerInterval = null;
@@ -362,21 +362,20 @@ class WhatsAppPuppeteerGateway {
 
         const page = currentSession.page;
         
-        // Check if page is still valid before evaluating
         if (page.isClosed()) {
-          console.log(`[WhatsApp] Page closed for ${accountId}, stopping listener`);
+          console.log(`[WhatsApp] Página fechada para ${accountId}, parando listener`);
           clearInterval(interval);
           currentSession.messageListenerInterval = null;
           this.sessions.set(accountId, currentSession);
           return;
         }
 
-        const allChats = await page.evaluate(() => {
+        // Step 1: Find chats with unread messages
+        const unreadChats = await page.evaluate(() => {
           const chatItemSelectors = [
             '[data-testid="cell-frame-container"]',
             '[data-testid="list-item-container"]',
             'div[role="listitem"]',
-            '#pane-side > div > div > div > div',
           ];
           
           let chatItems: NodeListOf<Element> | null = null;
@@ -388,19 +387,24 @@ class WhatsAppPuppeteerGateway {
           if (!chatItems) return [];
           
           const chats: Array<{
+            index: number;
             name: string;
             phoneOrId: string;
-            isUnread: boolean;
-            lastMessage: string;
-            time: string;
             avatarUrl: string | null;
-            isOutgoing: boolean;
+            unreadCount: number;
           }> = [];
 
-          chatItems.forEach((chat) => {
+          chatItems.forEach((chat, index) => {
+            // Check for unread badge
+            const unreadBadge = chat.querySelector('[data-testid="icon-unread-count"]');
+            const unreadSpan = chat.querySelector('span[aria-label*="unread"]');
+            const unreadCount2 = chat.querySelector('[data-testid="unread-count"]');
+            
+            if (!unreadBadge && !unreadSpan && !unreadCount2) return;
+            
+            // Get contact name
             const nameSelectors = [
               '[data-testid="cell-frame-title"] span',
-              '[data-testid="conversation-info-header-chat-title"]',
               'span[dir="auto"][title]',
               'span[title]',
             ];
@@ -414,35 +418,9 @@ class WhatsAppPuppeteerGateway {
             const name = nameEl?.textContent || "";
             if (!name) return;
             
-            const lastMsgSelectors = [
-              '[data-testid="last-msg-status"]',
-              '[data-testid="conversation-last-message"]',
-              'span[data-testid="last-msg-status"]',
-            ];
-            
-            let lastMsgEl: Element | null = null;
-            let lastMsgContainer: Element | null = null;
-            for (const sel of lastMsgSelectors) {
-              lastMsgEl = chat.querySelector(sel);
-              if (lastMsgEl) {
-                lastMsgContainer = lastMsgEl.parentElement || lastMsgEl;
-                break;
-              }
-            }
-            
-            const lastMessage = lastMsgContainer?.textContent || "";
-            if (!lastMessage) return;
-            
-            const timeEl = chat.querySelector('[data-testid="cell-frame-primary-detail"]') || 
-                           chat.querySelector('div[class*="time"]') ||
-                           chat.querySelector('span[class*="time"]');
-            
+            // Get avatar
             const avatarSelectors = [
               'img[data-testid="user-avatar"]',
-              'img[data-testid="default-user"]',
-              'img[data-testid="image-thumb"]',
-              '[data-testid="cell-frame-photo"] img',
-              'div[data-testid="avatar"] img',
               'img[src*="pps.whatsapp.net"]',
             ];
             
@@ -452,70 +430,141 @@ class WhatsAppPuppeteerGateway {
               if (avatarImg?.src) break;
             }
             
-            const time = timeEl?.textContent || "";
-            const avatarUrl = avatarImg?.src || null;
-            
             const phoneMatch = name.match(/\+?\d[\d\s-]{8,}/);
             const phoneOrId = phoneMatch ? phoneMatch[0].replace(/[\s-]/g, "") : name;
             
-            const unreadBadge = chat.querySelector('[data-testid="icon-unread-count"]');
-            const unreadSpan = chat.querySelector('span[aria-label*="unread"]');
-            const unreadCount2 = chat.querySelector('[data-testid="unread-count"]');
-            const isUnread = !!(unreadBadge || unreadSpan || unreadCount2);
-            
-            const msgStatusIcon = chat.querySelector('[data-testid="msg-dblcheck"]') ||
-                                  chat.querySelector('[data-testid="msg-check"]') ||
-                                  chat.querySelector('[data-testid="msg-time"]') ||
-                                  chat.querySelector('[data-icon="msg-dblcheck"]') ||
-                                  chat.querySelector('[data-icon="msg-check"]') ||
-                                  chat.querySelector('[data-icon="msg-time"]') ||
-                                  chat.querySelector('span[data-icon*="status"]');
-            const isOutgoing = !!msgStatusIcon;
+            const countEl = unreadBadge || unreadSpan || unreadCount2;
+            const countText = countEl?.textContent || "1";
+            const unreadCount = parseInt(countText) || 1;
 
             chats.push({
+              index,
               name,
               phoneOrId,
-              isUnread,
-              lastMessage,
-              time,
-              avatarUrl,
-              isOutgoing,
+              avatarUrl: avatarImg?.src || null,
+              unreadCount,
             });
           });
 
           return chats;
         });
 
-        for (const chat of allChats) {
-          const direction = chat.isOutgoing ? "outgoing" : "incoming";
-          const messageKey = `${chat.phoneOrId}:${chat.lastMessage}:${chat.time}:${direction}`;
+        // Step 2: Process each unread chat
+        for (const chat of unreadChats) {
+          console.log(`[WhatsApp] Chat não lido encontrado: ${chat.name} (${chat.unreadCount} mensagens)`);
           
-          if (!currentSession.processedMessages.has(messageKey) && chat.lastMessage) {
-            currentSession.processedMessages.add(messageKey);
+          // Click on the chat to open it
+          const clicked = await page.evaluate((chatIndex: number) => {
+            const chatItemSelectors = [
+              '[data-testid="cell-frame-container"]',
+              '[data-testid="list-item-container"]',
+              'div[role="listitem"]',
+            ];
             
-            const dirLabel = chat.isOutgoing ? "enviada para" : "recebida de";
-            console.log(`Mensagem ${dirLabel} ${chat.name}: ${chat.lastMessage.substring(0, 50)}`);
-
-            if (this.messageHandler) {
-              const phoneNumber = chat.phoneOrId.replace(/\D/g, "");
-              
-              await this.messageHandler(accountId, {
-                phoneNumber: phoneNumber || chat.name,
-                contactName: chat.name,
-                content: chat.lastMessage,
-                timestamp: new Date().toISOString(),
-                avatarUrl: chat.avatarUrl || undefined,
-                direction: direction,
-              });
+            let chatItems: NodeListOf<Element> | null = null;
+            for (const selector of chatItemSelectors) {
+              chatItems = document.querySelectorAll(selector);
+              if (chatItems && chatItems.length > 0) break;
             }
+            
+            if (!chatItems || !chatItems[chatIndex]) return false;
+            
+            (chatItems[chatIndex] as HTMLElement).click();
+            return true;
+          }, chat.index);
+          
+          if (!clicked) continue;
+          
+          await new Promise(r => setTimeout(r, 800));
+          
+          // Read messages from the open chat
+          const messages = await page.evaluate(() => {
+            const messageSelectors = [
+              '[data-testid="msg-container"]',
+              'div[class*="message-in"]',
+              'div[class*="message-out"]',
+            ];
+            
+            let msgElements: NodeListOf<Element> | null = null;
+            for (const selector of messageSelectors) {
+              msgElements = document.querySelectorAll(selector);
+              if (msgElements && msgElements.length > 0) break;
+            }
+            
+            if (!msgElements) return [];
+            
+            const msgs: Array<{
+              content: string;
+              isOutgoing: boolean;
+              time: string;
+            }> = [];
+            
+            // Get last 10 messages
+            const startIndex = Math.max(0, msgElements.length - 10);
+            for (let i = startIndex; i < msgElements.length; i++) {
+              const msg = msgElements[i];
+              
+              // Determine direction
+              const isOutgoing = msg.classList.contains('message-out') ||
+                                 !!msg.querySelector('[data-testid="msg-dblcheck"]') ||
+                                 !!msg.querySelector('[data-testid="msg-check"]') ||
+                                 !!msg.querySelector('[data-icon="msg-dblcheck"]') ||
+                                 !!msg.querySelector('[data-icon="msg-check"]') ||
+                                 !!msg.closest('[class*="message-out"]');
+              
+              // Get text content
+              const textEl = msg.querySelector('[data-testid="msg-text"]') ||
+                            msg.querySelector('span[class*="selectable-text"]') ||
+                            msg.querySelector('span.selectable-text');
+              
+              const content = textEl?.textContent || "";
+              if (!content) continue;
+              
+              // Get time
+              const timeEl = msg.querySelector('[data-testid="msg-meta"]') ||
+                            msg.querySelector('span[class*="time"]');
+              const time = timeEl?.textContent || "";
+              
+              msgs.push({ content, isOutgoing, time });
+            }
+            
+            return msgs;
+          });
+          
+          // Process new messages
+          for (const msg of messages) {
+            const direction = msg.isOutgoing ? "outgoing" : "incoming";
+            const messageKey = `${chat.phoneOrId}:${msg.content}:${direction}`;
+            
+            if (!currentSession.processedMessages.has(messageKey) && msg.content) {
+              currentSession.processedMessages.add(messageKey);
+              
+              // Only process incoming messages (the ones we haven't sent from CRM)
+              if (!msg.isOutgoing) {
+                console.log(`[WhatsApp] Mensagem recebida de ${chat.name}: ${msg.content.substring(0, 50)}`);
 
-            this.emitMessages(accountId, [{
-              text: chat.lastMessage,
-              time: chat.time,
-              incoming: !chat.isOutgoing,
-              from: chat.name,
-              phone: chat.phoneOrId,
-            }]);
+                if (this.messageHandler) {
+                  const phoneNumber = chat.phoneOrId.replace(/\D/g, "");
+                  
+                  await this.messageHandler(accountId, {
+                    phoneNumber: phoneNumber || chat.name,
+                    contactName: chat.name,
+                    content: msg.content,
+                    timestamp: new Date().toISOString(),
+                    avatarUrl: chat.avatarUrl || undefined,
+                    direction: "incoming",
+                  });
+                }
+
+                this.emitMessages(accountId, [{
+                  text: msg.content,
+                  time: msg.time,
+                  incoming: true,
+                  from: chat.name,
+                  phone: chat.phoneOrId,
+                }]);
+              }
+            }
           }
         }
 

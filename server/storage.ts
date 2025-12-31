@@ -2,7 +2,7 @@ import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import {
   companies, users, whatsappAccounts, contacts, tags, contactTags,
-  conversations, messages, webhookConfigs, automationLogs,
+  conversations, messages, webhookConfigs, automationLogs, cannedResponses,
   type Company, type InsertCompany, type User, type InsertUser,
   type WhatsappAccount, type InsertWhatsappAccount,
   type Contact, type InsertContact, type Tag, type InsertTag,
@@ -10,6 +10,7 @@ import {
   type Conversation, type InsertConversation,
   type Message, type InsertMessage,
   type WebhookConfig, type InsertWebhookConfig,
+  type CannedResponse, type InsertCannedResponse,
   type ConversationWithDetails, type ContactWithTags, type MessageWithSender,
 } from "@shared/schema";
 
@@ -76,6 +77,13 @@ export interface IStorage {
   getWebhookConfigs(companyId: string): Promise<WebhookConfig[]>;
   updateWebhookConfig(id: string, data: Partial<InsertWebhookConfig>): Promise<WebhookConfig | undefined>;
   deleteWebhookConfig(id: string): Promise<void>;
+
+  // Canned Responses
+  createCannedResponse(data: InsertCannedResponse): Promise<CannedResponse>;
+  getCannedResponse(id: string): Promise<CannedResponse | undefined>;
+  getCannedResponses(companyId: string): Promise<CannedResponse[]>;
+  updateCannedResponse(id: string, data: Partial<InsertCannedResponse>): Promise<CannedResponse | undefined>;
+  deleteCannedResponse(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -389,6 +397,34 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWebhookConfig(id: string): Promise<void> {
     await db.delete(webhookConfigs).where(eq(webhookConfigs.id, id));
+  }
+
+  // Canned Responses
+  async createCannedResponse(data: InsertCannedResponse): Promise<CannedResponse> {
+    const [response] = await db.insert(cannedResponses).values(data).returning();
+    return response;
+  }
+
+  async getCannedResponse(id: string): Promise<CannedResponse | undefined> {
+    const [response] = await db.select().from(cannedResponses).where(eq(cannedResponses.id, id));
+    return response;
+  }
+
+  async getCannedResponses(companyId: string): Promise<CannedResponse[]> {
+    return db.select().from(cannedResponses).where(eq(cannedResponses.companyId, companyId));
+  }
+
+  async updateCannedResponse(id: string, data: Partial<InsertCannedResponse>): Promise<CannedResponse | undefined> {
+    const [response] = await db
+      .update(cannedResponses)
+      .set(data)
+      .where(eq(cannedResponses.id, id))
+      .returning();
+    return response;
+  }
+
+  async deleteCannedResponse(id: string): Promise<void> {
+    await db.delete(cannedResponses).where(eq(cannedResponses.id, id));
   }
 }
 
