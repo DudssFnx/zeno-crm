@@ -66,6 +66,7 @@ export const contacts = pgTable("contacts", {
   phoneNumber: text("phone_number").notNull(),
   avatarUrl: text("avatar_url"),
   notes: text("notes"),
+  source: text("source").default("whatsapp"), // whatsapp | instagram | site | google | manual
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
