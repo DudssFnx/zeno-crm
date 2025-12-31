@@ -407,27 +407,27 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                           className={cn(
                             "max-w-[65%] rounded-2xl px-4 py-2 shadow-sm",
                             msg.direction === "incoming"
-                              ? "bg-muted rounded-bl-md"
-                              : "bg-primary text-primary-foreground rounded-br-md"
+                              ? "rounded-bl-md"
+                              : "rounded-br-md"
                           )}
+                          style={{
+                            backgroundColor: msg.direction === "incoming" ? "#c4ffd0" : "#008f3c",
+                            color: msg.direction === "incoming" ? "#1a1a1a" : "#ffffff",
+                          }}
                         >
                           {msg.direction === "outgoing" && msg.senderDisplayName && (
-                            <p className="text-[11px] font-medium text-primary-foreground/80 mb-0.5">
+                            <p className="text-[11px] font-medium mb-0.5" style={{ opacity: 0.85 }}>
                               {msg.senderDisplayName}
                             </p>
                           )}
                           <p className="text-[15px] whitespace-pre-wrap break-words">{msg.content}</p>
                           <div
-                            className={cn(
-                              "flex items-center gap-1 mt-1",
-                              msg.direction === "incoming"
-                                ? "text-muted-foreground"
-                                : "text-primary-foreground/70"
-                            )}
+                            className="flex items-center gap-1 mt-1"
+                            style={{ opacity: msg.direction === "incoming" ? 0.6 : 0.75 }}
                           >
                             <span className="text-[11px]">{formatTime(msg.createdAt)}</span>
                             {msg.direction === "outgoing" && (
-                              <CheckCheck className="h-3.5 w-3.5 ml-0.5" />
+                              <CheckCheck className="h-3.5 w-3.5 ml-0.5 text-blue-300" />
                             )}
                           </div>
                         </div>

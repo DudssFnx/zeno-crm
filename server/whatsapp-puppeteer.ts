@@ -16,6 +16,7 @@ interface WhatsAppSession {
   messageListenerInterval: NodeJS.Timeout | null;
   companyId?: string;
   processedMessages: Set<string>;
+  lastChatMessages: Map<string, string>;
 }
 
 interface SavedSessionStatus {
@@ -163,8 +164,9 @@ class WhatsAppPuppeteerGateway {
         lastError: null,
         messageListenerInterval: null,
         processedMessages: new Set<string>(),
+        lastChatMessages: new Map<string, string>(),
       };
-      this.sessions.set(accountId, session);
+      this.sessions.set(accountId, session!);
 
       this.emitStatus(accountId, "connecting");
 
@@ -513,10 +515,24 @@ class WhatsAppPuppeteerGateway {
         const unreadChats = allChats.filter(c => c.hasUnread);
         console.log(`[WhatsApp] Scan: ${allChats.length} chats, ${unreadChats.length} não lidos`);
 
-        // Step 2: Process chats that need attention (unread messages)
+        // NEW APPROACH: Process ALL chats and check for new messages
+        // Track last processed message per chat to detect new ones
+        if (!currentSession.lastChatMessages) {
+          currentSession.lastChatMessages = new Map<string, string>();
+        }
+
+        // Step 2: Process chats - check for new messages by comparing preview text
         for (const chat of allChats) {
-          // ALWAYS process chats with unread messages
-          if (!chat.hasUnread) continue;
+          const lastKnownMessage = currentSession.lastChatMessages.get(chat.phoneOrId);
+          const currentPreview = chat.lastMessagePreview?.trim() || '';
+          
+          // Detect if there's a new message:
+          // 1. Chat has unread badge
+          // 2. OR last message preview changed AND it's not from us (no outgoing status)
+          const hasNewMessage = chat.hasUnread || 
+            (currentPreview && currentPreview !== lastKnownMessage && !chat.hasOutgoingStatus);
+          
+          if (!hasNewMessage) continue;
           
           console.log(`[WhatsApp] Processando chat: ${chat.name} (não lido: ${chat.hasUnread})`);
           
@@ -678,6 +694,9 @@ class WhatsAppPuppeteerGateway {
               }
             }
           }
+          
+          // Update last known message for this chat
+          currentSession.lastChatMessages.set(chat.phoneOrId, currentPreview);
         }
 
         if (currentSession.processedMessages.size > 1000) {
