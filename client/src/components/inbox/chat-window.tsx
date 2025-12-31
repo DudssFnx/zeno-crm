@@ -56,6 +56,8 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
       return res.json();
     },
     enabled: !!conversationId,
+    refetchInterval: 3000,
+    staleTime: 2000,
   });
 
   const { data: agents = [] } = useQuery<User[]>({
@@ -350,7 +352,21 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
   const messageGroups = groupMessagesByDate(messages);
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div 
+      className="flex-1 flex flex-col min-w-0 relative"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary z-50 flex items-center justify-center">
+          <div className="bg-background p-6 rounded-lg shadow-lg text-center">
+            <Paperclip className="h-12 w-12 mx-auto mb-2 text-primary" />
+            <p className="text-lg font-medium">Solte o arquivo aqui</p>
+            <p className="text-sm text-muted-foreground">para anexar à mensagem</p>
+          </div>
+        </div>
+      )}
       <header className="h-14 border-b flex items-center justify-between gap-4 px-4 shrink-0">
         <button
           onClick={onContactClick}
@@ -506,7 +522,54 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
       </ScrollArea>
 
       <footer className="border-t p-4 shrink-0">
+        {selectedFile && (
+          <div className="mb-3 p-3 bg-muted rounded-lg flex items-center gap-3">
+            {filePreview ? (
+              <img src={filePreview} alt="Preview" className="h-16 w-16 object-cover rounded" />
+            ) : (
+              <div className="h-16 w-16 flex items-center justify-center bg-background rounded">
+                <FileIcon className="h-8 w-8 text-muted-foreground" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{selectedFile.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            </div>
+            <Button variant="ghost" size="icon" onClick={clearSelectedFile} data-testid="button-clear-file">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileInputChange}
+          data-testid="input-file"
+        />
         <div className="flex items-end gap-2">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              data-testid="button-attach-file"
+              title="Anexar arquivo"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onContactClick}
+              data-testid="button-save-contact"
+              title="Ver/Editar Contato"
+            >
+              <UserPlus className="h-4 w-4" />
+            </Button>
+          </div>
           <div className="flex-1 relative">
             <div className="flex items-center gap-2 mb-2">
               <Button

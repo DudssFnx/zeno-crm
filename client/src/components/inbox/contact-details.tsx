@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote } from "lucide-react";
+import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote, Globe, UserPlus } from "lucide-react";
+import { SiWhatsapp, SiInstagram, SiGoogle } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -120,6 +121,23 @@ export function ContactDetails({ conversationId, onClose }: ContactDetailsProps)
     (tag) => !contactWithTags?.tags.some((ct) => ct.id === tag.id)
   );
 
+  const getSourceInfo = (source: string | null) => {
+    switch (source) {
+      case "whatsapp":
+        return { label: "WhatsApp", icon: SiWhatsapp, color: "text-green-500" };
+      case "instagram":
+        return { label: "Instagram", icon: SiInstagram, color: "text-pink-500" };
+      case "site":
+        return { label: "Site", icon: Globe, color: "text-blue-500" };
+      case "google":
+        return { label: "Google", icon: SiGoogle, color: "text-yellow-500" };
+      case "manual":
+        return { label: "Manual", icon: UserPlus, color: "text-muted-foreground" };
+      default:
+        return { label: "WhatsApp", icon: SiWhatsapp, color: "text-green-500" };
+    }
+  };
+
   if (contactLoading || !contactWithTags || !conversation) {
     return (
       <div className="w-80 border-l flex items-center justify-center">
@@ -155,6 +173,16 @@ export function ContactDetails({ conversationId, onClose }: ContactDetailsProps)
               <MessageSquare className="h-3 w-3" />
               {conversation.whatsappAccount?.name || "WhatsApp"}
             </div>
+            {(() => {
+              const sourceInfo = getSourceInfo(contactWithTags.source);
+              const SourceIcon = sourceInfo.icon;
+              return (
+                <div className={cn("flex items-center gap-1 text-xs mt-1", sourceInfo.color)} data-testid="text-contact-source">
+                  <SourceIcon className="h-3 w-3" />
+                  Origem: {sourceInfo.label}
+                </div>
+              );
+            })()}
           </div>
 
           <Separator className="mb-6" />

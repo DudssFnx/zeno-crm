@@ -39,6 +39,8 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
       if (!res.ok) throw new Error("Failed to fetch conversations");
       return res.json();
     },
+    refetchInterval: 5000,
+    staleTime: 2000,
   });
 
   const { data: accounts = [] } = useQuery<WhatsappAccount[]>({
