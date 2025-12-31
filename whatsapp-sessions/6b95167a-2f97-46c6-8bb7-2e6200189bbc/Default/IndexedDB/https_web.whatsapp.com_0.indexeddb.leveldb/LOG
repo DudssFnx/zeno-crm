@@ -1,0 +1,19 @@
+2025/12/31-04:49:16.680 b164 Reusing MANIFEST /home/runner/workspace/whatsapp-sessions/6b95167a-2f97-46c6-8bb7-2e6200189bbc/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/12/31-04:49:16.681 b164 Recovering log #225
+2025/12/31-04:49:16.686 b164 Reusing old log /home/runner/workspace/whatsapp-sessions/6b95167a-2f97-46c6-8bb7-2e6200189bbc/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/000225.log 
+2025/12/31-04:49:18.478 b164 Level-0 table #234: started
+2025/12/31-04:49:18.516 b164 Level-0 table #234: 211976 bytes OK
+2025/12/31-04:49:18.521 b164 Delete type=0 #225
+2025/12/31-04:49:18.522 b164 Manual compaction at level-0 from '\x00&\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00'\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/12/31-04:49:18.595 b164 Compacting 1@1 + 4@2 files
+2025/12/31-04:49:18.695 b164 Generated table #235@1: 50947 keys, 2212807 bytes
+2025/12/31-04:49:18.771 b164 Generated table #236@1: 46578 keys, 2208591 bytes
+2025/12/31-04:49:18.827 b164 Generated table #237@1: 34058 keys, 2205992 bytes
+2025/12/31-04:49:18.864 b164 Generated table #238@1: 23057 keys, 1327211 bytes
+2025/12/31-04:49:18.864 b164 Compacted 1@1 + 4@2 files => 7954601 bytes
+2025/12/31-04:49:18.868 b164 compacted to: files[ 0 0 4 0 0 0 0 ]
+2025/12/31-04:49:18.868 b164 Delete type=2 #220
+2025/12/31-04:49:18.868 b164 Delete type=2 #229
+2025/12/31-04:49:18.868 b164 Delete type=2 #230
+2025/12/31-04:49:18.869 b164 Delete type=2 #231
+2025/12/31-04:49:18.869 b164 Delete type=2 #234

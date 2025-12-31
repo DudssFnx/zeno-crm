@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 
 const SESSION_DIR = "./whatsapp-sessions";
+const SESSION_STATUS_FILE = "./whatsapp-sessions/session-status.json";
 
 interface WhatsAppSession {
   accountId: string;
@@ -17,22 +18,36 @@ interface WhatsAppSession {
   processedMessages: Set<string>;
 }
 
+interface SavedSessionStatus {
+  accountId: string;
+  wasConnected: boolean;
+  lastConnectedAt: string;
+}
+
 export interface IncomingMessage {
   phoneNumber: string;
   contactName: string;
   content: string;
   timestamp: string;
+  avatarUrl?: string;
 }
 
 export type MessageHandler = (accountId: string, message: IncomingMessage) => Promise<void>;
+export type StatusUpdateHandler = (accountId: string, status: string) => Promise<void>;
 
 class WhatsAppPuppeteerGateway {
   private sessions: Map<string, WhatsAppSession> = new Map();
   private io: SocketServer | null = null;
   private messageHandler: MessageHandler | null = null;
+  private statusUpdateHandler: StatusUpdateHandler | null = null;
+  private isInitialized: boolean = false;
 
   setMessageHandler(handler: MessageHandler) {
     this.messageHandler = handler;
+  }
+
+  setStatusUpdateHandler(handler: StatusUpdateHandler) {
+    this.statusUpdateHandler = handler;
   }
 
   setSocketServer(io: SocketServer) {
@@ -47,6 +62,79 @@ class WhatsAppPuppeteerGateway {
     const sessionPath = this.getSessionPath(accountId);
     if (!fs.existsSync(sessionPath)) {
       fs.mkdirSync(sessionPath, { recursive: true });
+    }
+  }
+
+  private saveSessionStatus(accountId: string, wasConnected: boolean): void {
+    try {
+      if (!fs.existsSync(SESSION_DIR)) {
+        fs.mkdirSync(SESSION_DIR, { recursive: true });
+      }
+
+      let statuses: SavedSessionStatus[] = [];
+      if (fs.existsSync(SESSION_STATUS_FILE)) {
+        const data = fs.readFileSync(SESSION_STATUS_FILE, 'utf-8');
+        statuses = JSON.parse(data);
+      }
+
+      const existingIndex = statuses.findIndex(s => s.accountId === accountId);
+      const newStatus: SavedSessionStatus = {
+        accountId,
+        wasConnected,
+        lastConnectedAt: new Date().toISOString()
+      };
+
+      if (existingIndex >= 0) {
+        statuses[existingIndex] = newStatus;
+      } else {
+        statuses.push(newStatus);
+      }
+
+      fs.writeFileSync(SESSION_STATUS_FILE, JSON.stringify(statuses, null, 2));
+      console.log(`[WhatsApp] Saved session status for ${accountId}: connected=${wasConnected}`);
+    } catch (error) {
+      console.error('[WhatsApp] Error saving session status:', error);
+    }
+  }
+
+  private loadSavedSessions(): SavedSessionStatus[] {
+    try {
+      if (fs.existsSync(SESSION_STATUS_FILE)) {
+        const data = fs.readFileSync(SESSION_STATUS_FILE, 'utf-8');
+        return JSON.parse(data);
+      }
+    } catch (error) {
+      console.error('[WhatsApp] Error loading saved sessions:', error);
+    }
+    return [];
+  }
+
+  async initializeAndReconnect(): Promise<void> {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+
+    console.log('[WhatsApp] Checking for sessions to auto-reconnect...');
+    
+    const savedSessions = this.loadSavedSessions();
+    const sessionsToReconnect = savedSessions.filter(s => s.wasConnected);
+
+    if (sessionsToReconnect.length === 0) {
+      console.log('[WhatsApp] No sessions to auto-reconnect');
+      return;
+    }
+
+    console.log(`[WhatsApp] Found ${sessionsToReconnect.length} session(s) to auto-reconnect`);
+
+    for (const savedSession of sessionsToReconnect) {
+      console.log(`[WhatsApp] Auto-reconnecting session: ${savedSession.accountId}`);
+      
+      try {
+        await this.startSession(savedSession.accountId);
+      } catch (error) {
+        console.error(`[WhatsApp] Failed to auto-reconnect ${savedSession.accountId}:`, error);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
   }
 
@@ -213,6 +301,15 @@ class WhatsAppPuppeteerGateway {
         this.sessions.set(accountId, session);
         this.emitStatus(accountId, "connected");
         
+        // Save session status for auto-reconnect on restart
+        this.saveSessionStatus(accountId, true);
+        console.log(`[WhatsApp] Session ${accountId} connected and saved for persistence`);
+        
+        // Update database status
+        if (this.statusUpdateHandler) {
+          await this.statusUpdateHandler(accountId, "connected");
+        }
+        
         this.startMessageListener(accountId);
         break;
       }
@@ -253,39 +350,114 @@ class WhatsAppPuppeteerGateway {
       try {
         const currentSession = this.sessions.get(accountId);
         if (!currentSession || currentSession.status !== "connected" || !currentSession.page) {
+          console.log(`[WhatsApp] Stopping message listener for ${accountId} - session not connected`);
           clearInterval(interval);
+          if (currentSession) {
+            currentSession.messageListenerInterval = null;
+            this.sessions.set(accountId, currentSession);
+          }
           return;
         }
 
         const page = currentSession.page;
+        
+        // Check if page is still valid before evaluating
+        if (page.isClosed()) {
+          console.log(`[WhatsApp] Page closed for ${accountId}, stopping listener`);
+          clearInterval(interval);
+          currentSession.messageListenerInterval = null;
+          this.sessions.set(accountId, currentSession);
+          return;
+        }
 
         const unreadChats = await page.evaluate(() => {
-          const chatItems = document.querySelectorAll('[data-testid="cell-frame-container"]');
+          const chatItemSelectors = [
+            '[data-testid="cell-frame-container"]',
+            '[data-testid="list-item-container"]',
+            'div[role="listitem"]',
+            '#pane-side > div > div > div > div',
+          ];
+          
+          let chatItems: NodeListOf<Element> | null = null;
+          for (const selector of chatItemSelectors) {
+            chatItems = document.querySelectorAll(selector);
+            if (chatItems && chatItems.length > 0) break;
+          }
+          
+          if (!chatItems) return [];
+          
           const unread: Array<{
             name: string;
             phoneOrId: string;
             unreadCount: number;
             lastMessage: string;
             time: string;
+            avatarUrl: string | null;
           }> = [];
 
           chatItems.forEach((chat) => {
             const unreadBadge = chat.querySelector('[data-testid="icon-unread-count"]');
             const unreadSpan = chat.querySelector('span[aria-label*="unread"]');
+            const unreadCount2 = chat.querySelector('[data-testid="unread-count"]');
             
-            if (unreadBadge || unreadSpan) {
-              const nameEl = chat.querySelector('[data-testid="cell-frame-title"] span');
-              const lastMsgEl = chat.querySelector('[data-testid="last-msg-status"]')?.parentElement;
-              const timeEl = chat.querySelector('[data-testid="cell-frame-primary-detail"]');
+            if (unreadBadge || unreadSpan || unreadCount2) {
+              const nameSelectors = [
+                '[data-testid="cell-frame-title"] span',
+                '[data-testid="conversation-info-header-chat-title"]',
+                'span[dir="auto"][title]',
+                'span[title]',
+              ];
+              
+              let nameEl: Element | null = null;
+              for (const sel of nameSelectors) {
+                nameEl = chat.querySelector(sel);
+                if (nameEl?.textContent) break;
+              }
+              
+              const lastMsgSelectors = [
+                '[data-testid="last-msg-status"]',
+                '[data-testid="conversation-last-message"]',
+                'span[data-testid="last-msg-status"]',
+              ];
+              
+              let lastMsgEl: Element | null = null;
+              for (const sel of lastMsgSelectors) {
+                lastMsgEl = chat.querySelector(sel);
+                if (lastMsgEl) {
+                  lastMsgEl = lastMsgEl.parentElement || lastMsgEl;
+                  break;
+                }
+              }
+              
+              const timeEl = chat.querySelector('[data-testid="cell-frame-primary-detail"]') || 
+                             chat.querySelector('div[class*="time"]') ||
+                             chat.querySelector('span[class*="time"]');
+              
+              const avatarSelectors = [
+                'img[data-testid="user-avatar"]',
+                'img[data-testid="default-user"]',
+                'img[data-testid="image-thumb"]',
+                '[data-testid="cell-frame-photo"] img',
+                'div[data-testid="avatar"] img',
+                'img[src*="pps.whatsapp.net"]',
+              ];
+              
+              let avatarImg: HTMLImageElement | null = null;
+              for (const sel of avatarSelectors) {
+                avatarImg = chat.querySelector(sel) as HTMLImageElement | null;
+                if (avatarImg?.src) break;
+              }
               
               const name = nameEl?.textContent || "";
               const lastMessage = lastMsgEl?.textContent || "";
               const time = timeEl?.textContent || "";
+              const avatarUrl = avatarImg?.src || null;
               
               const phoneMatch = name.match(/\+?\d[\d\s-]{8,}/);
               const phoneOrId = phoneMatch ? phoneMatch[0].replace(/[\s-]/g, "") : name;
               
-              const countText = unreadSpan?.getAttribute("aria-label") || "";
+              const countText = unreadSpan?.getAttribute("aria-label") || 
+                               unreadCount2?.textContent || "";
               const countMatch = countText.match(/(\d+)/);
               const unreadCount = countMatch ? parseInt(countMatch[1]) : 1;
 
@@ -295,6 +467,7 @@ class WhatsAppPuppeteerGateway {
                 unreadCount,
                 lastMessage,
                 time,
+                avatarUrl,
               });
             }
           });
@@ -318,6 +491,7 @@ class WhatsAppPuppeteerGateway {
                 contactName: chat.name,
                 content: chat.lastMessage,
                 timestamp: new Date().toISOString(),
+                avatarUrl: chat.avatarUrl || undefined,
               });
             }
 
@@ -336,8 +510,31 @@ class WhatsAppPuppeteerGateway {
           currentSession.processedMessages = new Set(messages.slice(-500));
         }
 
-      } catch (error) {
-        console.error("Message listener error:", error);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        // Stop listener on fatal errors (detached frame, page closed, etc.)
+        if (errorMessage.includes("detached") || 
+            errorMessage.includes("closed") || 
+            errorMessage.includes("Target closed") ||
+            errorMessage.includes("Session closed") ||
+            errorMessage.includes("Protocol error")) {
+          console.log(`[WhatsApp] Fatal error for ${accountId}, stopping listener: ${errorMessage.substring(0, 100)}`);
+          clearInterval(interval);
+          const currentSession = this.sessions.get(accountId);
+          if (currentSession) {
+            currentSession.messageListenerInterval = null;
+            currentSession.status = "disconnected";
+            this.sessions.set(accountId, currentSession);
+            this.emitStatus(accountId, "disconnected", "Conexão perdida");
+            if (this.statusUpdateHandler) {
+              this.statusUpdateHandler(accountId, "disconnected").catch(console.error);
+            }
+          }
+          return;
+        }
+        
+        console.error("Message listener error:", errorMessage.substring(0, 200));
       }
     }, 2000);
 
@@ -381,69 +578,164 @@ class WhatsAppPuppeteerGateway {
 
     try {
       const page = session.page;
+      
+      // Check if page is still valid
+      if (page.isClosed()) {
+        session.status = "disconnected";
+        this.sessions.set(accountId, session);
+        return { success: false, message: "Conexão perdida. Reconecte a conta." };
+      }
+      
       const cleanNumber = phoneNumber.replace(/\D/g, "");
+      console.log(`[WhatsApp] Using fast send method via search bar`);
       
-      // Navigate to the send URL with pre-filled message
-      const chatUrl = `https://web.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
+      // Method: Use search bar to open chat (NO page navigation - stays stable)
+      // Step 1: Click on search button/new chat button
+      const newChatSelectors = [
+        '[data-testid="chat-list-search"]',
+        '[data-testid="menu-bar-search"]',
+        'span[data-icon="search"]',
+        '[aria-label="Pesquisar ou começar uma nova conversa"]',
+        '[aria-label="Search or start new chat"]',
+        '#side header button',
+      ];
       
-      console.log(`[WhatsApp] Navigating to chat URL...`);
-      await page.goto(chatUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+      let searchOpened = false;
+      for (const selector of newChatSelectors) {
+        try {
+          const btn = await page.$(selector);
+          if (btn) {
+            await btn.click();
+            searchOpened = true;
+            console.log(`[WhatsApp] Opened search with: ${selector}`);
+            break;
+          }
+        } catch { /* continue */ }
+      }
       
-      // Wait for page to be ready - use multiple possible selectors
-      const inputSelectors = [
-        'div[contenteditable="true"][data-tab="10"]',
+      // Step 2: Type the phone number in search
+      await new Promise(r => setTimeout(r, 300));
+      
+      const searchInputSelectors = [
+        '[data-testid="chat-list-search"]',
+        'div[contenteditable="true"][data-tab="3"]',
+        '#side div[contenteditable="true"]',
+        '[aria-label="Pesquisar ou começar uma nova conversa"]',
+        '[aria-label="Search or start new chat"]',
+        'div[role="textbox"][data-tab="3"]',
+      ];
+      
+      let searchInput = null;
+      for (const selector of searchInputSelectors) {
+        try {
+          searchInput = await page.$(selector);
+          if (searchInput) {
+            console.log(`[WhatsApp] Found search input: ${selector}`);
+            break;
+          }
+        } catch { /* continue */ }
+      }
+      
+      if (!searchInput) {
+        // Fallback: Just type and hope the search is focused
+        console.log(`[WhatsApp] Search input not found, typing directly...`);
+      } else {
+        await searchInput.click();
+        await new Promise(r => setTimeout(r, 200));
+      }
+      
+      // Clear any existing text and type phone number
+      await page.keyboard.down('Control');
+      await page.keyboard.press('a');
+      await page.keyboard.up('Control');
+      await page.keyboard.type(cleanNumber, { delay: 10 });
+      
+      // Wait for search results
+      await new Promise(r => setTimeout(r, 500));
+      
+      // Step 3: Try to find and click on the contact/chat result
+      // Look for the search result with matching number
+      const chatFound = await page.evaluate((phoneNum: string) => {
+        // Try to find a chat result that matches the phone number
+        const results = Array.from(document.querySelectorAll('[data-testid="cell-frame-container"]'));
+        for (let i = 0; i < results.length; i++) {
+          const result = results[i];
+          const text = result.textContent || '';
+          // Check if the number is in the result
+          if (text.includes(phoneNum) || text.replace(/\D/g, '').includes(phoneNum)) {
+            (result as HTMLElement).click();
+            return true;
+          }
+        }
+        
+        // If exact match not found, click first result
+        const firstResult = document.querySelector('[data-testid="cell-frame-container"]');
+        if (firstResult) {
+          (firstResult as HTMLElement).click();
+          return true;
+        }
+        
+        return false;
+      }, cleanNumber.slice(-8)); // Use last 8 digits for matching
+      
+      if (!chatFound) {
+        // Try pressing Enter to open the number as new chat
+        console.log(`[WhatsApp] No search result found, trying Enter...`);
+        await page.keyboard.press('Enter');
+      }
+      
+      // Wait for chat to open
+      await new Promise(r => setTimeout(r, 400));
+      
+      // Step 4: Find the message input and type the message
+      const messageInputSelectors = [
+        '#main footer div[contenteditable="true"]',
+        'div[data-testid="conversation-compose-box-input"]',
+        'footer div[contenteditable="true"][data-tab="10"]',
         'div[contenteditable="true"][title="Digite uma mensagem"]',
         'div[contenteditable="true"][title="Type a message"]',
-        'footer div[contenteditable="true"]',
-        'div[data-testid="compose-box"] div[contenteditable="true"]',
-        '#main footer div[contenteditable="true"]',
         'div.lexical-rich-text-input div[contenteditable="true"]',
       ];
       
-      let inputFound = false;
-      for (let i = 0; i < 40 && !inputFound; i++) {
-        for (const selector of inputSelectors) {
+      let messageInput = null;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        for (const selector of messageInputSelectors) {
           try {
-            const element = await page.$(selector);
-            if (element) {
-              inputFound = true;
-              console.log(`[WhatsApp] Found input with selector: ${selector}`);
+            messageInput = await page.$(selector);
+            if (messageInput) {
+              console.log(`[WhatsApp] Found message input: ${selector}`);
               break;
             }
-          } catch {
-            // ignore
-          }
+          } catch { /* continue */ }
         }
-        if (!inputFound) {
-          // Check for "invalid phone" or "click to reload"
-          const popup = await page.$('div[data-testid="popup-contents"]');
-          if (popup) {
-            const text = await page.evaluate(el => el.textContent, popup);
-            if (text?.includes("inválido") || text?.includes("invalid")) {
-              return { success: false, message: "Número de telefone inválido ou não está no WhatsApp" };
-            }
-          }
-          await new Promise(r => setTimeout(r, 500));
-        }
+        if (messageInput) break;
+        await new Promise(r => setTimeout(r, 300));
       }
       
-      if (!inputFound) {
-        // Check if there's an "invalid phone" dialog
-        const invalidPhone = await page.$('div[data-testid="popup-contents"]');
-        if (invalidPhone) {
-          return { success: false, message: "Número de telefone inválido ou não está no WhatsApp" };
+      if (!messageInput) {
+        // Check for invalid number popup
+        const popup = await page.$('div[data-testid="popup-contents"]');
+        if (popup) {
+          const text = await page.evaluate(el => el?.textContent || '', popup);
+          if (text.includes("inválido") || text.includes("invalid")) {
+            return { success: false, message: "Número de telefone inválido ou não está no WhatsApp" };
+          }
         }
-        return { success: false, message: "Não foi possível abrir a conversa. Tente novamente." };
+        return { success: false, message: "Não foi possível abrir a conversa. Verifique se o número está correto." };
       }
       
-      // Wait a bit more for the text to load from URL parameter
-      await new Promise(r => setTimeout(r, 1500));
+      // Click on message input and type the message
+      await messageInput.click();
+      await new Promise(r => setTimeout(r, 100));
+      await page.keyboard.type(message, { delay: 10 });
       
-      // Find and click the send button
+      // Step 5: Send the message
+      await new Promise(r => setTimeout(r, 200));
+      
       const sendButtonSelectors = [
         'button[data-testid="send"]',
         'span[data-testid="send"]',
-        'div[data-testid="send"]',
+        '[data-testid="send"]',
         'button[aria-label="Enviar"]',
         'button[aria-label="Send"]',
         'span[data-icon="send"]',
@@ -456,65 +748,39 @@ class WhatsAppPuppeteerGateway {
           if (sendBtn) {
             await sendBtn.click();
             sendClicked = true;
-            console.log(`[WhatsApp] Clicked send button with selector: ${selector}`);
+            console.log(`[WhatsApp] Clicked send button: ${selector}`);
             break;
           }
-        } catch {
-          // continue
-        }
+        } catch { /* continue */ }
       }
       
       if (!sendClicked) {
-        // Try pressing Enter as fallback
-        console.log(`[WhatsApp] Send button not found, trying Enter key...`);
-        await page.keyboard.press("Enter");
-        sendClicked = true;
+        // Fallback: Press Enter to send
+        console.log(`[WhatsApp] Send button not found, pressing Enter...`);
+        await page.keyboard.press('Enter');
       }
       
-      // Brief wait to confirm send
-      await new Promise(r => setTimeout(r, 1000));
+      // Quick verify - wait just a bit for send
+      await new Promise(r => setTimeout(r, 100));
       
-      console.log(`[WhatsApp] Message sent successfully`);
+      console.log(`[WhatsApp] Message sent successfully (fast method)`);
       return { success: true, message: "Mensagem enviada" };
-    } catch (error) {
-      // Improved connection detection logic to be more proactive
-      const checkConnection = async () => {
-        const session = this.sessions.get(accountId);
-        if (!session || !session.page) return false;
-        const page = session.page;
-        const selectors = [
-          'div[data-testid="chat-list"]',
-          'div[data-testid="side-pane"]',
-          'div[data-testid="menu-bar"]',
-          '#pane-side',
-          '#side',
-          'div[data-testid="intro-text"]',
-        ];
-        for (const selector of selectors) {
-          try {
-            if (await page.$(selector)) return true;
-          } catch (e) {}
-        }
-        return false;
-      };
-
-      const session = this.sessions.get(accountId);
-      if (session && session.page) {
-        // Watch for connection state
-        const connectionTimer = setInterval(async () => {
-          if (await checkConnection()) {
-            console.log(`[WhatsApp] Connection detected for account ${accountId}`);
-            session.status = "connected";
-            session.qrCode = null;
-            this.emitStatus(accountId, "connected");
-            clearInterval(connectionTimer);
-          }
-        }, 2000);
+      
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[WhatsApp] Send error: ${errorMessage}`);
+      
+      // Check for fatal errors
+      if (errorMessage.includes("detached") || 
+          errorMessage.includes("closed") || 
+          errorMessage.includes("Target closed")) {
+        session.status = "disconnected";
+        this.sessions.set(accountId, session);
+        this.emitStatus(accountId, "disconnected", "Conexão perdida");
+        return { success: false, message: "Conexão perdida. Reconecte a conta." };
       }
-
-      const errorMessage = error instanceof Error ? error.message : "Falha ao enviar mensagem";
-      console.error("Send message error:", errorMessage);
-      return { success: false, message: errorMessage };
+      
+      return { success: false, message: `Erro ao enviar: ${errorMessage.substring(0, 100)}` };
     }
   }
 
@@ -540,6 +806,14 @@ class WhatsAppPuppeteerGateway {
       session.qrCode = null;
       this.sessions.set(accountId, session);
       this.emitStatus(accountId, "disconnected");
+      
+      // Save disconnected status
+      this.saveSessionStatus(accountId, false);
+      
+      // Update database status
+      if (this.statusUpdateHandler) {
+        await this.statusUpdateHandler(accountId, "disconnected");
+      }
     }
   }
 

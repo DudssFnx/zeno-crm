@@ -45,6 +45,16 @@ export async function registerRoutes(
   // Connect Puppeteer gateway to Socket.IO
   whatsappPuppeteer.setSocketServer(io);
 
+  // Set up status update handler to sync database with WhatsApp connection status
+  whatsappPuppeteer.setStatusUpdateHandler(async (accountId, status) => {
+    try {
+      await storage.updateWhatsappAccount(accountId, { status });
+      console.log(`[WhatsApp] Updated database status for ${accountId}: ${status}`);
+    } catch (error) {
+      console.error(`[WhatsApp] Failed to update database status for ${accountId}:`, error);
+    }
+  });
+
   // Set up message handler to save incoming messages to database
   whatsappPuppeteer.setMessageHandler(async (accountId, message) => {
     try {
@@ -65,8 +75,13 @@ export async function registerRoutes(
           whatsappAccountId: accountId,
           name: message.contactName || phoneNumber,
           phoneNumber,
+          avatarUrl: message.avatarUrl,
         });
         console.log("Created new contact:", contact.name, phoneNumber);
+      } else if (message.avatarUrl && !contact.avatarUrl) {
+        // Update avatar if we got a new one and contact doesn't have one
+        contact = await storage.updateContact(contact.id, { avatarUrl: message.avatarUrl }) || contact;
+        console.log("Updated contact avatar:", contact.name);
       }
 
       // Find or create open conversation
@@ -150,6 +165,15 @@ export async function registerRoutes(
 
   // Seed master user
   await seedMasterUser();
+  
+  // Auto-reconnect WhatsApp sessions that were connected before restart
+  setTimeout(async () => {
+    try {
+      await whatsappPuppeteer.initializeAndReconnect();
+    } catch (error) {
+      console.error('[WhatsApp] Auto-reconnect error:', error);
+    }
+  }, 3000);
   
   // Auth routes (no public registration - only admin can create users)
   app.post("/api/auth/login", async (req, res) => {
