@@ -31,6 +31,7 @@ export interface IncomingMessage {
   timestamp: string;
   avatarUrl?: string;
   direction?: "incoming" | "outgoing";
+  senderDisplayName?: string;
 }
 
 export type MessageHandler = (accountId: string, message: IncomingMessage) => Promise<void>;
@@ -372,19 +373,47 @@ class WhatsAppPuppeteerGateway {
 
         // Step 1: Find all visible chats (first 10 for performance)
         const allChats = await page.evaluate(() => {
+          // Multiple selectors for different WhatsApp Web versions
           const chatItemSelectors = [
             '[data-testid="cell-frame-container"]',
             '[data-testid="list-item-container"]',
+            '[data-testid="chat"]',
             'div[role="listitem"]',
+            'div[role="row"]',
+            '#pane-side div[role="listitem"]',
+            '#pane-side div[tabindex="-1"]',
+            'div._ak8l', // WhatsApp internal class for chat items
           ];
           
-          let chatItems: NodeListOf<Element> | null = null;
+          let chatItems: Element[] = [];
           for (const selector of chatItemSelectors) {
-            chatItems = document.querySelectorAll(selector);
-            if (chatItems && chatItems.length > 0) break;
+            const items = document.querySelectorAll(selector);
+            if (items && items.length > 0) {
+              chatItems = Array.from(items);
+              console.log(`[WA-DOM] Found ${items.length} items with selector: ${selector}`);
+              break;
+            }
           }
           
-          if (!chatItems) return [];
+          // Fallback: try to find chat items by structure
+          if (chatItems.length === 0) {
+            // Look for elements in the chat list pane
+            const paneLeft = document.querySelector('#pane-side');
+            if (paneLeft) {
+              // Find clickable divs that contain span with title (contact names)
+              const allDivs = paneLeft.querySelectorAll('div[tabindex="-1"]');
+              chatItems = Array.from(allDivs).filter(div => {
+                const titleSpan = div.querySelector('span[title]');
+                return titleSpan && titleSpan.textContent && titleSpan.textContent.length > 0;
+              });
+              console.log(`[WA-DOM] Fallback found ${chatItems.length} chat items`);
+            }
+          }
+          
+          if (!chatItems || chatItems.length === 0) {
+            console.log('[WA-DOM] No chat items found with any selector');
+            return [];
+          }
           
           const chats: Array<{
             index: number;
@@ -417,11 +446,25 @@ class WhatsAppPuppeteerGateway {
             const name = nameEl?.textContent || "";
             if (!name) continue;
             
-            // Check for unread badge
+            // Check for unread badge - multiple selectors for different WA versions
             const unreadBadge = chat.querySelector('[data-testid="icon-unread-count"]');
             const unreadSpan = chat.querySelector('span[aria-label*="unread"]');
             const unreadCount2 = chat.querySelector('[data-testid="unread-count"]');
-            const hasUnread = !!(unreadBadge || unreadSpan || unreadCount2);
+            // Additional selectors for unread indicator
+            const unreadCountBadge = chat.querySelector('span._ahlk'); // WhatsApp internal class
+            const unreadBadgeAlt = chat.querySelector('div[aria-label*="mensag"]'); // Portuguese "mensagens não lidas"
+            // Check for any element with a number indicating unread count
+            const allSpans = chat.querySelectorAll('span');
+            let hasNumericBadge = false;
+            for (const span of Array.from(allSpans)) {
+              const text = span.textContent?.trim() || '';
+              // If span contains only a number (1-999) and has small font, it's likely unread count
+              if (/^[1-9]\d{0,2}$/.test(text) && span.closest('div[style*="background"]')) {
+                hasNumericBadge = true;
+                break;
+              }
+            }
+            const hasUnread = !!(unreadBadge || unreadSpan || unreadCount2 || unreadCountBadge || unreadBadgeAlt || hasNumericBadge);
             
             // Check for outgoing status icons (to detect if last message was sent from phone)
             const msgStatusIcon = chat.querySelector('[data-testid="msg-dblcheck"]') ||
@@ -466,21 +509,14 @@ class WhatsAppPuppeteerGateway {
           return chats;
         });
 
-        // Step 2: Process chats that need attention (unread or with recent outgoing)
+        // Log found chats for debugging
+        const unreadChats = allChats.filter(c => c.hasUnread);
+        console.log(`[WhatsApp] Scan: ${allChats.length} chats, ${unreadChats.length} não lidos`);
+
+        // Step 2: Process chats that need attention (unread messages)
         for (const chat of allChats) {
-          // Create a key for this chat's last message preview
-          const previewKey = `preview:${chat.phoneOrId}:${chat.lastMessagePreview}`;
-          
-          // Skip if we already processed this exact state
-          if (currentSession.processedMessages.has(previewKey)) continue;
-          
-          // Check if this chat needs processing (has unread OR has new outgoing message)
-          const needsProcessing = chat.hasUnread || !currentSession.processedMessages.has(`lastSeen:${chat.phoneOrId}`);
-          
-          if (!needsProcessing && !chat.hasOutgoingStatus) continue;
-          
-          currentSession.processedMessages.add(previewKey);
-          currentSession.processedMessages.add(`lastSeen:${chat.phoneOrId}`);
+          // ALWAYS process chats with unread messages
+          if (!chat.hasUnread) continue;
           
           console.log(`[WhatsApp] Processando chat: ${chat.name} (não lido: ${chat.hasUnread})`);
           
@@ -489,16 +525,36 @@ class WhatsAppPuppeteerGateway {
             const chatItemSelectors = [
               '[data-testid="cell-frame-container"]',
               '[data-testid="list-item-container"]',
+              '[data-testid="chat"]',
               'div[role="listitem"]',
+              'div[role="row"]',
+              '#pane-side div[role="listitem"]',
+              '#pane-side div[tabindex="-1"]',
+              'div._ak8l',
             ];
             
-            let chatItems: NodeListOf<Element> | null = null;
+            let chatItems: Element[] = [];
             for (const selector of chatItemSelectors) {
-              chatItems = document.querySelectorAll(selector);
-              if (chatItems && chatItems.length > 0) break;
+              const items = document.querySelectorAll(selector);
+              if (items && items.length > 0) {
+                chatItems = Array.from(items);
+                break;
+              }
             }
             
-            if (!chatItems || !chatItems[chatIndex]) return false;
+            // Fallback
+            if (chatItems.length === 0) {
+              const paneLeft = document.querySelector('#pane-side');
+              if (paneLeft) {
+                const allDivs = paneLeft.querySelectorAll('div[tabindex="-1"]');
+                chatItems = Array.from(allDivs).filter(div => {
+                  const titleSpan = div.querySelector('span[title]');
+                  return titleSpan && titleSpan.textContent && titleSpan.textContent.length > 0;
+                });
+              }
+            }
+            
+            if (!chatItems[chatIndex]) return false;
             
             (chatItems[chatIndex] as HTMLElement).click();
             return true;
