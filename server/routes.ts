@@ -57,10 +57,19 @@ export async function registerRoutes(
 
   // Set up message handler to save messages to database (both incoming and outgoing from phone)
   whatsappPuppeteer.setMessageHandler(async (accountId, message) => {
+    const correlationId = `msg_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const log = (level: string, msg: string, data?: object) => {
+      const entry = { correlationId, level, msg, ...data, timestamp: new Date().toISOString() };
+      if (level === "error") console.error(JSON.stringify(entry));
+      else console.log(JSON.stringify(entry));
+    };
+    
     try {
+      log("info", "Processing message", { accountId, direction: message.direction });
+      
       const account = await storage.getWhatsappAccount(accountId);
       if (!account) {
-        console.error("Account not found for message:", accountId);
+        log("error", "Account not found", { accountId });
         return;
       }
 
@@ -78,11 +87,19 @@ export async function registerRoutes(
           phoneNumber,
           avatarUrl: message.avatarUrl,
         });
-        console.log("Created new contact:", contact.name, phoneNumber);
-      } else if (message.avatarUrl && !contact.avatarUrl) {
-        // Update avatar if we got a new one and contact doesn't have one
+        log("info", "Created contact", { contactId: contact.id, name: contact.name, phone: phoneNumber });
+      } else if (message.avatarUrl && message.avatarUrl !== contact.avatarUrl) {
+        // Update avatar if we got a new/different one
+        const oldAvatar = contact.avatarUrl;
         contact = await storage.updateContact(contact.id, { avatarUrl: message.avatarUrl }) || contact;
-        console.log("Updated contact avatar:", contact.name);
+        log("info", "Updated avatar", { contactId: contact.id, changed: !!oldAvatar });
+        
+        // Emit contact update event
+        io.emit("contact:updated", {
+          companyId,
+          contactId: contact.id,
+          avatarUrl: message.avatarUrl,
+        });
       }
 
       // Find or create open conversation
@@ -95,7 +112,7 @@ export async function registerRoutes(
           status: "open",
           inbox: "whatsapp",
         });
-        console.log("Created new conversation for contact:", contact.name);
+        log("info", "Created conversation", { conversationId: conversation.id, contactId: contact.id });
       }
 
       // Check if we already have this message (to avoid duplicates)
@@ -111,10 +128,9 @@ export async function registerRoutes(
       if (lastMessage && 
           lastMessage.content === message.content && 
           lastMessage.direction === direction) {
-        // Only log if this is a fresh duplicate (within last 5 minutes)
         const messageAge = Date.now() - new Date(lastMessage.createdAt).getTime();
         if (messageAge < 300000) {
-          console.log(`Skipping duplicate ${direction} message: ${message.content.substring(0, 30)}`);
+          log("info", "Skipping duplicate", { direction, reason: "same_as_last" });
         }
         return;
       }
@@ -127,7 +143,7 @@ export async function registerRoutes(
       );
       
       if (recentDuplicate) {
-        console.log(`Skipping recent duplicate ${direction} message: ${message.content.substring(0, 30)}`);
+        log("info", "Skipping duplicate", { direction, reason: "recent_history" });
         return;
       }
 
@@ -145,8 +161,12 @@ export async function registerRoutes(
         lastMessageAt: new Date(),
       });
 
-      const dirLabel = direction === "outgoing" ? "enviada para" : "recebida de";
-      console.log(`[MSG] ${dirLabel} ${message.contactName}: ${message.content.substring(0, 50)}`);
+      log("info", "Message saved", { 
+        messageId: savedMessage.id, 
+        direction, 
+        contactName: message.contactName,
+        preview: message.content.substring(0, 30)
+      });
 
       // Emit Socket.IO events for real-time updates
       io.emit("message:created", {
@@ -174,7 +194,7 @@ export async function registerRoutes(
         });
       }
     } catch (error) {
-      console.error("Error handling message:", error);
+      log("error", "Message handler failed", { error: String(error) });
     }
   });
 

@@ -22,6 +22,12 @@ interface ConversationUpdatedEvent {
   lastMessageAt: string;
 }
 
+interface ContactUpdatedEvent {
+  companyId: string;
+  contactId: string;
+  avatarUrl?: string;
+}
+
 export function useRealtime() {
   const socketRef = useRef<Socket | null>(null);
   const { user } = useAuth();
@@ -55,6 +61,14 @@ export function useRealtime() {
     socketRef.current.on("conversation:updated", (data: ConversationUpdatedEvent) => {
       if (data.companyId === user.companyId) {
         console.log("[Realtime] Conversation updated, invalidating list");
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      }
+    });
+
+    socketRef.current.on("contact:updated", (data: ContactUpdatedEvent) => {
+      if (data.companyId === user.companyId) {
+        console.log("[Realtime] Contact updated, invalidating cache");
+        queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
         queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
       }
     });
