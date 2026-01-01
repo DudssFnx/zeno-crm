@@ -29,6 +29,7 @@ import { ContactDetails } from "@/components/inbox/contact-details";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/lib/auth";
+import { useRealtime } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -49,6 +50,8 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  
+  useRealtime();
 
   if (!user) return null;
 

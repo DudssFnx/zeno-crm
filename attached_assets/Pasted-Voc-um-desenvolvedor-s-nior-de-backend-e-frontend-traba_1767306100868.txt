@@ -1,0 +1,77 @@
+Você é um desenvolvedor sênior de backend e frontend trabalhando em um CRM com módulo de chat (tipo WhatsApp Web / sistemas de atendimento).
+
+Problema atual:
+	•	As mensagens não estão chegando corretamente no CRM.
+	•	Algumas conversas não aparecem.
+	•	Não consigo ver a foto (avatar) de quem manda mensagem.
+	•	Chats ainda não abertos / não carregados também não entram na lista.
+
+Objetivo:
+Quero que você pesquise e implemente no meu projeto, passo a passo, as mesmas boas práticas usadas em CRMs de atendimento e sistemas de chat em tempo real (como WhatsApp Web, Slack, Zendesk, etc.) para garantir que:
+	1.	Todas as mensagens cheguem no CRM, inclusive:
+	•	Mensagens novas de chats já abertos.
+	•	Mensagens de chats ainda não abertos.
+	•	Mensagens recebidas enquanto a aba estava fechada ou o usuário estava offline (assim que reconectar, tudo deve ser sincronizado).
+	2.	Lista de conversas sempre atualizada:
+	•	Toda nova mensagem recebida deve atualizar a lista de conversas (última mensagem, horário, status lida/não lida).
+	•	Conversas com novas mensagens devem subir para o topo da lista (ordenadas por última mensagem).
+	•	Mesmo que o operador nunca tenha aberto aquela conversa, ela precisa aparecer na lista.
+	3.	Foto e nome do contato:
+	•	Para cada mensagem recebida, o sistema deve buscar e exibir:
+	•	Nome do contato (ou número, se não houver nome).
+	•	Foto de perfil / avatar (quando a API/plataforma fornecer).
+	•	Salvar esses dados em cache no banco (ex.: tabela contacts com campos id_externo, nome, avatar_url, ultimo_contato_em, etc.).
+	•	Sempre que carregar a lista de conversas ou o histórico, exibir a foto e o nome corretos.
+	4.	Mecanismo de recebimento em tempo real:
+	•	Se a API suportar WebSocket / Webhook, configurar:
+	•	Webhook para receber mensagens do provedor (ex.: WhatsApp API / gateway).
+	•	WebSocket ou outro canal em tempo real (ex.: Socket.IO) entre o backend e o frontend do CRM, para entregar instantaneamente as mensagens na tela.
+	•	Se não tiver WebSocket, implemente polling inteligente (requisições periódicas) com:
+	•	Intervalo configurável.
+	•	Controle de última mensagem recebida (last_message_id ou last_timestamp) para não duplicar.
+	5.	Persistência e consistência:
+	•	Toda mensagem recebida deve ser salva no banco de dados antes de ser exibida.
+	•	Criar/ajustar as tabelas necessárias, por exemplo:
+	•	conversations (id, contato_id, ultimo_msg, ultimo_horario, nao_lidas, etc.)
+	•	messages (id, conversation_id, direction[in/out], body, media_url, status, created_at, message_id_externo, etc.)
+	•	contacts (id, nome, telefone, avatar_url, atualizado_em, etc.)
+	•	Garantir que mensagens não sejam perdidas em caso de erro de rede (usar filas, retries ou logs para reprocessar).
+	6.	Tratamento de chats não abertos:
+	•	Mesmo que o usuário do CRM nunca tenha clicado numa conversa, se chegar uma mensagem Nova de um número/contato:
+	•	Criar automaticamente a conversation vinculada ao contact.
+	•	Exibir essa conversa na lista com contador de não lidas > 0.
+	7.	Interface do chat:
+	•	Certificar que:
+	•	As mensagens novas aparecem em tempo real sem precisar atualizar a página.
+	•	O cabeçalho do chat mostra: nome do contato, número e foto.
+	•	A lista de conversas mostra: foto, nome, último trecho da mensagem e horário.
+	8.	Logs e testes até funcionar:
+	•	Adicionar logs detalhados no backend para:
+	•	Toda vez que a API externa entregar uma mensagem.
+	•	Toda vez que uma mensagem for salva no banco.
+	•	Toda vez que o frontend receber um evento de nova mensagem.
+	•	Criar um modo de teste que:
+	•	Simula o recebimento de mensagens de vários contatos.
+	•	Verifica se todas aparecem na lista e no histórico.
+	•	Só considerar a tarefa concluída quando:
+	•	Nenhuma mensagem se perde.
+	•	Todas as mensagens aparecem no CRM (incluindo chats não abertos).
+	•	A foto e o nome do contato aparecem corretamente.
+	9.	Pesquisa de referência:
+	•	Antes de propor a solução final, pesquise rapidamente em fóruns e documentação sobre:
+	•	“real-time chat CRM websocket best practices”
+	•	“how to sync unread messages from messaging API into CRM”
+	•	“storing contact avatars and names in chat systems”
+	•	Use essas referências para montar uma arquitetura robusta, mas não copie códigos proprietários.
+	•	Explique o que você vai fazer e depois já gere o código pronto para:
+	•	Backend (rotas, webhooks, serviços de mensagem).
+	•	Frontend (conexão com WebSocket/polling, atualização da UI).
+	•	Migrações de banco, se necessário.
+
+Saída esperada de você:
+	1.	Explicação breve da solução.
+	2.	Código completo necessário (backend + frontend) ou o máximo possível, pronto para eu colar no Replit.
+	3.	Instruções de configuração (variáveis de ambiente, URL de webhook, etc.).
+	4.	Um passo a passo de testes para garantir que todas as mensagens estão chegando e que a foto do contato aparece.
+
+Não simplifique demais. Prefiro uma solução mais robusta, mesmo que mais longa, desde que funcione 100%.

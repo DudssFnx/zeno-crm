@@ -64,7 +64,7 @@ export interface IStorage {
     assignedToUserId?: string;
   }): Promise<ConversationWithDetails[]>;
   getOpenConversationByContact(contactId: string): Promise<Conversation | undefined>;
-  updateConversation(id: string, data: Partial<InsertConversation>): Promise<Conversation | undefined>;
+  updateConversation(id: string, data: Partial<InsertConversation> & { updatedAt?: Date; lastMessageAt?: Date }): Promise<Conversation | undefined>;
 
   // Messages
   createMessage(data: InsertMessage): Promise<Message>;
@@ -322,10 +322,10 @@ export class DatabaseStorage implements IStorage {
     return conversation;
   }
 
-  async updateConversation(id: string, data: Partial<InsertConversation>): Promise<Conversation | undefined> {
+  async updateConversation(id: string, data: Partial<InsertConversation> & { updatedAt?: Date; lastMessageAt?: Date }): Promise<Conversation | undefined> {
     const [conversation] = await db
       .update(conversations)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data, updatedAt: data.updatedAt || new Date() })
       .where(eq(conversations.id, id))
       .returning();
     return conversation;

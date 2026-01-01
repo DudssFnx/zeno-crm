@@ -139,8 +139,29 @@ export async function registerRoutes(
         senderDisplayName: message.senderDisplayName || (direction === "outgoing" ? "Celular" : undefined),
       });
 
+      // Update conversation timestamp so it appears at top of list
+      await storage.updateConversation(conversation.id, { 
+        updatedAt: new Date(),
+        lastMessageAt: new Date(),
+      });
+
       const dirLabel = direction === "outgoing" ? "enviada para" : "recebida de";
-      console.log(`Mensagem ${dirLabel} ${message.contactName}: ${message.content.substring(0, 50)}`);
+      console.log(`[MSG] ${dirLabel} ${message.contactName}: ${message.content.substring(0, 50)}`);
+
+      // Emit Socket.IO events for real-time updates
+      io.emit("message:created", {
+        companyId,
+        conversationId: conversation.id,
+        contactId: contact.id,
+        message: savedMessage,
+      });
+      
+      io.emit("conversation:updated", {
+        companyId,
+        conversationId: conversation.id,
+        lastMessage: message.content,
+        lastMessageAt: new Date().toISOString(),
+      });
 
       // Dispatch webhook for incoming message only
       if (direction === "incoming") {
