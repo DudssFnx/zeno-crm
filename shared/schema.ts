@@ -68,6 +68,7 @@ export const contacts = pgTable("contacts", {
   avatarUrl: text("avatar_url"),
   avatarUpdatedAt: timestamp("avatar_updated_at"),
   notes: text("notes"),
+  attribute: text("attribute"), // CLIENTE | FORNECEDOR | etc. - shown as badge
   source: text("source").default("whatsapp"), // whatsapp | instagram | site | google | manual
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -272,6 +273,7 @@ export const macroActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("REMOVE_TAG"), tagId: z.string() }),
   z.object({ type: z.literal("SET_STATUS"), status: z.enum(["open", "pending", "resolved", "closed"]) }),
   z.object({ type: z.literal("ASSIGN_AGENT"), agentId: z.string().optional() }),
+  z.object({ type: z.literal("SET_ATTRIBUTE"), attribute: z.string() }),
 ]);
 
 export type MacroAction = z.infer<typeof macroActionSchema>;
