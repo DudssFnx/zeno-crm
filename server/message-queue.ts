@@ -488,6 +488,14 @@ export async function handleMessageFast(
     messageId?: string;
   }
 ) {
+  // IGNORAR mensagens de saída (outgoing) - elas são eco do WhatsApp
+  // As mensagens enviadas pelo CRM já são salvas diretamente em routes.ts
+  // Isso evita duplicação de mensagens
+  if (message.direction === "outgoing") {
+    console.log(`[Queue] Ignorando eco de mensagem enviada: ${message.content.substring(0, 30)}...`);
+    return;
+  }
+  
   // Buscar account do cache ou DB
   let account = getAccountFromCache(accountId) as any;
   
