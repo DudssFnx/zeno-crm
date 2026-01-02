@@ -228,8 +228,8 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
 
   return (
     <div className={cn(
-      "border-l flex flex-col bg-background",
-      isMobile ? "w-full h-full" : "w-80"
+      "border-l flex flex-col bg-background h-full",
+      isMobile ? "w-full" : "w-80"
     )}>
       <header className="h-14 border-b flex items-center justify-between gap-2 px-3 md:px-4 shrink-0">
         <div className="flex items-center gap-2">
