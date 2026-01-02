@@ -3,7 +3,7 @@ import { eq, and, desc, sql, asc } from "drizzle-orm";
 import {
   companies, users, whatsappAccounts, contacts, tags, contactTags,
   conversations, messages, webhookConfigs, automationLogs, cannedResponses,
-  macros, macroExecutions, stages,
+  macros, macroExecutions, stages, contactAttributes,
   type Company, type InsertCompany, type User, type InsertUser,
   type WhatsappAccount, type InsertWhatsappAccount,
   type Contact, type InsertContact, type Tag, type InsertTag,
@@ -15,6 +15,7 @@ import {
   type Macro, type InsertMacro,
   type MacroExecution, type InsertMacroExecution,
   type Stage, type InsertStage,
+  type ContactAttribute, type InsertContactAttribute,
   type ConversationWithDetails, type ContactWithTags, type MessageWithSender,
 } from "@shared/schema";
 import { normalizePhone } from "./jid-utils";
@@ -114,6 +115,13 @@ export interface IStorage {
   deleteStage(id: string): Promise<void>;
   reorderStages(companyId: string, stageIds: string[]): Promise<Stage[]>;
   updateConversationStage(conversationId: string, stageId: string | null): Promise<Conversation | undefined>;
+
+  // Contact Attributes
+  createContactAttribute(data: InsertContactAttribute): Promise<ContactAttribute>;
+  getContactAttribute(id: string): Promise<ContactAttribute | undefined>;
+  getContactAttributes(companyId: string): Promise<ContactAttribute[]>;
+  updateContactAttribute(id: string, data: Partial<InsertContactAttribute>): Promise<ContactAttribute | undefined>;
+  deleteContactAttribute(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -637,6 +645,43 @@ export class DatabaseStorage implements IStorage {
       .where(eq(conversations.id, conversationId))
       .returning();
     return conversation;
+  }
+
+  // Contact Attributes
+  async createContactAttribute(data: InsertContactAttribute): Promise<ContactAttribute> {
+    const existingAttrs = await this.getContactAttributes(data.companyId);
+    const maxOrder = existingAttrs.length > 0 
+      ? Math.max(...existingAttrs.map(a => parseInt(a.displayOrder || "0"))) 
+      : -1;
+    const [attr] = await db.insert(contactAttributes).values({
+      ...data,
+      displayOrder: String(maxOrder + 1),
+    }).returning();
+    return attr;
+  }
+
+  async getContactAttribute(id: string): Promise<ContactAttribute | undefined> {
+    const [attr] = await db.select().from(contactAttributes).where(eq(contactAttributes.id, id));
+    return attr;
+  }
+
+  async getContactAttributes(companyId: string): Promise<ContactAttribute[]> {
+    return db.select().from(contactAttributes)
+      .where(eq(contactAttributes.companyId, companyId))
+      .orderBy(asc(contactAttributes.displayOrder));
+  }
+
+  async updateContactAttribute(id: string, data: Partial<InsertContactAttribute>): Promise<ContactAttribute | undefined> {
+    const [attr] = await db
+      .update(contactAttributes)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(contactAttributes.id, id))
+      .returning();
+    return attr;
+  }
+
+  async deleteContactAttribute(id: string): Promise<void> {
+    await db.delete(contactAttributes).where(eq(contactAttributes.id, id));
   }
 }
 
