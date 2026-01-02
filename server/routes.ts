@@ -793,7 +793,7 @@ export async function registerRoutes(
       const prefixMode = req.user!.prefixMode || "prefix";
 
       // Format message content based on prefixMode
-      function formatMessageWithOperator(msg: string, operatorName: string, mode: string): string {
+      const formatMessageWithOperator = (msg: string, operatorName: string, mode: string): string => {
         if (!msg || mode === "none") return msg;
         switch (mode) {
           case "prefix":
@@ -803,7 +803,7 @@ export async function registerRoutes(
           default:
             return msg;
         }
-      }
+      };
 
       // Determine display content for database (without operator prefix for clean storage)
       let displayContent = content || "";
@@ -826,6 +826,11 @@ export async function registerRoutes(
         senderUserId: req.user!.id,
         senderDisplayName,
         content: displayContent,
+        mediaUrl,
+        mediaType,
+        fileName,
+        mimetype,
+        fileSize: req.body.fileSize || req.body.size, // Supporting both common field names
       });
 
       // Update conversation lastMessageAt
@@ -1231,7 +1236,7 @@ export async function registerRoutes(
                     conversationId,
                     direction: "outgoing",
                     content: messageToSend,
-                    senderId: req.user!.id,
+                    senderUserId: req.user!.id,
                     senderDisplayName: req.user!.displayName || req.user!.name,
                   });
                   
@@ -1290,7 +1295,7 @@ export async function registerRoutes(
             conversationId,
             direction: "outgoing",
             content: renderedMessage,
-            senderId: req.user!.id,
+            senderUserId: req.user!.id,
             senderDisplayName: req.user!.displayName || req.user!.name,
           });
           

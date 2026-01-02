@@ -673,7 +673,7 @@ class WhatsAppBaileysGateway {
 
     try {
       const buffer = await downloadMediaMessage(
-        { key: messageKey, message } as proto.IWebMessageInfo,
+        { key: messageKey, message } as any,
         "buffer",
         {},
         {
