@@ -34,10 +34,16 @@ export function extractPhoneFromJid(jid: string): string {
 
 /**
  * Normaliza um número de telefone para formato consistente (somente dígitos com prefixo 55)
+ * LIDs (Linked Device IDs) são preservados como identificadores especiais
  * @param phone Número de telefone em qualquer formato
- * @returns Número normalizado (ex: 5511963232981)
+ * @returns Número normalizado (ex: 5511963232981) ou LID preservado (ex: LID_263298842914873)
  */
 export function normalizePhone(phone: string): string {
+  // Preservar LIDs (Linked Device IDs) - são identificadores especiais do WhatsApp
+  if (phone.startsWith("LID_")) {
+    return phone;
+  }
+  
   // Remove tudo que não é dígito
   let digits = phone.replace(/\D/g, "");
   
@@ -66,11 +72,15 @@ export function isValidChatJid(jid: string): boolean {
 }
 
 /**
- * Verifica se um número de telefone é válido (10-15 dígitos)
- * @param phone Número de telefone
+ * Verifica se um número de telefone é válido (10-15 dígitos) ou é um LID válido
+ * @param phone Número de telefone ou LID
  * @returns true se for válido
  */
 export function isValidPhoneNumber(phone: string): boolean {
+  // LIDs são sempre válidos
+  if (phone.startsWith("LID_")) {
+    return true;
+  }
   const digits = phone.replace(/\D/g, "");
   return digits.length >= 10 && digits.length <= 15;
 }

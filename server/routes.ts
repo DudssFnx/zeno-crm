@@ -73,15 +73,18 @@ export async function registerRoutes(
     const startTime = Date.now();
     
     try {
-      // Verificar se é LID - se for, ignorar (muito lento para resolver)
-      if (message.phoneNumber.startsWith("LID_")) {
-        console.log(`[FastHandler] Skipping LID message: ${message.phoneNumber}`);
-        return;
+      // Processar LID: usar o identificador LID como phoneNumber temporário
+      // O contato será criado com o LID e pode ser atualizado posteriormente
+      // quando o mapeamento LID -> phone for descoberto
+      let phoneNumber = message.phoneNumber;
+      if (phoneNumber.startsWith("LID_")) {
+        // Usar o LID limpo como identificador único
+        console.log(`[FastHandler] Processing LID message: ${phoneNumber}, contact: ${message.contactName}`);
       }
       
       // Usar o handler rápido que emite imediatamente e processa em background
       await messageQueue.handleMessageFast(accountId, {
-        phoneNumber: message.phoneNumber,
+        phoneNumber: phoneNumber,
         contactName: message.contactName,
         content: message.content,
         direction: message.direction || "incoming",
