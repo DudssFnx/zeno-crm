@@ -55,7 +55,7 @@ export interface IStorage {
   getContactTags(contactId: string): Promise<Tag[]>;
 
   // Conversations
-  deleteAllConversations(companyId: string): Promise<number>;
+  deleteConversations(companyId: string, ids: string[]): Promise<number>;
   createConversation(data: InsertConversation): Promise<Conversation>;
   getConversation(id: string): Promise<Conversation | undefined>;
   getConversationWithDetails(id: string): Promise<ConversationWithDetails | undefined>;
@@ -252,26 +252,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Conversations
-  async deleteAllConversations(companyId: string): Promise<number> {
-    // First get all conversation IDs for this company
-    const companyConversations = await db
-      .select({ id: conversations.id })
-      .from(conversations)
-      .where(eq(conversations.companyId, companyId));
+  async deleteConversations(companyId: string, ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
     
-    const conversationIds = companyConversations.map(c => c.id);
-    
-    if (conversationIds.length === 0) return 0;
-    
-    // Delete all messages for these conversations
-    for (const convId of conversationIds) {
-      await db.delete(messages).where(eq(messages.conversationId, convId));
+    let deleted = 0;
+    for (const convId of ids) {
+      // Verify conversation belongs to company
+      const [conv] = await db.select().from(conversations)
+        .where(and(eq(conversations.id, convId), eq(conversations.companyId, companyId)));
+      
+      if (conv) {
+        // Delete messages first
+        await db.delete(messages).where(eq(messages.conversationId, convId));
+        // Delete conversation
+        await db.delete(conversations).where(eq(conversations.id, convId));
+        deleted++;
+      }
     }
     
-    // Delete all conversations
-    await db.delete(conversations).where(eq(conversations.companyId, companyId));
-    
-    return conversationIds.length;
+    return deleted;
   }
 
   async createConversation(data: InsertConversation): Promise<Conversation> {

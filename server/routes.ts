@@ -691,13 +691,17 @@ export async function registerRoutes(
   });
 
   // Conversations routes
-  app.delete("/api/conversations/all", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
+  app.delete("/api/conversations/bulk", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const count = await storage.deleteAllConversations(req.user!.companyId);
+      const { ids } = req.body;
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "IDs are required" });
+      }
+      const count = await storage.deleteConversations(req.user!.companyId, ids);
       console.log(`[API] Deleted ${count} conversations for company ${req.user!.companyId}`);
       res.json({ success: true, deleted: count });
     } catch (error) {
-      console.error("Delete all conversations error:", error);
+      console.error("Delete conversations error:", error);
       res.status(500).json({ message: "Failed to delete conversations" });
     }
   });

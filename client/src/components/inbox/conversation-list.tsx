@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, Filter, MessageSquare, Trash2 } from "lucide-react";
+import { Search, MessageSquare, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
 import { StatusBadge } from "@/components/status-badge";
 import { TagChip } from "@/components/tag-chip";
@@ -23,7 +24,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { ConversationWithDetails, WhatsappAccount, User, Tag } from "@shared/schema";
 
@@ -41,19 +41,26 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
   const [accountFilter, setAccountFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
+  const [selectedConversations, setSelectedConversations] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  const deleteAllMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("DELETE", "/api/conversations/all");
+  const deleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await apiRequest("DELETE", "/api/conversations/bulk", { ids });
       return res.json();
     },
     onSuccess: (data) => {
       toast({
         title: "Conversas apagadas",
-        description: `${data.deleted} conversas foram removidas com sucesso.`,
+        description: `${data.deleted} conversa(s) removida(s) com sucesso.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-      onSelect("");
+      setSelectedConversations(new Set());
+      setSelectionMode(false);
+      if (selectedConversations.has(selectedId || "")) {
+        onSelect("");
+      }
     },
     onError: () => {
       toast({
@@ -63,6 +70,23 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
       });
     },
   });
+
+  const toggleSelection = (id: string) => {
+    setSelectedConversations(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const cancelSelection = () => {
+    setSelectionMode(false);
+    setSelectedConversations(new Set());
+  };
 
   const { data: conversations = [], isLoading } = useQuery<ConversationWithDetails[]>({
     queryKey: ["/api/conversations", statusFilter, accountFilter, assigneeFilter],
@@ -204,36 +228,57 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
             </SelectContent>
           </Select>
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button 
-                variant="destructive" 
-                size="icon"
-                disabled={conversations.length === 0 || deleteAllMutation.isPending}
-                data-testid="button-delete-all-conversations"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Apagar todas as conversas?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Esta ação irá remover permanentemente {conversations.length} conversas e todas as mensagens associadas. Esta ação não pode ser desfeita.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => deleteAllMutation.mutate()}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  {deleteAllMutation.isPending ? "Apagando..." : "Apagar Tudo"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button 
+            variant={selectionMode ? "secondary" : "ghost"} 
+            size="icon"
+            onClick={() => selectionMode ? cancelSelection() : setSelectionMode(true)}
+            disabled={conversations.length === 0}
+            data-testid="button-toggle-selection-mode"
+          >
+            {selectionMode ? <X className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+          </Button>
         </div>
+
+        {selectionMode && (
+          <div className="flex items-center justify-between gap-2 p-2 bg-muted rounded-md">
+            <span className="text-sm text-muted-foreground">
+              {selectedConversations.size} selecionada(s)
+            </span>
+            <Button 
+              variant="destructive" 
+              size="sm"
+              disabled={selectedConversations.size === 0 || deleteMutation.isPending}
+              onClick={() => setShowDeleteDialog(true)}
+              data-testid="button-delete-selected"
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              {deleteMutation.isPending ? "Apagando..." : "Apagar"}
+            </Button>
+          </div>
+        )}
+
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Apagar conversas selecionadas?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta ação irá remover permanentemente {selectedConversations.size} conversa(s) e todas as mensagens associadas. Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  deleteMutation.mutate(Array.from(selectedConversations));
+                  setShowDeleteDialog(false);
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Apagar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       <ScrollArea className="flex-1">
@@ -250,16 +295,26 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
         ) : (
           <div className="divide-y">
             {filteredConversations.map((conv) => (
-              <button
+              <div
                 key={conv.id}
-                onClick={() => onSelect(conv.id)}
                 className={cn(
-                  "w-full text-left p-3 hover-elevate transition-colors",
+                  "w-full text-left p-3 hover-elevate transition-colors cursor-pointer",
                   selectedId === conv.id && "bg-sidebar-accent border-l-2 border-l-primary"
                 )}
+                onClick={() => selectionMode ? toggleSelection(conv.id) : onSelect(conv.id)}
                 data-testid={`conversation-item-${conv.id}`}
               >
                 <div className="flex gap-3">
+                  {selectionMode && (
+                    <div className="flex items-center">
+                      <Checkbox
+                        checked={selectedConversations.has(conv.id)}
+                        onCheckedChange={() => toggleSelection(conv.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        data-testid={`checkbox-conversation-${conv.id}`}
+                      />
+                    </div>
+                  )}
                   <AvatarWithFallback
                     name={conv.contact.name}
                     src={conv.contact.avatarUrl}
@@ -296,7 +351,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                     </div>
                   </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
