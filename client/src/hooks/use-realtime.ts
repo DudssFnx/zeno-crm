@@ -28,6 +28,17 @@ interface ContactUpdatedEvent {
   avatarUrl?: string;
 }
 
+interface MessageMediaReadyEvent {
+  companyId: string;
+  conversationId: string;
+  messageId: string;
+  mediaUrl: string;
+  mediaType: string;
+  fileName?: string;
+  mimetype?: string;
+  fileSize?: number;
+}
+
 export function useRealtime() {
   const socketRef = useRef<Socket | null>(null);
   const { user } = useAuth();
@@ -126,6 +137,17 @@ export function useRealtime() {
         });
         queryClient.invalidateQueries({ 
           queryKey: ["/api/conversations"],
+          refetchType: 'all'
+        });
+      }
+    });
+
+    socket.on("message:media_ready", (data: MessageMediaReadyEvent) => {
+      console.log("[Realtime] message:media_ready received:", data.messageId, data.mediaType);
+      
+      if (data.companyId === user.companyId) {
+        queryClient.invalidateQueries({ 
+          queryKey: ["/api/conversations", data.conversationId, "messages"],
           refetchType: 'all'
         });
       }
