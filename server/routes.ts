@@ -1000,6 +1000,10 @@ export async function registerRoutes(
           console.error(`[WhatsApp] Background send failed for message ${message.id}:`, sendResult.error);
         } else {
           console.log(`[WhatsApp] Message ${message.id} sent successfully${mediaType ? ` (${mediaType})` : ""}`);
+          // Marcar messageId como enviado pelo CRM para evitar duplicação quando o eco do WhatsApp chegar
+          if (sendResult.messageId) {
+            messageQueue.markMessageSentByCrm(sendResult.messageId);
+          }
         }
       }).catch(error => {
         console.error(`[WhatsApp] Background send error for message ${message.id}:`, error);
@@ -1392,7 +1396,12 @@ export async function registerRoutes(
                   messageToSend
                 );
                 
-                if (msgSent) {
+                if (msgSent.success) {
+                  // Marcar messageId como enviado pelo CRM
+                  if (msgSent.messageId) {
+                    messageQueue.markMessageSentByCrm(msgSent.messageId);
+                  }
+                  
                   // Salvar mensagem no banco
                   const actionMessage = await storage.createMessage({
                     conversationId,
@@ -1412,7 +1421,7 @@ export async function registerRoutes(
                   
                   actionsApplied.push({ type: "SEND_MESSAGE", message: messageToSend, success: true });
                 } else {
-                  actionsApplied.push({ type: "SEND_MESSAGE", success: false, error: "Failed to send" });
+                  actionsApplied.push({ type: "SEND_MESSAGE", success: false, error: msgSent.error || "Failed to send" });
                 }
               }
               break;
@@ -1451,7 +1460,12 @@ export async function registerRoutes(
           renderedMessage
         );
         
-        if (sent) {
+        if (sent.success) {
+          // Marcar messageId como enviado pelo CRM
+          if (sent.messageId) {
+            messageQueue.markMessageSentByCrm(sent.messageId);
+          }
+          
           // Salvar mensagem no banco
           sentMessage = await storage.createMessage({
             conversationId,

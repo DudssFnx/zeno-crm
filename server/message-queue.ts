@@ -22,6 +22,20 @@ let isProcessingAvatars = false;
 let isProcessingMedia = false;
 let io: SocketServer | null = null;
 
+// Rastrear mensagens enviadas pelo CRM para evitar duplicação
+// Mensagens enviadas pelo celular NÃO estarão neste Set
+const sentByCrmMessageIds = new Set<string>();
+
+export function markMessageSentByCrm(messageId: string) {
+  sentByCrmMessageIds.add(messageId);
+  // Limpar após 5 minutos para não crescer infinitamente
+  setTimeout(() => sentByCrmMessageIds.delete(messageId), 5 * 60 * 1000);
+}
+
+export function wasMessageSentByCrm(messageId: string): boolean {
+  return sentByCrmMessageIds.has(messageId);
+}
+
 // Uploads directory
 const UPLOADS_DIR = "./uploads";
 
@@ -507,14 +521,18 @@ export async function handleMessageFast(
   }
 ) {
   // LOG CRÍTICO: Toda mensagem que chega aqui DEVE ser processada
-  console.log(`[ZERO_LOSS] RECEIVED: phone=${message.phoneNumber} direction=${message.direction} content="${message.content.substring(0, 50)}" contact="${message.contactName}"`);
+  console.log(`[ZERO_LOSS] RECEIVED: phone=${message.phoneNumber} direction=${message.direction} content="${message.content.substring(0, 50)}" contact="${message.contactName}" msgId=${message.messageId || "none"}`);
   
-  // IGNORAR mensagens de saída (outgoing) - elas são eco do WhatsApp
-  // As mensagens enviadas pelo CRM já são salvas diretamente em routes.ts
-  // Isso evita duplicação de mensagens
-  if (message.direction === "outgoing") {
-    console.log(`[ZERO_LOSS] SKIP_OUTGOING: eco de mensagem enviada`);
+  // Verificar se é uma mensagem outgoing enviada pelo CRM (evitar duplicação)
+  // Mensagens enviadas do celular (dispositivo vinculado) NÃO estão no Set e devem ser processadas
+  if (message.direction === "outgoing" && message.messageId && wasMessageSentByCrm(message.messageId)) {
+    console.log(`[ZERO_LOSS] SKIP_OUTGOING: eco de mensagem enviada pelo CRM, msgId=${message.messageId}`);
     return;
+  }
+  
+  // Log para mensagens outgoing do celular (estas serão processadas)
+  if (message.direction === "outgoing") {
+    console.log(`[ZERO_LOSS] PROCESSING_OUTGOING: mensagem enviada do celular/dispositivo vinculado`);
   }
   
   // Buscar account do cache ou DB
