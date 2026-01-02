@@ -300,6 +300,8 @@ export default function InboxPage() {
     <DashboardLayout>
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         <ResizablePanel 
+          id="conversation-list"
+          order={1}
           defaultSize={25} 
           minSize={15} 
           maxSize={40}
@@ -314,7 +316,12 @@ export default function InboxPage() {
 
         <ResizableHandle withHandle />
 
-        <ResizablePanel defaultSize={showContactDetails ? 50 : 75} minSize={30}>
+        <ResizablePanel 
+          id="chat-window"
+          order={2}
+          defaultSize={showContactDetails ? 50 : 75} 
+          minSize={30}
+        >
           <ChatWindow
             conversationId={selectedConversationId}
             onContactClick={handleShowContactDetails}
@@ -338,7 +345,13 @@ export default function InboxPage() {
             ) : (
               <>
                 <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={25} minSize={15} maxSize={35}>
+                <ResizablePanel 
+                  id="contact-details"
+                  order={3}
+                  defaultSize={25} 
+                  minSize={15} 
+                  maxSize={35}
+                >
                   <ContactDetails
                     conversationId={selectedConversationId}
                     onClose={handleCloseContactDetails}
