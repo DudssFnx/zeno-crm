@@ -39,6 +39,16 @@ interface MessageMediaReadyEvent {
   fileSize?: number;
 }
 
+interface ConversationDeletedEvent {
+  companyId: string;
+  conversationId: string;
+}
+
+interface ContactDeletedEvent {
+  companyId: string;
+  contactId: string;
+}
+
 export function useRealtime() {
   const socketRef = useRef<Socket | null>(null);
   const { user } = useAuth();
@@ -148,6 +158,32 @@ export function useRealtime() {
       if (data.companyId === user.companyId) {
         queryClient.invalidateQueries({ 
           queryKey: ["/api/conversations", data.conversationId, "messages"],
+          refetchType: 'all'
+        });
+      }
+    });
+
+    socket.on("conversation:deleted", (data: ConversationDeletedEvent) => {
+      console.log("[Realtime] conversation:deleted received:", data.conversationId);
+      
+      if (data.companyId === user.companyId) {
+        queryClient.invalidateQueries({ 
+          queryKey: ["/api/conversations"],
+          refetchType: 'all'
+        });
+      }
+    });
+
+    socket.on("contact:deleted", (data: ContactDeletedEvent) => {
+      console.log("[Realtime] contact:deleted received:", data.contactId);
+      
+      if (data.companyId === user.companyId) {
+        queryClient.invalidateQueries({ 
+          queryKey: ["/api/contacts"],
+          refetchType: 'all'
+        });
+        queryClient.invalidateQueries({ 
+          queryKey: ["/api/conversations"],
           refetchType: 'all'
         });
       }

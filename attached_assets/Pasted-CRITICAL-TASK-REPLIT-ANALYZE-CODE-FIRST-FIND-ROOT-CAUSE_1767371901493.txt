@@ -1,0 +1,222 @@
+CRITICAL TASK (REPLIT) — ANALYZE CODE FIRST, FIND ROOT CAUSE, THEN FIX & COMPLETE
+WHATSAPP CRM USING BAILEYS (NODE.JS)
+
+IMPORTANT:
+DO NOT IMPLEMENT ANY NEW FEATURE BEFORE ANALYZING THE CURRENT CODE.
+FIRST YOU MUST ANALYZE, IDENTIFY ERRORS, AND EXPLAIN WHY THINGS ARE BROKEN.
+ONLY AFTER THAT, APPLY FIXES AND COMPLETE THE FEATURES.
+
+================================================
+STEP 1 — CODE ANALYSIS (MANDATORY)
+================================================
+
+Analyze the ENTIRE current codebase and identify why the following problems are happening.
+
+You MUST:
+- Read the code
+- Trace the execution flow
+- Identify wrong conditions, early returns, missing handlers, or incorrect Baileys usage
+- Point out the EXACT files, functions, and lines responsible
+
+DO NOT GUESS.
+DO NOT SKIP ANALYSIS.
+DO NOT START CODING YET.
+
+------------------------------------------------
+PROBLEMS TO INVESTIGATE
+------------------------------------------------
+
+1) FILES ARE NOT BEING SENT
+- Upload works or not?
+- mediaUrl is valid or not?
+- Baileys sendMessage is being called or blocked?
+- Errors being swallowed?
+
+2) CONTACT PROFILE PICTURE DOES NOT APPEAR
+- profilePictureUrl is never called?
+- Called inside messages.upsert (blocking)?
+- Errors not handled?
+- Cache logic broken?
+
+3) I CANNOT DELETE CONVERSATIONS OR CONTACTS
+- Is delete only happening in frontend state?
+- Is DB delete missing?
+- Is chatId mismatched?
+- Socket event missing?
+
+4) UNKNOWN CONTACTS ARE NOT CREATED AUTOMATICALLY
+- messages.upsert ignoring unknown chats?
+- Code checks “chat exists” and returns?
+- Chat list filtered by opened chats?
+- DB insert missing?
+
+5) MESSAGES ONLY ARRIVE FROM ALREADY-CREATED CONTACTS
+- Identify ALL filters blocking inbound messages
+- Find every condition that prevents new chats from being created
+
+------------------------------------------------
+OUTPUT REQUIRED FOR STEP 1
+------------------------------------------------
+
+Before fixing anything, respond with:
+
+- A list of FOUND ERRORS
+- For each error:
+  - File name
+  - Function name
+  - Code snippet (or description)
+  - Why it breaks the system
+  - What correct behavior should be
+
+ONLY AFTER THIS STEP IS DONE, PROCEED TO STEP 2.
+
+================================================
+STEP 2 — APPLY FIXES (ONLY AFTER ANALYSIS)
+================================================
+
+After identifying the problems above, APPLY THE FIXES following these RULES:
+
+------------------------------------------------
+A) INBOUND MESSAGES (NON-NEGOTIABLE)
+------------------------------------------------
+
+EVERY inbound message MUST:
+- Be processed
+- Create a conversation automatically if it does not exist
+- Appear instantly in the panel
+
+Rules:
+- chatId = msg.key.remoteJid
+- Ignore ONLY:
+  - status@broadcast
+  - groups (@g.us) if not supported
+- NEVER check:
+  - if chat exists before processing
+  - if chat is opened
+  - if operator sent a message first
+
+If chat does not exist → CREATE IT.
+
+------------------------------------------------
+B) AUTO-CREATE CHAT FOR UNKNOWN CONTACTS
+------------------------------------------------
+
+On inbound message:
+- Create conversation with:
+{
+  chatId,
+  phone,
+  contactName: msg.pushName || "Unknown",
+  stage: "NEW",
+  tags: [],
+  unreadCount: 1,
+  createdAt,
+  lastMessageAt
+}
+
+------------------------------------------------
+C) FIX PROFILE PICTURE (AVATAR)
+------------------------------------------------
+
+- Fetch avatar using:
+  sock.profilePictureUrl(chatId, "image")
+- NEVER inside messages.upsert
+- Use background queue
+- Cache result (24h)
+- Save in DB
+- Emit socket event:
+  "contact_update"
+
+------------------------------------------------
+D) FIX FILE / IMAGE / AUDIO SENDING
+------------------------------------------------
+
+- Validate upload endpoint
+- Ensure mediaUrl is publicly accessible
+- Log Baileys sendMessage errors
+- Do NOT silently fail
+
+Correct usage examples:
+
+Image:
+sock.sendMessage(chatId, {
+  image: { url: mediaUrl },
+  caption: text
+})
+
+PDF:
+sock.sendMessage(chatId, {
+  document: { url: mediaUrl },
+  mimetype: "application/pdf",
+  fileName
+})
+
+Audio:
+sock.sendMessage(chatId, {
+  audio: { url: mediaUrl },
+  mimetype: "audio/ogg; codecs=opus",
+  ptt: true
+})
+
+------------------------------------------------
+E) FIX DELETE CONVERSATION / CONTACT
+------------------------------------------------
+
+Implement backend delete:
+- DELETE /api/conversations/:chatId
+- Remove conversation from DB
+- Remove related messages
+- Emit socket:
+  "conversation_deleted"
+
+Frontend must update instantly.
+
+------------------------------------------------
+F) CHAT LIST SOURCE OF TRUTH
+------------------------------------------------
+
+- Chat list must be built ONLY from DB conversations
+- NEVER filter by:
+  - opened chats
+  - sent messages
+  - known contacts
+
+------------------------------------------------
+G) DEBUG LOGS (TEMPORARY)
+------------------------------------------------
+
+Add logs for:
+- inbound message received
+- chat exists? yes/no
+- chat created
+- avatar fetch start/success/fail
+- file send success/error
+- conversation delete success
+
+================================================
+STEP 3 — FINAL DELIVERY
+================================================
+
+After implementing fixes, provide:
+
+1) Summary of bugs found
+2) Files modified
+3) Why the fix works
+4) How to test:
+   - Unknown number sends message → chat appears
+   - Avatar appears
+   - File sends correctly
+   - Delete conversation works
+5) Confirmation that NO UI state blocks inbound messages
+
+================================================
+IMPORTANT FINAL NOTE
+================================================
+
+DO NOT:
+- Assume anything
+- Skip analysis
+- Hide errors
+- Implement without explaining
+
+ANALYZE → EXPLAIN → FIX → CONFIRM

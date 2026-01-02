@@ -559,7 +559,26 @@ export async function registerRoutes(
   // Delete single contact
   app.delete("/api/contacts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      await storage.deleteContact(req.params.id);
+      const contactId = req.params.id;
+      const contact = await storage.getContact(contactId);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      if (contact.companyId !== req.user!.companyId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      await storage.deleteContact(contactId);
+      console.log(`[API] Deleted contact ${contactId} for company ${req.user!.companyId}`);
+      
+      // Emit socket event to update UI in real-time
+      io.to(`company:${req.user!.companyId}`).emit("contact:deleted", {
+        companyId: req.user!.companyId,
+        contactId,
+      });
+      
       res.json({ success: true });
     } catch (error) {
       console.error("Delete contact error:", error);
@@ -575,6 +594,16 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Contact IDs are required" });
       }
       await storage.deleteContacts(ids);
+      console.log(`[API] Deleted ${ids.length} contacts for company ${req.user!.companyId}`);
+      
+      // Emit socket events for each deleted contact
+      for (const contactId of ids) {
+        io.to(`company:${req.user!.companyId}`).emit("contact:deleted", {
+          companyId: req.user!.companyId,
+          contactId,
+        });
+      }
+      
       res.json({ success: true, count: ids.length });
     } catch (error) {
       console.error("Delete contacts error:", error);
@@ -691,6 +720,38 @@ export async function registerRoutes(
   });
 
   // Conversations routes
+  
+  // Delete single conversation
+  app.delete("/api/conversations/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const conversationId = req.params.id;
+      const conversation = await storage.getConversation(conversationId);
+      
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      
+      if (conversation.companyId !== req.user!.companyId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      const count = await storage.deleteConversations(req.user!.companyId, [conversationId]);
+      console.log(`[API] Deleted conversation ${conversationId} for company ${req.user!.companyId}`);
+      
+      // Emit socket event to update UI in real-time
+      io.to(`company:${req.user!.companyId}`).emit("conversation:deleted", {
+        companyId: req.user!.companyId,
+        conversationId,
+      });
+      
+      res.json({ success: true, deleted: count });
+    } catch (error) {
+      console.error("Delete conversation error:", error);
+      res.status(500).json({ message: "Failed to delete conversation" });
+    }
+  });
+  
+  // Delete multiple conversations (bulk)
   app.delete("/api/conversations/bulk", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
       const { ids } = req.body;
@@ -699,6 +760,15 @@ export async function registerRoutes(
       }
       const count = await storage.deleteConversations(req.user!.companyId, ids);
       console.log(`[API] Deleted ${count} conversations for company ${req.user!.companyId}`);
+      
+      // Emit socket events for each deleted conversation
+      for (const conversationId of ids) {
+        io.to(`company:${req.user!.companyId}`).emit("conversation:deleted", {
+          companyId: req.user!.companyId,
+          conversationId,
+        });
+      }
+      
       res.json({ success: true, deleted: count });
     } catch (error) {
       console.error("Delete conversations error:", error);
