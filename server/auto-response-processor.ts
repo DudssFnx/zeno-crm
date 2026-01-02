@@ -56,17 +56,31 @@ function isWithinSchedule(autoResponse: AutoResponse): boolean {
   return true;
 }
 
+function normalizeText(text: string): string {
+  // Remove accents/diacritics and convert to lowercase
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function matchesKeyword(content: string, keywords: string[]): boolean {
   if (!keywords || keywords.length === 0) return false;
   
-  const lowerContent = content.toLowerCase().trim();
+  const normalizedContent = normalizeText(content);
+  const contentWords = normalizedContent.split(" ");
+  
   return keywords.some(keyword => {
-    const lowerKeyword = keyword.toLowerCase().trim();
-    // Match exact word or at start/end
-    return lowerContent === lowerKeyword ||
-           lowerContent.includes(` ${lowerKeyword} `) ||
-           lowerContent.startsWith(`${lowerKeyword} `) ||
-           lowerContent.endsWith(` ${lowerKeyword}`);
+    const normalizedKeyword = normalizeText(keyword);
+    // Match as whole word anywhere in content
+    return contentWords.includes(normalizedKeyword) ||
+           normalizedContent === normalizedKeyword ||
+           normalizedContent.includes(` ${normalizedKeyword} `) ||
+           normalizedContent.startsWith(`${normalizedKeyword} `) ||
+           normalizedContent.endsWith(` ${normalizedKeyword}`);
   });
 }
 
@@ -275,45 +289,69 @@ export async function processAutoResponses(
     
     console.log(`[AutoResponse] Checking ${autoResponses.length} auto responses for message: "${messageContent.substring(0, 30)}..."`);
     
-    // Check if this is first message ever or first message today
-    const hasReceivedEver = await storage.hasContactEverReceivedAutoResponse(contact.id, autoResponses[0]?.id || "");
-    const hasReceivedToday = await storage.hasContactReceivedAutoResponseToday(contact.id, autoResponses[0]?.id || "");
-    
-    // Simple heuristic for first message: if contact was just created (within last minute)
+    // Simple heuristic for new contact: if contact was just created (within last minute)
     const isNewContact = contact.createdAt && 
       (new Date().getTime() - new Date(contact.createdAt).getTime()) < 60000;
     
-    const context: AutoResponseContext = {
-      accountId,
-      companyId,
-      contact,
-      conversation,
-      messageContent,
-      isFirstMessageEver: isNewContact || !hasReceivedEver,
-      isFirstMessageToday: !hasReceivedToday,
-    };
-    
     // Process auto responses in priority order (only first matching one triggers)
     for (const autoResponse of autoResponses) {
-      const shouldRun = await shouldTrigger(autoResponse, context);
-      
-      if (shouldRun) {
-        console.log(`[AutoResponse] Triggered: "${autoResponse.name}"`);
+      try {
+        // Check first_message flags per auto response (each has its own history)
+        const hasReceivedEver = await storage.hasContactEverReceivedAutoResponse(contact.id, autoResponse.id);
+        const hasReceivedToday = await storage.hasContactReceivedAutoResponseToday(contact.id, autoResponse.id);
         
-        // Execute actions
-        await executeActions(autoResponse, context);
+        const context: AutoResponseContext = {
+          accountId,
+          companyId,
+          contact,
+          conversation,
+          messageContent,
+          isFirstMessageEver: isNewContact || !hasReceivedEver,
+          isFirstMessageToday: !hasReceivedToday,
+        };
         
-        // Log execution
-        await storage.createAutoResponseLog({
-          autoResponseId: autoResponse.id,
-          contactId: contact.id,
-          conversationId: conversation.id,
-          triggerMessage: messageContent,
-          actionsTaken: autoResponse.actions as any,
-        });
+        const shouldRun = await shouldTrigger(autoResponse, context);
         
-        // Only execute first matching auto response (by priority)
-        break;
+        if (shouldRun) {
+          console.log(`[AutoResponse] Triggered: "${autoResponse.name}"`);
+          
+          try {
+            // Execute actions
+            await executeActions(autoResponse, context);
+            
+            // Log successful execution
+            await storage.createAutoResponseLog({
+              autoResponseId: autoResponse.id,
+              contactId: contact.id,
+              conversationId: conversation.id,
+              triggerMessage: messageContent,
+              actionsTaken: autoResponse.actions as any,
+            });
+            
+            console.log(`[AutoResponse] Successfully executed: "${autoResponse.name}"`);
+          } catch (execError) {
+            // Log failed execution
+            console.error(`[AutoResponse] Execution failed for "${autoResponse.name}":`, execError);
+            
+            await storage.createAutoResponseLog({
+              autoResponseId: autoResponse.id,
+              contactId: contact.id,
+              conversationId: conversation.id,
+              triggerMessage: messageContent,
+              actionsTaken: [{
+                error: true,
+                message: execError instanceof Error ? execError.message : String(execError),
+                attemptedActions: autoResponse.actions,
+              }] as any,
+            });
+          }
+          
+          // Only execute first matching auto response (by priority)
+          break;
+        }
+      } catch (perResponseError) {
+        console.error(`[AutoResponse] Error checking auto response "${autoResponse.name}":`, perResponseError);
+        // Continue to next auto response
       }
     }
   } catch (error) {
