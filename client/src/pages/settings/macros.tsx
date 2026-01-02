@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Zap, X, Tag as TagIcon, UserCircle, CircleDot } from "lucide-react";
+import { Plus, Pencil, Trash2, Zap, X, Tag as TagIcon, UserCircle, CircleDot, MessageCircle } from "lucide-react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -26,6 +26,7 @@ const actionTypes = [
   { value: "REMOVE_TAG", label: "Remover Etiqueta" },
   { value: "SET_STATUS", label: "Alterar Status" },
   { value: "ASSIGN_AGENT", label: "Atribuir Atendente" },
+  { value: "SEND_MESSAGE", label: "Enviar Mensagem" },
 ];
 
 const statusOptions = [
@@ -35,10 +36,11 @@ const statusOptions = [
 ];
 
 const macroActionSchema = z.object({
-  type: z.enum(["ADD_TAG", "REMOVE_TAG", "SET_STATUS", "ASSIGN_AGENT"]),
+  type: z.enum(["ADD_TAG", "REMOVE_TAG", "SET_STATUS", "ASSIGN_AGENT", "SEND_MESSAGE"]),
   tagId: z.string().optional(),
   status: z.enum(["open", "pending", "resolved"]).optional(),
   agentId: z.string().optional(),
+  message: z.string().optional(),
 });
 
 const macroFormSchema = z.object({
@@ -166,16 +168,17 @@ export default function MacrosPage() {
   const handleOpenDialog = (macro?: Macro) => {
     if (macro) {
       setEditingMacro(macro);
-      const actions = (macro.actions as Array<{ type: string; tagId?: string; status?: string; agentId?: string }>) || [];
+      const actions = (macro.actions as Array<{ type: string; tagId?: string; status?: string; agentId?: string; message?: string }>) || [];
       form.reset({
         name: macro.name,
         description: macro.description || "",
         messageTemplate: macro.messageTemplate || "",
         actions: actions.map((a) => ({
-          type: a.type as "ADD_TAG" | "REMOVE_TAG" | "SET_STATUS" | "ASSIGN_AGENT",
+          type: a.type as "ADD_TAG" | "REMOVE_TAG" | "SET_STATUS" | "ASSIGN_AGENT" | "SEND_MESSAGE",
           tagId: a.tagId,
           status: a.status as "open" | "pending" | "resolved" | undefined,
           agentId: a.agentId,
+          message: a.message,
         })),
       });
     } else {
@@ -193,7 +196,7 @@ export default function MacrosPage() {
     }
   };
 
-  const getActionLabel = (action: { type: string; tagId?: string; status?: string; agentId?: string }) => {
+  const getActionLabel = (action: { type: string; tagId?: string; status?: string; agentId?: string; message?: string }) => {
     const tag = tags.find((t) => t.id === action.tagId);
     const agent = users.find((u) => u.id === action.agentId);
     
@@ -206,6 +209,8 @@ export default function MacrosPage() {
         return `Alterar status: ${statusOptions.find((s) => s.value === action.status)?.label || "?"}`;
       case "ASSIGN_AGENT":
         return action.agentId ? `Atribuir a: ${agent?.name || "?"}` : "Remover atribuição";
+      case "SEND_MESSAGE":
+        return action.message ? `Enviar: "${action.message.substring(0, 30)}${action.message.length > 30 ? "..." : ""}"` : "Enviar mensagem";
       default:
         return action.type;
     }
@@ -220,6 +225,8 @@ export default function MacrosPage() {
         return CircleDot;
       case "ASSIGN_AGENT":
         return UserCircle;
+      case "SEND_MESSAGE":
+        return MessageCircle;
       default:
         return Zap;
     }
@@ -458,6 +465,28 @@ export default function MacrosPage() {
                                     )}
                                   />
                                 )}
+
+                                {actionType === "SEND_MESSAGE" && (
+                                  <FormField
+                                    control={form.control}
+                                    name={`actions.${index}.message`}
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormControl>
+                                          <Textarea
+                                            {...field}
+                                            placeholder="Digite a mensagem a ser enviada..."
+                                            className="min-h-20"
+                                            data-testid={`input-action-message-${index}`}
+                                          />
+                                        </FormControl>
+                                        <FormDescription className="text-xs">
+                                          Variáveis: {"{{nome}}"}, {"{{telefone}}"}, {"{{primeiro_nome}}"}, {"{{empresa}}"}, {"{{tags}}"}, {"{{atendente}}"}
+                                        </FormDescription>
+                                      </FormItem>
+                                    )}
+                                  />
+                                )}
                               </div>
 
                               <Button
@@ -522,7 +551,7 @@ export default function MacrosPage() {
           ) : (
             <div className="space-y-4">
               {macros.map((macro) => {
-                const actions = (macro.actions as Array<{ type: string; tagId?: string; status?: string; agentId?: string }>) || [];
+                const actions = (macro.actions as Array<{ type: string; tagId?: string; status?: string; agentId?: string; message?: string }>) || [];
                 return (
                   <Card key={macro.id} data-testid={`macro-card-${macro.id}`}>
                     <CardContent className="p-4">

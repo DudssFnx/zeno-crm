@@ -1070,6 +1070,56 @@ export async function registerRoutes(
                 actionsApplied.push({ type: "ASSIGN_AGENT", agentId: action.agentId, success: true });
               }
               break;
+              
+            case "SEND_MESSAGE":
+              if (action.message) {
+                // Buscar tags atualizadas para template
+                const currentTags = await storage.getContactTags(contact.id);
+                const currentTagNames = currentTags.map(t => t.name).join(", ");
+                
+                const messageContext = {
+                  nome: contact.name,
+                  telefone: contact.phoneNumber,
+                  primeiro_nome: contact.name.split(" ")[0],
+                  empresa: "",
+                  tags: currentTagNames,
+                  atendente: req.user!.displayName || req.user!.name,
+                };
+                
+                const messageToSend = renderTemplate(action.message, messageContext);
+                
+                // Enviar mensagem via WhatsApp
+                const msgChatId = normalizeJid(contact.phoneNumber);
+                const msgSent = await whatsappBaileys.sendMessage(
+                  conversation.whatsappAccountId,
+                  msgChatId,
+                  messageToSend
+                );
+                
+                if (msgSent) {
+                  // Salvar mensagem no banco
+                  const actionMessage = await storage.createMessage({
+                    conversationId,
+                    direction: "outgoing",
+                    content: messageToSend,
+                    senderId: req.user!.id,
+                    senderDisplayName: req.user!.displayName || req.user!.name,
+                  });
+                  
+                  // Emitir evento de nova mensagem
+                  io.to(`company:${req.user!.companyId}`).emit("message:created", {
+                    conversationId,
+                    messageId: actionMessage.id,
+                    direction: "outgoing",
+                    content: messageToSend,
+                  });
+                  
+                  actionsApplied.push({ type: "SEND_MESSAGE", message: messageToSend, success: true });
+                } else {
+                  actionsApplied.push({ type: "SEND_MESSAGE", success: false, error: "Failed to send" });
+                }
+              }
+              break;
           }
         } catch (actionError) {
           console.error(`Error executing action ${action.type}:`, actionError);
