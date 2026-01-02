@@ -29,6 +29,7 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("operator"), // master | admin | operator
   displayName: text("display_name"), // Name shown in messages
+  prefixMode: text("prefix_mode").notNull().default("prefix"), // prefix | firstLine | none
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -115,6 +116,7 @@ export const conversations = pgTable("conversations", {
   whatsappAccountId: varchar("whatsapp_account_id").notNull().references(() => whatsappAccounts.id),
   contactId: varchar("contact_id").notNull().references(() => contacts.id),
   assignedToUserId: varchar("assigned_to_user_id").references(() => users.id),
+  stageId: varchar("stage_id"), // Kanban stage (references stages.id)
   status: text("status").notNull().default("open"), // open | pending | resolved | closed
   inbox: text("inbox").notNull().default("whatsapp"),
   lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
@@ -139,6 +141,10 @@ export const messages = pgTable("messages", {
   senderDisplayName: text("sender_display_name"), // Agent display name snapshot
   content: text("content").notNull(),
   mediaUrl: text("media_url"),
+  mediaType: text("media_type"), // text | image | audio | document | video
+  fileName: text("file_name"),
+  mimetype: text("mimetype"),
+  fileSize: text("file_size"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -229,6 +235,21 @@ export const cannedResponsesRelations = relations(cannedResponses, ({ one }) => 
   company: one(companies, { fields: [cannedResponses.companyId], references: [companies.id] }),
 }));
 
+// Kanban Stages (Estágios do Funil)
+export const stages = pgTable("stages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id),
+  name: text("name").notNull(),
+  color: text("color").notNull().default("#6B7280"),
+  order: text("order").notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const stagesRelations = relations(stages, ({ one }) => ({
+  company: one(companies, { fields: [stages.companyId], references: [companies.id] }),
+}));
+
 // Insert schemas
 export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
@@ -243,6 +264,7 @@ export const insertAutomationLogSchema = createInsertSchema(automationLogs).omit
 export const insertCannedResponseSchema = createInsertSchema(cannedResponses).omit({ id: true, createdAt: true });
 export const insertMacroSchema = createInsertSchema(macros).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMacroExecutionSchema = createInsertSchema(macroExecutions).omit({ id: true, executedAt: true });
+export const insertStageSchema = createInsertSchema(stages).omit({ id: true, createdAt: true, updatedAt: true });
 
 // Macro action types
 export const macroActionSchema = z.discriminatedUnion("type", [
@@ -293,6 +315,9 @@ export type InsertMacro = z.infer<typeof insertMacroSchema>;
 
 export type MacroExecution = typeof macroExecutions.$inferSelect;
 export type InsertMacroExecution = z.infer<typeof insertMacroExecutionSchema>;
+
+export type Stage = typeof stages.$inferSelect;
+export type InsertStage = z.infer<typeof insertStageSchema>;
 
 // Auth schemas
 export const loginSchema = z.object({
