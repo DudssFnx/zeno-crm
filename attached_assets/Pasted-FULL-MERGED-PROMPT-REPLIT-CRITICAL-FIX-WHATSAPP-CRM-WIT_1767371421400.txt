@@ -1,0 +1,228 @@
+FULL MERGED PROMPT (REPLIT) — CRITICAL FIX
+WHATSAPP CRM WITH BAILEYS
+AUTO-CREATE UNKNOWN CHATS + INBOUND MESSAGES ALWAYS ARRIVE + FIX AVATAR (PROFILE PICTURE)
+
+THIS PROMPT MERGES AND CONSOLIDATES THE LAST TWO PROMPTS INTO ONE SINGLE, CLEAR, NON-NEGOTIABLE SPECIFICATION.
+
+================================================
+CRITICAL PROBLEM (CURRENT STATE)
+================================================
+Right now, the CRM ONLY receives messages when:
+- the contact/chat already exists in the database
+- OR the operator already opened the chat
+- OR the operator sent a message first
+
+Messages from NEW / UNKNOWN numbers:
+❌ do NOT arrive
+❌ do NOT create a chat
+❌ do NOT appear in the left panel
+❌ do NOT show profile picture
+
+THIS IS A SEVERE LOGIC BUG AND MUST BE FIXED.
+
+================================================
+ABSOLUTE RULE (NON-NEGOTIABLE)
+================================================
+EVERY inbound WhatsApp message MUST be processed.
+
+NO EXCEPTIONS:
+- No dependency on UI state
+- No dependency on existing chats
+- No dependency on known contacts
+- No dependency on previous outbound messages
+
+INBOUND MESSAGE
+→ ALWAYS CREATE OR UPDATE CHAT
+→ ALWAYS EMIT TO UI
+→ ALWAYS APPEAR IN PANEL
+
+================================================
+A) INBOUND MESSAGE HANDLER (MANDATORY)
+================================================
+
+In:
+sock.ev.on("messages.upsert", ({ messages, type }) => {})
+
+You MUST:
+
+1) Process EVERY message with:
+   chatId = msg.key.remoteJid
+
+2) Ignore ONLY:
+   - status@broadcast
+   - (optional) groups ending with @g.us if not supported
+
+DO NOT IGNORE:
+- unknown numbers
+- chats not opened
+- contacts not in DB
+- chats with no outbound messages
+
+================================================
+B) AUTO-CREATE CHAT FOR UNKNOWN CONTACTS
+================================================
+
+ON EVERY inbound message:
+
+IF chat DOES NOT exist in DB:
+- CREATE IT IMMEDIATELY
+
+Conversation default structure:
+{
+  chatId,
+  phone: digits extracted from chatId,
+  contactName: msg.pushName || "Unknown",
+  stage: "NEW",
+  tags: [],
+  unreadCount: 1,
+  createdAt: now,
+  lastMessageAt: now
+}
+
+IF chat EXISTS:
+- lastMessageAt = now
+- unreadCount++
+
+================================================
+C) REMOVE ALL BLOCKING FILTERS (CRITICAL)
+================================================
+
+Search the entire codebase and REMOVE any logic like:
+
+❌ if (!chat) return
+❌ if (!conversationExists) ignore
+❌ if (!openedChatIds.includes(chatId)) return
+❌ if (!knownContact) return
+❌ filters based on UI state
+❌ filters based on outbound-only logic
+
+If chat does NOT exist → CREATE IT.
+Never ignore inbound messages.
+
+================================================
+D) CHAT LIST — SINGLE SOURCE OF TRUTH
+================================================
+
+The left panel chat list MUST be built ONLY from:
+- conversations stored in the database
+
+DO NOT:
+- build chat list from sent messages
+- build chat list from opened chats
+- rely on frontend memory/state
+
+If a conversation exists in DB → it MUST appear in the panel.
+
+================================================
+E) REAL-TIME EMISSION (SOCKET.IO)
+================================================
+
+On EVERY inbound message (including unknown contacts), IMMEDIATELY emit:
+
+- "conversation_upserted"
+- "wa_new_message"
+
+DO NOT:
+- wait for DB save
+- wait for avatar fetch
+- wait for media download
+
+================================================
+F) PROFILE PICTURE (AVATAR) — FIX REQUIRED
+================================================
+
+PROBLEM:
+Profile pictures are not appearing OR blocking execution.
+
+SOLUTION (MANDATORY):
+
+1) Fetch avatar ONLY in background:
+   await sock.profilePictureUrl(chatId, "image")
+
+2) NEVER fetch avatar directly inside messages.upsert.
+
+3) Cache avatar:
+- TTL: 24 hours
+- Save in DB:
+  profilePicUrl
+  profilePicUpdatedAt
+
+4) On successful fetch:
+- Emit socket event:
+  "contact_update" → { chatId, profilePicUrl, contactName }
+
+5) Frontend:
+- Listen to "contact_update"
+- Update avatar in chat list and chat header immediately
+
+================================================
+G) BACKGROUND QUEUES (MANDATORY)
+================================================
+
+Use background queues for:
+- DB writes
+- Avatar fetching
+- Media downloads (if enabled)
+
+DO NOT:
+- block messages.upsert
+- perform heavy async operations inline
+
+================================================
+H) BAILEYS EVENTS TO USE (FULL POTENTIAL)
+================================================
+
+Required:
+- messages.upsert        → inbound processing & auto-create chats
+- contacts.update        → update contactName when WhatsApp changes it
+- message-receipt.update → sent/delivered/read
+- messages.update        → status updates
+
+Optional (safe use):
+- chats.upsert / chats.update
+- presence.update (visual only, optional)
+
+================================================
+I) DEBUG LOGGING (TEMPORARY — REQUIRED)
+================================================
+
+Add logs to CONFIRM the fix:
+
+On inbound message:
+[INBOUND] chatId=5511999999999@s.whatsapp.net exists=false → CREATING CHAT
+
+If this log does NOT appear for unknown numbers, the fix is NOT COMPLETE.
+
+================================================
+J) ACCEPTANCE TEST (MANDATORY)
+================================================
+
+This task is ONLY COMPLETE if:
+
+1) A WhatsApp message is sent from a number NEVER contacted before
+2) The CRM:
+   - receives the message
+   - automatically creates a new chat
+   - shows it instantly in the panel
+   - marks it as unread
+3) Profile picture appears shortly after (background fetch)
+4) No page refresh
+5) No need to open chat first
+6) No operator action required
+
+================================================
+FINAL INSTRUCTION
+================================================
+
+Refactor the inbound message flow so that:
+
+INBOUND MESSAGE
+→ ALWAYS CREATE OR UPDATE CHAT
+→ ALWAYS EMIT TO UI
+→ NEVER DEPEND ON EXISTING CONTACTS OR UI STATE
+
+DELIVER:
+- Files changed
+- Filters removed
+- Auto-create chat logic added
+- Proof logs working

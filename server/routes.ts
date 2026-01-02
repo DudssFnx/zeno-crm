@@ -88,6 +88,8 @@ export async function registerRoutes(
         senderDisplayName: message.senderDisplayName,
         avatarUrl: message.avatarUrl,
         timestamp: message.timestamp,
+        mediaInfo: message.mediaInfo,
+        messageId: message.messageId,
       });
       
       console.log(`[FastHandler] Processed in ${Date.now() - startTime}ms`);
