@@ -18,6 +18,7 @@ import {
   X,
   Star,
   GripVertical,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -59,6 +60,7 @@ const settingsItems = [
   { icon: Columns, label: "Estágios", path: "/settings/stages", adminOnly: true },
   { icon: Zap, label: "Respostas Rápidas", path: "/settings/canned-responses", adminOnly: true },
   { icon: PlaySquare, label: "Macros", path: "/settings/macros", adminOnly: true },
+  { icon: Bot, label: "Auto Atendimento", path: "/settings/auto-responses", adminOnly: true },
   { icon: Webhook, label: "Webhooks", path: "/settings/webhooks", adminOnly: true },
   { icon: Settings, label: "Meu Perfil", path: "/settings/profile" },
 ];

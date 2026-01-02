@@ -20,6 +20,7 @@ import MacrosPage from "@/pages/settings/macros";
 import ProfilePage from "@/pages/settings/profile";
 import StagesPage from "@/pages/settings/stages";
 import AttributesPage from "@/pages/settings/attributes";
+import AutoResponsesPage from "@/pages/settings/auto-responses";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -108,6 +109,9 @@ function Router() {
       </Route>
       <Route path="/settings/attributes">
         <AdminRoute component={AttributesPage} />
+      </Route>
+      <Route path="/settings/auto-responses">
+        <AdminRoute component={AutoResponsesPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>
