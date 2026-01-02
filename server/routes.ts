@@ -582,6 +582,32 @@ export async function registerRoutes(
     }
   });
 
+  // Delete single contact
+  app.delete("/api/contacts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteContact(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete contact error:", error);
+      res.status(500).json({ message: "Failed to delete contact" });
+    }
+  });
+
+  // Delete multiple contacts
+  app.delete("/api/contacts", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { ids } = req.body;
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "Contact IDs are required" });
+      }
+      await storage.deleteContacts(ids);
+      res.json({ success: true, count: ids.length });
+    } catch (error) {
+      console.error("Delete contacts error:", error);
+      res.status(500).json({ message: "Failed to delete contacts" });
+    }
+  });
+
   // Tags routes
   app.get("/api/tags", authMiddleware(storage), async (req: AuthRequest, res) => {
     const tags = await storage.getTags(req.user!.companyId);

@@ -41,6 +41,8 @@ export interface IStorage {
   getContactByPhone(companyId: string, phoneNumber: string): Promise<Contact | undefined>;
   getContacts(companyId: string): Promise<Contact[]>;
   updateContact(id: string, data: Partial<InsertContact>): Promise<Contact | undefined>;
+  deleteContact(id: string): Promise<void>;
+  deleteContacts(ids: string[]): Promise<void>;
 
   // Tags
   createTag(data: InsertTag): Promise<Tag>;
@@ -211,6 +213,18 @@ export class DatabaseStorage implements IStorage {
       .where(eq(contacts.id, id))
       .returning();
     return contact;
+  }
+
+  async deleteContact(id: string): Promise<void> {
+    // Delete related contact_tags first
+    await db.delete(contactTags).where(eq(contactTags.contactId, id));
+    await db.delete(contacts).where(eq(contacts.id, id));
+  }
+
+  async deleteContacts(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      await this.deleteContact(id);
+    }
   }
 
   // Tags
