@@ -170,12 +170,24 @@ export async function registerRoutes(
 
       // Emit Socket.IO events for real-time updates (company-scoped)
       const companyRoom = `company:${companyId}`;
-      io.to(companyRoom).emit("message:created", {
+      
+      // Get room info for debugging
+      const room = io.sockets.adapter.rooms.get(companyRoom);
+      const roomSize = room ? room.size : 0;
+      console.log(`[Socket.IO] Emitting to room ${companyRoom} with ${roomSize} clients`);
+      
+      const messageEvent = {
         companyId,
         conversationId: conversation.id,
         contactId: contact.id,
         message: savedMessage,
+      };
+      console.log(`[Socket.IO] Emitting message:created`, {
+        conversationId: conversation.id,
+        messageId: savedMessage.id,
+        direction,
       });
+      io.to(companyRoom).emit("message:created", messageEvent);
       
       io.to(companyRoom).emit("conversation:updated", {
         companyId,
