@@ -19,7 +19,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import type { Macro, Tag, User } from "@shared/schema";
+import type { Macro, Tag, User, ContactAttribute } from "@shared/schema";
 
 const actionTypes = [
   { value: "ADD_TAG", label: "Adicionar Etiqueta" },
@@ -30,14 +30,7 @@ const actionTypes = [
   { value: "SET_ATTRIBUTE", label: "Definir Atributo" },
 ];
 
-const attributeOptions = [
-  { value: "NONE", label: "Nenhum" },
-  { value: "CLIENTE", label: "CLIENTE" },
-  { value: "FORNECEDOR", label: "FORNECEDOR" },
-  { value: "PARCEIRO", label: "PARCEIRO" },
-  { value: "LEAD", label: "LEAD" },
-  { value: "VIP", label: "VIP" },
-];
+// Atributos agora são carregados dinamicamente da API
 
 const statusOptions = [
   { value: "open", label: "Aberto" },
@@ -105,6 +98,15 @@ export default function MacrosPage() {
     queryFn: async () => {
       const res = await authFetch("/api/users");
       if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
+  });
+
+  const { data: contactAttributes = [] } = useQuery<ContactAttribute[]>({
+    queryKey: ["/api/contact-attributes"],
+    queryFn: async () => {
+      const res = await authFetch("/api/contact-attributes");
+      if (!res.ok) throw new Error("Failed to fetch attributes");
       return res.json();
     },
   });
@@ -520,9 +522,16 @@ export default function MacrosPage() {
                                             </SelectTrigger>
                                           </FormControl>
                                           <SelectContent>
-                                            {attributeOptions.map((attr) => (
-                                              <SelectItem key={attr.value} value={attr.value}>
-                                                {attr.label}
+                                            <SelectItem value="NONE">Nenhum</SelectItem>
+                                            {contactAttributes.map((attr) => (
+                                              <SelectItem key={attr.id} value={attr.name}>
+                                                <span className="flex items-center gap-2">
+                                                  <span 
+                                                    className="w-3 h-3 rounded-full" 
+                                                    style={{ backgroundColor: attr.color }} 
+                                                  />
+                                                  {attr.name}
+                                                </span>
                                               </SelectItem>
                                             ))}
                                           </SelectContent>

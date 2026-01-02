@@ -16,6 +16,7 @@ import {
   Columns,
   ArrowLeft,
   X,
+  Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -49,7 +50,7 @@ const navItems = [
   { icon: Users, label: "Usuários", path: "/settings/users", adminOnly: true },
   { icon: Smartphone, label: "Contas WhatsApp", path: "/settings/accounts", operatorHidden: true },
   { icon: Tag, label: "Etiquetas", path: "/settings/tags", operatorHidden: true },
-  { icon: Tag, label: "Atributos", path: "/settings/attributes", operatorHidden: true },
+  { icon: Star, label: "Atributos", path: "/settings/attributes", operatorHidden: true },
   { icon: Columns, label: "Estágios", path: "/settings/stages", operatorHidden: true },
   { icon: Zap, label: "Respostas Rápidas", path: "/settings/canned-responses" },
   { icon: PlaySquare, label: "Macros", path: "/settings/macros" },

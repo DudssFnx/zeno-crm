@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, MessageSquare, Trash2, X, UserCircle } from "lucide-react";
+import { Search, MessageSquare, Trash2, X, Star } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -355,10 +355,10 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                       {conv.contact.attribute && (
                         <Badge 
                           variant="outline" 
-                          className="text-[10px] px-1.5 py-0 h-5 border-orange-500/50 text-orange-600 dark:text-orange-400 bg-transparent"
+                          className="text-[10px] px-1.5 py-0 h-5 border-amber-500/50 text-amber-600 dark:text-amber-400 bg-transparent"
                           data-testid={`badge-attribute-${conv.id}`}
                         >
-                          <UserCircle className="h-3 w-3 mr-0.5" />
+                          <Star className="h-3 w-3 mr-0.5 fill-current" />
                           {conv.contact.attribute}
                         </Badge>
                       )}

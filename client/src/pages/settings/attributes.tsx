@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, UserCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Star } from "lucide-react";
 import { useAuthFetch } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -144,7 +144,7 @@ export default function AttributesSettingsPage() {
         <div className="p-6 max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <UserCircle className="h-6 w-6 text-primary" />
+              <Star className="h-6 w-6 text-primary" />
               <h1 className="text-2xl font-semibold">Atributos de Contato</h1>
             </div>
             <Button onClick={openCreateDialog} data-testid="button-create-attribute">
@@ -161,7 +161,7 @@ export default function AttributesSettingsPage() {
             <LoadingCard />
           ) : attributes.length === 0 ? (
             <EmptyState
-              icon={UserCircle}
+              icon={Star}
               title="Nenhum atributo configurado"
               description="Crie atributos personalizados para classificar seus contatos."
               action={
