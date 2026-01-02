@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { normalizePhone } from "./jid-utils";
 import { dispatchWebhook } from "./webhook-dispatcher";
 import { whatsappBaileys, MediaInfo } from "./whatsapp-baileys";
+import { processAutoResponses, setAutoResponseSocket } from "./auto-response-processor";
 import fs from "fs";
 import path from "path";
 import { proto } from "@whiskeysockets/baileys";
@@ -70,6 +71,7 @@ interface MediaDownloadTask {
 
 export function setSocketServer(socketServer: SocketServer) {
   io = socketServer;
+  setAutoResponseSocket(socketServer);
 }
 
 export function getAccountFromCache(accountId: string) {
@@ -503,6 +505,10 @@ async function processMessageInBackground(msg: QueuedMessage) {
         phoneNumber,
         mediaType: mediaInfo?.mediaType,
       }).catch(err => console.error("[Webhook] Error:", err));
+      
+      // Processar auto respostas em background
+      processAutoResponses(accountId, companyId, contact, conversation, content)
+        .catch(err => console.error("[AutoResponse] Error:", err));
     }
     
     console.log(`[ZERO_LOSS] SAVED: msgId=${savedMessage.id} convId=${conversation.id} phone=${phoneNumber} content="${content.substring(0, 30)}"`);
