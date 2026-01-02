@@ -17,10 +17,12 @@ import {
   ArrowLeft,
   X,
   Star,
+  GripVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -296,44 +298,57 @@ export default function InboxPage() {
 
   return (
     <DashboardLayout>
-      <div className={cn(
-        "shrink-0",
-        isTablet ? "w-72" : "w-80"
-      )}>
-        <ConversationList
-          selectedId={selectedConversationId}
-          onSelect={handleSelectConversation}
-          currentUserId={user.id}
-        />
-      </div>
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
+        <ResizablePanel 
+          defaultSize={25} 
+          minSize={15} 
+          maxSize={40}
+          className="min-w-[200px]"
+        >
+          <ConversationList
+            selectedId={selectedConversationId}
+            onSelect={handleSelectConversation}
+            currentUserId={user.id}
+          />
+        </ResizablePanel>
 
-      <ChatWindow
-        conversationId={selectedConversationId}
-        onContactClick={handleShowContactDetails}
-      />
+        <ResizableHandle withHandle />
 
-      {showContactDetails && selectedConversationId && (
-        <>
-          {isTablet ? (
-            <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm" onClick={handleCloseContactDetails}>
-              <div 
-                className="fixed right-0 top-0 h-full w-80 bg-background border-l shadow-lg animate-in slide-in-from-right"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <ContactDetails
-                  conversationId={selectedConversationId}
-                  onClose={handleCloseContactDetails}
-                />
+        <ResizablePanel defaultSize={showContactDetails ? 50 : 75} minSize={30}>
+          <ChatWindow
+            conversationId={selectedConversationId}
+            onContactClick={handleShowContactDetails}
+          />
+        </ResizablePanel>
+
+        {showContactDetails && selectedConversationId && (
+          <>
+            {isTablet ? (
+              <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm" onClick={handleCloseContactDetails}>
+                <div 
+                  className="fixed right-0 top-0 h-full w-80 bg-background border-l shadow-lg animate-in slide-in-from-right"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ContactDetails
+                    conversationId={selectedConversationId}
+                    onClose={handleCloseContactDetails}
+                  />
+                </div>
               </div>
-            </div>
-          ) : (
-            <ContactDetails
-              conversationId={selectedConversationId}
-              onClose={handleCloseContactDetails}
-            />
-          )}
-        </>
-      )}
+            ) : (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={25} minSize={15} maxSize={35}>
+                  <ContactDetails
+                    conversationId={selectedConversationId}
+                    onClose={handleCloseContactDetails}
+                  />
+                </ResizablePanel>
+              </>
+            )}
+          </>
+        )}
+      </ResizablePanelGroup>
     </DashboardLayout>
   );
 }
