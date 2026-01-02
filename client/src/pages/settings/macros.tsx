@@ -27,6 +27,16 @@ const actionTypes = [
   { value: "SET_STATUS", label: "Alterar Status" },
   { value: "ASSIGN_AGENT", label: "Atribuir Atendente" },
   { value: "SEND_MESSAGE", label: "Enviar Mensagem" },
+  { value: "SET_ATTRIBUTE", label: "Definir Atributo" },
+];
+
+const attributeOptions = [
+  { value: "NONE", label: "Nenhum" },
+  { value: "CLIENTE", label: "CLIENTE" },
+  { value: "FORNECEDOR", label: "FORNECEDOR" },
+  { value: "PARCEIRO", label: "PARCEIRO" },
+  { value: "LEAD", label: "LEAD" },
+  { value: "VIP", label: "VIP" },
 ];
 
 const statusOptions = [
@@ -36,11 +46,12 @@ const statusOptions = [
 ];
 
 const macroActionSchema = z.object({
-  type: z.enum(["ADD_TAG", "REMOVE_TAG", "SET_STATUS", "ASSIGN_AGENT", "SEND_MESSAGE"]),
+  type: z.enum(["ADD_TAG", "REMOVE_TAG", "SET_STATUS", "ASSIGN_AGENT", "SEND_MESSAGE", "SET_ATTRIBUTE"]),
   tagId: z.string().optional(),
   status: z.enum(["open", "pending", "resolved"]).optional(),
   agentId: z.string().optional(),
   message: z.string().optional(),
+  attribute: z.string().optional(),
 });
 
 const macroFormSchema = z.object({
@@ -168,17 +179,18 @@ export default function MacrosPage() {
   const handleOpenDialog = (macro?: Macro) => {
     if (macro) {
       setEditingMacro(macro);
-      const actions = (macro.actions as Array<{ type: string; tagId?: string; status?: string; agentId?: string; message?: string }>) || [];
+      const actions = (macro.actions as Array<{ type: string; tagId?: string; status?: string; agentId?: string; message?: string; attribute?: string }>) || [];
       form.reset({
         name: macro.name,
         description: macro.description || "",
         messageTemplate: macro.messageTemplate || "",
         actions: actions.map((a) => ({
-          type: a.type as "ADD_TAG" | "REMOVE_TAG" | "SET_STATUS" | "ASSIGN_AGENT" | "SEND_MESSAGE",
+          type: a.type as "ADD_TAG" | "REMOVE_TAG" | "SET_STATUS" | "ASSIGN_AGENT" | "SEND_MESSAGE" | "SET_ATTRIBUTE",
           tagId: a.tagId,
           status: a.status as "open" | "pending" | "resolved" | undefined,
           agentId: a.agentId,
           message: a.message,
+          attribute: a.attribute,
         })),
       });
     } else {
@@ -196,7 +208,7 @@ export default function MacrosPage() {
     }
   };
 
-  const getActionLabel = (action: { type: string; tagId?: string; status?: string; agentId?: string; message?: string }) => {
+  const getActionLabel = (action: { type: string; tagId?: string; status?: string; agentId?: string; message?: string; attribute?: string }) => {
     const tag = tags.find((t) => t.id === action.tagId);
     const agent = users.find((u) => u.id === action.agentId);
     
@@ -211,6 +223,8 @@ export default function MacrosPage() {
         return action.agentId ? `Atribuir a: ${agent?.name || "?"}` : "Remover atribuição";
       case "SEND_MESSAGE":
         return action.message ? `Enviar: "${action.message.substring(0, 30)}${action.message.length > 30 ? "..." : ""}"` : "Enviar mensagem";
+      case "SET_ATTRIBUTE":
+        return `Definir atributo: ${action.attribute === "NONE" || !action.attribute ? "Nenhum" : action.attribute}`;
       default:
         return action.type;
     }
@@ -227,6 +241,8 @@ export default function MacrosPage() {
         return UserCircle;
       case "SEND_MESSAGE":
         return MessageCircle;
+      case "SET_ATTRIBUTE":
+        return UserCircle;
       default:
         return Zap;
     }
@@ -487,6 +503,34 @@ export default function MacrosPage() {
                                     )}
                                   />
                                 )}
+
+                                {actionType === "SET_ATTRIBUTE" && (
+                                  <FormField
+                                    control={form.control}
+                                    name={`actions.${index}.attribute`}
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <Select
+                                          value={field.value || ""}
+                                          onValueChange={field.onChange}
+                                        >
+                                          <FormControl>
+                                            <SelectTrigger data-testid={`select-action-attribute-${index}`}>
+                                              <SelectValue placeholder="Selecione o atributo" />
+                                            </SelectTrigger>
+                                          </FormControl>
+                                          <SelectContent>
+                                            {attributeOptions.map((attr) => (
+                                              <SelectItem key={attr.value} value={attr.value}>
+                                                {attr.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </FormItem>
+                                    )}
+                                  />
+                                )}
                               </div>
 
                               <Button
@@ -551,7 +595,7 @@ export default function MacrosPage() {
           ) : (
             <div className="space-y-4">
               {macros.map((macro) => {
-                const actions = (macro.actions as Array<{ type: string; tagId?: string; status?: string; agentId?: string; message?: string }>) || [];
+                const actions = (macro.actions as Array<{ type: string; tagId?: string; status?: string; agentId?: string; message?: string; attribute?: string }>) || [];
                 return (
                   <Card key={macro.id} data-testid={`macro-card-${macro.id}`}>
                     <CardContent className="p-4">

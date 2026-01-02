@@ -273,6 +273,7 @@ export const macroActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("REMOVE_TAG"), tagId: z.string() }),
   z.object({ type: z.literal("SET_STATUS"), status: z.enum(["open", "pending", "resolved", "closed"]) }),
   z.object({ type: z.literal("ASSIGN_AGENT"), agentId: z.string().optional() }),
+  z.object({ type: z.literal("SEND_MESSAGE"), message: z.string() }),
   z.object({ type: z.literal("SET_ATTRIBUTE"), attribute: z.string() }),
 ]);
 

@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import type { ConversationWithDetails, ContactWithTags, Tag } from "@shared/schema";
 
 const ATTRIBUTE_OPTIONS = [
-  { value: "", label: "Nenhum" },
+  { value: "NONE", label: "Nenhum" },
   { value: "CLIENTE", label: "Cliente" },
   { value: "FORNECEDOR", label: "Fornecedor" },
   { value: "PARCEIRO", label: "Parceiro" },
@@ -111,7 +111,7 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
   };
 
   const handleAttributeChange = (value: string) => {
-    updateContact.mutate({ attribute: value || null });
+    updateContact.mutate({ attribute: value === "NONE" ? null : value });
   };
 
   const updateNotes = useMutation({
@@ -325,7 +325,7 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
                   <h4 className="text-sm font-medium">Atributo</h4>
                 </div>
                 <Select 
-                  value={contactWithTags.attribute || ""} 
+                  value={contactWithTags.attribute || "NONE"} 
                   onValueChange={handleAttributeChange}
                 >
                   <SelectTrigger data-testid="select-attribute">
@@ -333,7 +333,7 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
                   </SelectTrigger>
                   <SelectContent>
                     {ATTRIBUTE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value || "none"} value={option.value}>
+                      <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
                     ))}
