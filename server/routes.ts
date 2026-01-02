@@ -86,21 +86,46 @@ export async function registerRoutes(
       if (isLid) {
         // Remove the LID prefix from the phone number
         const lidNumber = message.phoneNumber.replace("LID_", "").replace(/\D/g, "");
-        log("info", "LID detected, searching by name", { contactName: message.contactName, lidNumber });
+        log("info", "LID detected, searching for contact", { contactName: message.contactName, lidNumber });
         
-        // First, try to find an existing contact with the same name
+        // Strategy 1: Find contact by name with valid phone number
         const allContacts = await storage.getContacts(companyId);
-        contact = allContacts.find(c => 
-          c.name.toLowerCase() === message.contactName?.toLowerCase()
-        );
+        contact = allContacts.find(c => {
+          if (c.name.toLowerCase() !== message.contactName?.toLowerCase()) return false;
+          const phoneDigits = c.phoneNumber.replace(/\D/g, "");
+          return phoneDigits.length >= 10 && phoneDigits.length <= 13;
+        });
+        
+        // Strategy 2: If not found by name, find by most recent open conversation for this account
+        if (!contact) {
+          log("info", "Contact not found by name, searching by recent conversation");
+          const recentConversations = await storage.getConversations(companyId, {
+            whatsappAccountId: accountId,
+            status: "open"
+          });
+          
+          // Find conversations with outgoing messages (we initiated)
+          for (const conv of recentConversations) {
+            const messages = await storage.getMessages(conv.id);
+            const hasOutgoing = messages.some(m => m.direction === "outgoing");
+            if (hasOutgoing && conv.contact) {
+              const phoneDigits = conv.contact.phoneNumber.replace(/\D/g, "");
+              if (phoneDigits.length >= 10 && phoneDigits.length <= 13) {
+                contact = conv.contact;
+                log("info", "Found contact from recent conversation", { contactId: contact.id, name: contact.name });
+                break;
+              }
+            }
+          }
+        }
         
         if (contact) {
-          log("info", "Found contact by name for LID", { contactId: contact.id, name: contact.name });
+          log("info", "Found contact for LID", { contactId: contact.id, name: contact.name, phone: contact.phoneNumber });
           // Store the LID -> Phone mapping for future resolution
           whatsappBaileys.storeLidToPhoneMapping(lidNumber, contact.phoneNumber);
           phoneNumber = contact.phoneNumber;
         } else {
-          // If no contact found by name, skip this message to avoid creating duplicate contacts
+          // If no contact found, skip this message to avoid creating duplicate contacts
           log("warn", "LID message with unknown contact, skipping", { contactName: message.contactName, lidNumber });
           return;
         }
