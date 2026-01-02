@@ -1,0 +1,183 @@
+PROMPT (REPLIT) — FOTO DE PERFIL (AVATAR) + MÓDULO DE MACROS (estilo CWRMKT) COM AÇÕES (TAG + ENVIO AUTOMÁTICO) GLOBAL PARA TODOS USUÁRIOS
+
+Contexto:
+Meu CRM usa Baileys (Node.js) e já está com chatId correto e real-time. Agora quero:
+1) Mostrar a FOTO DE PERFIL do contato (avatar) na lista de conversas e no topo do chat.
+2) Criar um módulo de “MACROS” inspirado no CWRMKT:
+   - Um botão “Macro” no chat
+   - Ao clicar, escolho uma macro e ela executa:
+     (A) troca/atribui TAG(s) do cliente
+     (B) envia uma mensagem automática (template)
+   - Macros devem ser GLOBAIS: qualquer usuário do sistema pode usar.
+   - Somente ADMIN pode criar/editar/deletar macros.
+   - As macros ficam em “Configurações > Macros”.
+
+Requisitos detalhados:
+
+========================================
+A) FOTO DE PERFIL (AVATAR) DO CONTATO
+========================================
+
+1) Obter foto do contato via Baileys:
+- Usar a função `sock.profilePictureUrl(jid, "image")` para buscar URL.
+- Regras:
+  - Se falhar (sem foto / privacidade / erro), usar avatar padrão (iniciais).
+  - Cachear resultado para não ficar chamando toda hora (evitar rate limit e delay).
+  - Atualizar a foto:
+    - quando chega mensagem nova de um chat e não temos foto ainda
+    - e também com um job leve periódico (ex: a cada 6 horas) opcional
+
+2) Campos no banco:
+- No documento/tabela de conversa/contato salvar:
+  - chatId
+  - contactName (pushName ou nome do contato)
+  - phone
+  - profilePicUrl (string)
+  - profilePicUpdatedAt (date)
+- Se o contato mudar nome/foto, atualizar.
+
+3) Fluxo sem travar:
+- Quando chega msg:
+  - emitir msg pro front imediatamente
+  - se não tiver profilePicUrl no contato OU estiver vencida (ex: >7 dias):
+    - enfileirar uma tarefa (background) para buscar a foto e salvar no DB
+    - emitir pro front um evento “contact_update” com a nova foto assim que obtiver
+
+4) Endpoint / evento:
+- Criar endpoint GET /api/contacts/:chatId/avatar -> retorna { profilePicUrl }
+- Ou preferível: usar socket event:
+  - io.emit("contact_update", { chatId, profilePicUrl, contactName })
+
+========================================
+B) MÓDULO DE MACROS (GLOBAL) — ESTILO CWRMKT
+========================================
+
+1) Conceito:
+Macro = um “atalho” que executa ações no chat com 1 clique.
+- Campo: nome da macro
+- Campo: mensagem template
+- Campo: ações (no mínimo: setar tags do cliente)
+- Campo: opcional: remover tags, adicionar tag, alterar status da conversa (Aberto/Fechado), etc.
+
+2) Permissões:
+- Qualquer usuário pode USAR macros.
+- Somente ADMIN pode GERENCIAR (CRUD) macros.
+
+3) Banco (tabela/coleção Macros):
+Exemplo de modelo:
+Macro {
+  id
+  name: string
+  description?: string
+  messageTemplate: string
+  actions: [
+    { type: "ADD_TAG", tagId: "x" },
+    { type: "REMOVE_TAG", tagId: "y" },
+    { type: "SET_STATUS", status: "ABERTO" | "FECHADO" },
+    { type: "ASSIGN_AGENT", agentId?: string } (opcional)
+  ]
+  isGlobal: true  // sempre true nesse projeto
+  createdBy
+  createdAt
+  updatedAt
+}
+
+4) Templates (variáveis) dentro da mensagem:
+Suportar placeholders no texto:
+- {{nome}} -> nome do contato (contactName)
+- {{telefone}} -> phone
+- {{primeiro_nome}} -> primeira palavra do nome
+- {{empresa}} -> se existir no contato
+- {{tag}} -> lista de tags
+- {{atendente}} -> nome do agente logado
+
+Implementar função:
+renderTemplate(template, context) -> string
+
+5) Execução da Macro (backend):
+Criar endpoint:
+POST /api/macros/execute
+Payload:
+{
+  chatId,
+  macroId
+}
+Processo:
+- Buscar macro pelo macroId
+- Buscar contato/conversa pelo chatId
+- Montar context (nome, telefone, tags, atendente)
+- Aplicar ações:
+  - add/remove tags do cliente no DB
+  - atualizar status se a macro pedir
+- Enviar mensagem pelo Baileys:
+  - sock.sendMessage(chatId, { text: renderedMessage })
+- Registrar no DB (log):
+  - MacroExecution {
+      macroId, chatId, userId, executedAt, renderedMessage, actionsApplied
+    }
+- Emitir pro front:
+  - io.emit("chat_update", ...) (tags/status)
+  - io.emit("wa_new_message", ...) (mensagem enviada)
+
+6) UI:
+- No chat, adicionar botão “⚡ Macros” (ou “Macro”).
+- Ao clicar:
+  - abre modal/lista com as macros globais (nome + descrição)
+  - campo de busca
+  - ao selecionar uma macro:
+    - executa (chama /api/macros/execute)
+    - mostra feedback “Macro aplicada”
+- Em Configurações:
+  - Aba “Macros”
+  - Lista de macros (somente admin vê botões de criar/editar/apagar)
+  - Form de macro:
+    - name
+    - description
+    - messageTemplate (textarea)
+    - actions (UI simples: adicionar tag, remover tag, alterar status)
+- As tags:
+  - usar tabela/coleção “Tags” existente (se não existir, criar)
+  - contato/conversa tem array tagIds
+
+7) Tags no chat (visual):
+- Mostrar tags do cliente no header da conversa e na lista
+- Quando macro troca tags, atualizar em tempo real no front (socket event)
+
+========================================
+C) PERFORMANCE / CACHE (IMPORTANTE)
+========================================
+
+1) Cache de avatar:
+- Implementar cache em memória (NodeCache ou Map) com TTL (ex: 24h)
+- Ao buscar avatar:
+  - se cache hit: retorna rápido
+  - se cache miss: buscar via sock.profilePictureUrl, salvar no DB e no cache
+
+2) Não travar eventos do Baileys:
+- A busca de avatar deve ser enfileirada (background queue), nunca no messages.upsert direto.
+
+========================================
+D) ENTREGÁVEL (NO PROJETO REPLIT)
+========================================
+
+Faça no meu projeto:
+1) Implementar sistema de avatar com cache + persistência no DB
+2) Criar módulo Macros global:
+   - CRUD de macros (admin)
+   - endpoint execute macro
+   - template engine com placeholders
+   - ações de tags/status
+   - UI botão no chat + modal + configurações
+3) Real-time:
+   - emitir contact_update e chat_update ao aplicar macro ou atualizar avatar
+
+Ao final, me entregue:
+- Quais arquivos foram alterados/criados
+- Código completo das rotas:
+  - /api/macros (GET/POST/PUT/DELETE)
+  - /api/macros/execute (POST)
+- Código do fetch avatar + cache + fila
+- Código do renderTemplate
+- Como testar:
+  - receber msg e ver avatar aparecer
+  - criar macro (admin), usar macro, ver tag mudar e msg automática enviada

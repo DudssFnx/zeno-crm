@@ -1,0 +1,167 @@
+PROMPT (REPLIT) — OTIMIZAR BAILEYS (SEM DELAY) + SUPORTE COMPLETO A MÍDIA (ARQUIVO/FOTO/ÁUDIO) + VISUALIZAÇÃO NO CHAT
+
+Contexto:
+Estou usando Baileys (Node.js) em um CRM WhatsApp. Corrigi o problema de chats duplicados usando `remoteJid`, porém agora tenho DELAY para receber/enviar mensagens. Também quero suporte completo para enviar/receber arquivos, fotos e áudios, com download e visualização/reprodução no chat.
+
+Objetivo:
+1) Eliminar delay (recebimento e envio) com arquitetura correta (não travar o event loop).
+2) Implementar real-time para o front (Socket.io recomendado).
+3) Implementar mídia completa:
+   - Enviar: imagem, documento, áudio
+   - Receber: detectar mídia, baixar em background, salvar arquivo em /uploads, salvar URL no banco
+   - Mostrar no chat: imagem inline, documento com link, áudio com player
+4) Implementar status/ACK: enviado/entregue/lido (✓, ✓✓, azul) usando events do Baileys.
+
+Regras obrigatórias (anti-delay):
+- PROIBIDO fazer operações pesadas dentro do `messages.upsert` (ex: download de mídia, consultas lentas, loops grandes).
+- Quando chegar mensagem:
+  (A) emitir pro front IMEDIATAMENTE via socket
+  (B) salvar no banco em background (fila/queue simples)
+  (C) se tiver mídia: baixar em background (fila separada), nunca travar o upsert
+- Evitar payloads gigantes: “sanitizar” a mensagem antes de enviar ao front.
+
+Stack esperada:
+- Node.js + Express (API)
+- Socket.io (real-time)
+- Baileys (@whiskeysockets/baileys)
+- Pasta local /uploads servida por Express
+- Banco: (adapte ao meu projeto atual; se não tiver, use uma implementação simples em arquivo JSON ou SQLite como fallback, mas preferir o banco já existente no projeto)
+
+ENTREGÁVEL:
+- Alterar/organizar arquivos do projeto:
+  - src/whatsapp.js (ou equivalente): conexão Baileys, eventos, fila, download mídia, receipts
+  - src/server.js (ou equivalente): Express + Socket.io + static uploads + rotas upload
+  - src/db.js (ou equivalente): funções saveMessageToDB, upsertChat, attachMediaToMessageInDB, updateReceipt
+  - Front-end: adicionar renderização de mídia e player de áudio
+
+========================================
+A) IMPLEMENTAÇÃO BACKEND — BAILEYS SEM DELAY
+========================================
+
+1) CRIAR STORE E CACHES
+- Use makeInMemoryStore para reduzir problemas de sync e melhorar performance
+- Use NodeCache msgRetryCounterCache
+
+2) Eventos obrigatórios:
+- connection.update (reconectar se não for loggedOut)
+- creds.update (persistência)
+- messages.upsert (mensagens novas)
+- message-receipt.update + messages.update (ACK/status)
+
+3) Sanitização (para emitir ao front rápido):
+Retornar apenas:
+{
+  id,
+  chatId,
+  fromMe,
+  timestamp,
+  pushName,
+  text (se tiver),
+  rawMessage (se necessário),
+  media: { type, url, fileName, mimetype } (se existir)
+}
+
+4) FILA DE SALVAMENTO (Queue)
+- Criar uma fila simples (array + while) para salvar mensagens no banco sem travar o event.
+- O upsert só faz: io.emit(...) e queueSaveMessage(...)
+
+5) FILA DE DOWNLOAD DE MÍDIA
+- Outra fila para baixar mídia:
+  - detecta mídia (imageMessage, videoMessage, documentMessage, audioMessage, stickerMessage)
+  - baixa usando downloadMediaMessage
+  - salva arquivo em /uploads/<chatId_sanitizado>/<msgId>.<ext>
+  - gera url: `/uploads/<chatId_sanitizado>/<msgId>.<ext>`
+  - salva no DB com attachMediaToMessageInDB(chatId, msgId, {type,url,path,fileName,mimetype})
+
+6) Servir uploads:
+- Express: app.use("/uploads", express.static("uploads"))
+
+7) ROTAS DE UPLOAD PARA ENVIAR MÍDIA PELO CRM
+- Criar endpoint POST /api/upload (multipart/form-data):
+  - recebe arquivo
+  - salva em uploads/tmp ou uploads/<user>/
+  - retorna { url, fileName, mimetype }
+Sugestão: usar multer.
+
+8) ROTAS PARA ENVIAR MENSAGEM E MÍDIA
+- POST /api/messages/send
+  payload:
+  {
+    chatId,
+    type: "text" | "image" | "document" | "audio",
+    text?: string,
+    mediaUrl?: string,
+    fileName?: string,
+    mimetype?: string,
+    ptt?: boolean
+  }
+- Regras:
+  - type=text: sock.sendMessage(chatId, { text })
+  - type=image: sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: text || "" })
+  - type=document: sock.sendMessage(chatId, { document: { url: mediaUrl }, mimetype, fileName })
+  - type=audio: sock.sendMessage(chatId, { audio: { url: mediaUrl }, mimetype: mimetype || "audio/ogg; codecs=opus", ptt: !!ptt })
+- Após enviar:
+  - registrar no DB como outbound imediatamente (status: “sending”)
+  - emitir pro front “optimistic message”
+  - depois atualizar com receipts/updates
+
+========================================
+B) IMPLEMENTAÇÃO FRONT-END — CHAT COM MÍDIA
+========================================
+
+1) Socket.io no front:
+- Conectar e ouvir:
+  - wa_new_message
+  - wa_messages_update
+  - wa_receipt_update
+- Ao receber wa_new_message:
+  - adicionar msg no chat
+  - mover conversa pro topo (lastMessageAt desc)
+
+2) Renderização:
+- Se msg.media.type === "image": mostrar <img src=url />
+- Se "document": mostrar link “Baixar arquivo” + nome
+- Se "audio": mostrar player <audio controls src=url></audio>
+- Se texto: mostrar normal
+
+3) Upload:
+- botão “Enviar arquivo”
+  - faz POST /api/upload
+  - pega url retornada
+  - chama POST /api/messages/send com type=document (ou image/audio dependendo do arquivo)
+- Se for imagem, mandar type=image
+- Se for áudio gravado (se existir no projeto), mandar type=audio
+
+========================================
+C) STATUS / CHECKS (ACK)
+========================================
+
+- Implementar e persistir status por msgId:
+  - sent (✓)
+  - delivered (✓✓)
+  - read (✓✓ azul)
+- Usar eventos:
+  - sock.ev.on("message-receipt.update", updates => { updateReceiptInDB(updates); io.emit("wa_receipt_update", updates) })
+  - sock.ev.on("messages.update", updates => { updateMessageStatusInDB(updates); io.emit("wa_messages_update", updates) })
+
+========================================
+D) BUGS A EVITAR (IMPORTANTE)
+========================================
+
+- NÃO baixar mídia dentro do messages.upsert diretamente (só enfileirar)
+- NÃO fazer consultas pesadas no upsert
+- NÃO mandar payload gigante pro front (sanitizar)
+- Ignorar status@broadcast
+- Grupos (@g.us) tratar separado ou ignorar se não quiser
+
+========================================
+AGORA EXECUTE NO MEU PROJETO:
+1) Refatore para essa arquitetura sem delay
+2) Adicione Socket.io real-time
+3) Adicione upload + envio de mídia + download e visualização de mídia recebida
+4) Garanta que mensagens chegam e aparecem instantaneamente no CRM, e mídia funciona (foto/arquivo/áudio com player)
+
+Entregue:
+- Quais arquivos alterou
+- O código completo das funções principais
+- Como testar (passo a passo: receber msg, enviar msg, enviar arquivo, receber foto, tocar áudio)
