@@ -547,11 +547,11 @@ export async function registerRoutes(
 
   app.put("/api/contacts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { name, notes, avatarUrl } = req.body;
+      const { name, notes, avatarUrl, attribute } = req.body;
       
       // Operators can only update notes
       if (req.user!.role === "operator") {
-        if (name !== undefined || avatarUrl !== undefined) {
+        if (name !== undefined || avatarUrl !== undefined || attribute !== undefined) {
           return res.status(403).json({ message: "Operadores só podem editar observações do contato" });
         }
         const contact = await storage.updateContact(req.params.id, { notes });
@@ -561,7 +561,7 @@ export async function registerRoutes(
         return res.json(contact);
       }
       
-      const contact = await storage.updateContact(req.params.id, { name, notes, avatarUrl });
+      const contact = await storage.updateContact(req.params.id, { name, notes, avatarUrl, attribute });
       if (!contact) {
         return res.status(404).json({ message: "Contact not found" });
       }
@@ -1306,6 +1306,19 @@ export async function registerRoutes(
               if (action.agentId) {
                 await storage.updateConversation(conversationId, { assignedToUserId: action.agentId });
                 actionsApplied.push({ type: "ASSIGN_AGENT", agentId: action.agentId, success: true });
+              }
+              break;
+              
+            case "SET_ATTRIBUTE":
+              if (action.attribute !== undefined) {
+                await storage.updateContact(contact.id, { attribute: action.attribute });
+                actionsApplied.push({ type: "SET_ATTRIBUTE", attribute: action.attribute, success: true });
+                
+                io.to(`company:${req.user!.companyId}`).emit("contact:updated", {
+                  companyId: req.user!.companyId,
+                  contactId: contact.id,
+                  attribute: action.attribute,
+                });
               }
               break;
               
