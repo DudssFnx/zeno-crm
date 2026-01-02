@@ -401,6 +401,26 @@ class WhatsAppBaileysGateway {
     }
 
     const messageType = getContentType(msg.message);
+    
+    // Ignorar mensagens de protocolo/sistema do WhatsApp
+    const ignoredTypes = [
+      "protocolMessage",      // Mensagens deletadas, status, etc.
+      "reactionMessage",      // Reações a mensagens
+      "senderKeyDistributionMessage", // Distribuição de chaves
+      "messageContextInfo",   // Informações de contexto
+      "ephemeralMessage",     // Mensagens temporárias container
+      "viewOnceMessage",      // Mensagens "ver uma vez" container
+      "viewOnceMessageV2",    // Mensagens "ver uma vez" v2
+      "viewOnceMessageV2Extension", // Extensão de mensagens "ver uma vez"
+      "pollCreationMessage",  // Criação de enquete (tratar separadamente se necessário)
+      "pollUpdateMessage",    // Atualização de enquete
+    ];
+    
+    if (messageType && ignoredTypes.includes(messageType)) {
+      console.log(`[Baileys] Ignorando mensagem de protocolo: ${messageType}`);
+      return;
+    }
+    
     let content = "";
     let mediaInfo: MediaInfo | undefined;
 
