@@ -13,7 +13,7 @@ import { TagChip } from "@/components/tag-chip";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch } from "@/lib/auth";
-import { cn } from "@/lib/utils";
+import { cn, formatPhoneNumber } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -338,7 +338,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                     </div>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs text-muted-foreground truncate">
-                        {conv.contact.phoneNumber}
+                        {formatPhoneNumber(conv.contact.phoneNumber)}
                       </span>
                       {conv.assignedToUserId === currentUserId && (
                         <span className="w-2 h-2 rounded-full bg-primary shrink-0" title="Atribuído a você" />

@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatPhoneNumber } from "@/lib/utils";
 import type { Contact, WhatsappAccount } from "@shared/schema";
 
 const startConversationSchema = z.object({
@@ -355,7 +356,7 @@ export default function ContactsPage() {
                         <AvatarWithFallback name={contact.name} src={contact.avatarUrl} size="md" />
                         <div className="min-w-0 flex-1">
                           <span className="font-medium block truncate">{contact.name}</span>
-                          <p className="text-sm text-muted-foreground truncate">{contact.phoneNumber}</p>
+                          <p className="text-sm text-muted-foreground truncate">{formatPhoneNumber(contact.phoneNumber)}</p>
                         </div>
                       </div>
                       <Button variant="ghost" size="icon">

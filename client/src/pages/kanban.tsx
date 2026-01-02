@@ -29,6 +29,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useState } from "react";
+import { formatPhoneNumber } from "@/lib/utils";
 import type { Tag, ConversationWithDetails } from "@shared/schema";
 
 interface SortableConversationCardProps {
@@ -74,7 +75,7 @@ function SortableConversationCard({ conversation, onClick, uniqueId }: SortableC
             <p className="font-medium text-sm truncate">{conversation.contact.name}</p>
             <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
               <Phone className="h-3 w-3" />
-              {conversation.contact.phoneNumber}
+              {formatPhoneNumber(conversation.contact.phoneNumber)}
             </p>
             {conversation.lastMessage && (
               <p className="text-xs text-muted-foreground truncate mt-1">
@@ -104,7 +105,7 @@ function ConversationCard({ conversation }: { conversation: ConversationWithDeta
             <p className="font-medium text-sm truncate">{conversation.contact.name}</p>
             <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
               <Phone className="h-3 w-3" />
-              {conversation.contact.phoneNumber}
+              {formatPhoneNumber(conversation.contact.phoneNumber)}
             </p>
           </div>
         </div>

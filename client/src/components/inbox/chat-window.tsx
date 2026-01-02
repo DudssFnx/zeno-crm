@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { cn } from "@/lib/utils";
+import { cn, formatPhoneNumber } from "@/lib/utils";
 import type { ConversationWithDetails, MessageWithSender, User, CannedResponse } from "@shared/schema";
 
 interface Macro {
@@ -803,7 +803,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
             />
             <div className="text-left min-w-0 flex-1">
               <div className="font-medium text-[15px] truncate">{conversation.contact.name}</div>
-              <div className="text-xs text-muted-foreground truncate">{conversation.contact.phoneNumber}</div>
+              <div className="text-xs text-muted-foreground truncate">{formatPhoneNumber(conversation.contact.phoneNumber)}</div>
             </div>
           </button>
         </div>

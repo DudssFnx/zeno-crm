@@ -182,8 +182,18 @@ async function processAvatarQueue() {
     if (!task) continue;
     
     try {
-      // Buscar avatar via Baileys
-      const avatarUrl = await whatsappBaileys.getProfilePicture(task.accountId, task.phoneNumber);
+      let avatarUrl: string | null = null;
+      
+      // Para contatos com LID, tentar buscar usando o JID @lid
+      if (task.phoneNumber.startsWith("LID_")) {
+        const lidNumber = task.phoneNumber.replace("LID_", "");
+        const lidJid = `${lidNumber}@lid`;
+        console.log(`[Avatar] Trying to fetch avatar for LID contact: ${lidJid}`);
+        avatarUrl = await whatsappBaileys.getProfilePicture(task.accountId, lidJid);
+      } else {
+        // Buscar avatar via Baileys com número normal
+        avatarUrl = await whatsappBaileys.getProfilePicture(task.accountId, task.phoneNumber);
+      }
       
       if (avatarUrl) {
         // Atualizar contato no banco
