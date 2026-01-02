@@ -1,0 +1,224 @@
+FULL PROMPT (REPLIT) — BAILEYS WHATSAPP CRM
+AUTO-OPEN NEW CHATS (UNKNOWN CONTACTS) • RECEIVE ANY MESSAGE ANYTIME • FULL BAILEYS POTENTIAL (CONTACTS/NAME/AVATAR/PRESENCE/READ/UNREAD)
+
+================================================
+CONTEXT
+================================================
+I have a WhatsApp CRM built with Baileys (Node.js). 
+I want to ensure I receive messages and automatically create/open chats even if:
+- I have NEVER messaged that contact before
+- the contact is NOT saved
+- the chat was not opened in the CRM yet
+
+I also want to leverage Baileys features I might not be using yet:
+- contact pushName updates
+- profile picture fetch + cache
+- presence updates (online/typing) if available
+- unread counts + mark as read
+- message receipts + statuses
+- conversation list always updated
+- handle history sync safely (without heavy delays)
+
+================================================
+GOALS
+================================================
+1) ALWAYS receive inbound messages from any number (known or unknown).
+2) When an inbound message arrives:
+   - automatically create a new conversation record if it does not exist
+   - show it instantly in the CRM UI (top of list)
+   - display name (pushName) and avatar if possible
+3) Ensure the conversation appears even if no messages were sent previously by me.
+4) Avoid any delay: do heavy work in background queues.
+5) Use Baileys “full potential” in a safe, scalable way.
+
+================================================
+A) ABSOLUTE RULE: INBOUND MESSAGES MUST CREATE/OPEN CHATS
+================================================
+
+On `messages.upsert` (type=notify):
+- Get chatId strictly from:
+  chatId = msg.key.remoteJid
+- Ignore:
+  - status@broadcast
+- If groups not supported:
+  - ignore @g.us
+
+Then:
+1) Upsert conversation:
+- If conversation with chatId does not exist:
+  - create it immediately with:
+    chatId
+    phone (extract digits)
+    contactName = msg.pushName || "Unknown"
+    stageId default = "NEW"
+    tags default = []
+    createdAt / lastMessageAt = now
+- If exists:
+  - update lastMessageAt
+  - update contactName if msg.pushName changed (keep latest)
+
+2) Emit to frontend immediately:
+- socket event: "conversation_upserted"
+- socket event: "wa_new_message"
+
+3) Mark conversation as “unread”:
+- Increment unreadCount for that chatId
+- Add “unread badge” in UI
+
+================================================
+B) ENSURE YOU RECEIVE EVEN IF YOU NEVER SENT FIRST
+================================================
+
+IMPORTANT: This should work by design.
+However, ensure the implementation does NOT depend on:
+- only storing conversations when you send a first message
+- only creating chats when user clicks “new chat”
+- only listing chats from “sent messages”
+
+The CRM must list conversations from:
+- inbound messages
+- outbound messages
+- and Baileys chat store (optional)
+
+So:
+- Always create conversation on inbound
+- Always display it in UI
+
+================================================
+C) BAILEYS EVENTS TO USE (FULL POTENTIAL)
+================================================
+
+1) messages.upsert (NEW messages)
+- Create/open chats automatically (as above)
+
+2) contacts.update
+- Update contactName if WhatsApp updates it
+
+3) chats.upsert / chats.update (if using store)
+- Keep CRM conversation list aligned with WhatsApp Web state
+
+4) presence.update (optional)
+- Show online/typing indicator
+- Do not rely on it for core logic
+
+5) message-receipt.update + messages.update
+- Update sent/delivered/read status in DB
+- Update UI ticks ✓ ✓✓
+
+6) messages.reaction (optional if supported by your version)
+- Store reactions in message data
+
+================================================
+D) USE STORE SAFELY (WITHOUT DELAY)
+================================================
+
+Use:
+- makeInMemoryStore()
+- store.bind(sock.ev)
+
+Rules:
+- Do NOT sync full history if it causes delays:
+  syncFullHistory: false
+
+Optionally:
+- Persist store to disk every X seconds (lightweight)
+- But keep CRM DB as source of truth
+
+================================================
+E) AUTO-FETCH AVATAR & CONTACT DETAILS (BACKGROUND)
+================================================
+
+When a new chat is created (unknown contact):
+- enqueue background job:
+  - fetch avatar with sock.profilePictureUrl(chatId, "image")
+  - save profilePicUrl in DB
+  - emit "contact_update" to UI
+
+Also:
+- derive phone from chatId:
+  5511999999999@s.whatsapp.net -> "5511999999999"
+
+================================================
+F) UNREAD LOGIC + MARK AS READ
+================================================
+
+1) On inbound message:
+- unreadCount++
+
+2) When operator opens the conversation in CRM:
+- call API:
+  POST /api/chats/:chatId/markRead
+Backend:
+- update DB unreadCount = 0
+- call Baileys:
+  sock.readMessages([msg.key]) for the last messages
+  OR use chat modification if appropriate:
+  sock.chatModify({ markRead: true, lastMessages: [...] }, chatId)
+
+IMPORTANT:
+- Use the most compatible approach for your Baileys version.
+- If chatModify is unstable, use readMessages on the message keys you have stored.
+
+================================================
+G) ALWAYS SHOW NEW UNKNOWN CHATS IN UI
+================================================
+
+Frontend must:
+- Listen to "conversation_upserted"
+- If conversation does not exist in UI list:
+  - add it immediately
+- Move it to top by lastMessageAt
+- Show unread badge
+- Show “Unknown” name until contactName/Avatar is updated
+
+================================================
+H) OPTIONAL: QUICK ACTIONS FOR UNKNOWN CONTACTS
+================================================
+
+When chat is new/unknown:
+- Show buttons:
+  - “Save Contact”
+  - “Add Tag”
+  - “Move Stage” (Kanban)
+  - “Block/Ignore” (internal CRM, not WhatsApp block unless requested)
+
+================================================
+I) IMPORTANT EDGE CASES
+================================================
+
+1) Messages can arrive as:
+- ephemeralMessage
+- viewOnceMessage
+- editedMessage
+- protocolMessage
+Your parser must safely unwrap messages:
+- extract “real” content to display
+- store raw JSON for debugging
+
+2) Multi-device:
+- Some receipts/events can be delayed; the UI must be resilient.
+
+3) Media:
+- Download only when needed (or always in background as your current design).
+
+================================================
+DELIVERABLES
+================================================
+
+Implement:
+1) Auto-create chat on inbound (unknown contacts)
+2) Always show it in UI instantly
+3) Keep contactName updated via pushName + contacts.update
+4) Unread counts + mark as read API + Baileys integration
+5) Use additional Baileys events:
+   - chats.update / contacts.update / presence.update (optional)
+   - receipts updates
+6) Ensure everything is real-time and non-blocking (queues)
+
+At the end provide:
+- Files changed
+- The exact event handlers you added
+- Testing steps:
+  - Send a message from a number never contacted before → CRM must auto-create chat + show it instantly
+  - Open chat → unread resets + WhatsApp marks read
+  - Avatar appears after background fetch

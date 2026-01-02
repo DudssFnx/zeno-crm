@@ -9,6 +9,9 @@ import { dispatchWebhook } from "./webhook-dispatcher";
 import { loginSchema, insertTagSchema, insertWebhookConfigSchema } from "@shared/schema";
 import { normalizePhone, normalizeJid, isValidPhoneNumber } from "./jid-utils";
 import * as messageQueue from "./message-queue";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
 // Seed master user on startup
 async function seedMasterUser() {
@@ -142,6 +145,29 @@ export async function registerRoutes(
     });
   });
 
+  // Multer configuration for file uploads
+  const storage_config = multer.diskStorage({
+    destination: (req: AuthRequest, file, cb) => {
+      const companyId = req.user?.companyId || "default";
+      const uploadPath = path.join("uploads", companyId);
+      
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (req: AuthRequest, file, cb) => {
+      const sanitizedName = file.originalname.replace(/[^a-z0-9.]/gi, "_").toLowerCase();
+      const timestamp = Date.now();
+      cb(null, `${timestamp}_${sanitizedName}`);
+    },
+  });
+
+  const upload = multer({
+    storage: storage_config,
+    limits: { fileSize: 25 * 1024 * 1024 }, // 25MB limit
+  });
+
   // Seed master user
   await seedMasterUser();
   
@@ -179,6 +205,29 @@ export async function registerRoutes(
 
   app.get("/api/auth/me", authMiddleware(storage), async (req: AuthRequest, res) => {
     res.json({ user: { ...req.user, passwordHash: undefined } });
+  });
+
+  // Media upload endpoint
+  app.post("/api/upload", authMiddleware(storage), upload.single("file"), async (req: AuthRequest, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const companyId = req.user!.companyId;
+      const fileName = req.file.filename;
+      const url = `/uploads/${companyId}/${fileName}`;
+
+      res.json({
+        url,
+        fileName: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+      });
+    } catch (error) {
+      console.error("Upload error:", error);
+      res.status(500).json({ message: "Failed to upload file" });
+    }
   });
 
   // Users routes (admin only)

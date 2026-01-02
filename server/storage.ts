@@ -77,6 +77,7 @@ export interface IStorage {
   createMessage(data: InsertMessage): Promise<Message>;
   getMessages(conversationId: string): Promise<MessageWithSender[]>;
   getLastMessage(conversationId: string): Promise<Message | undefined>;
+  updateMessage(id: string, data: Partial<InsertMessage>): Promise<Message | undefined>;
 
   // Webhooks
   createWebhookConfig(data: InsertWebhookConfig): Promise<WebhookConfig>;
@@ -447,6 +448,15 @@ export class DatabaseStorage implements IStorage {
       .where(eq(messages.conversationId, conversationId))
       .orderBy(desc(messages.createdAt))
       .limit(1);
+    return message;
+  }
+
+  async updateMessage(id: string, data: Partial<InsertMessage>): Promise<Message | undefined> {
+    const [message] = await db
+      .update(messages)
+      .set(data)
+      .where(eq(messages.id, id))
+      .returning();
     return message;
   }
 

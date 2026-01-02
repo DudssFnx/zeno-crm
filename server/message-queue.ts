@@ -3,6 +3,10 @@ import { Server as SocketServer } from "socket.io";
 import { storage } from "./storage";
 import { normalizePhone } from "./jid-utils";
 import { dispatchWebhook } from "./webhook-dispatcher";
+import { whatsappBaileys, MediaInfo } from "./whatsapp-baileys";
+import fs from "fs";
+import path from "path";
+import { proto } from "@whiskeysockets/baileys";
 
 // Cache TTL: 5 minutos para contacts/conversations, 1 hora para accounts
 const accountCache = new NodeCache({ stdTTL: 3600, checkperiod: 600 });
@@ -12,9 +16,14 @@ const conversationCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
 // Filas de processamento
 const messageQueue: QueuedMessage[] = [];
 const avatarQueue: AvatarTask[] = [];
+const mediaQueue: MediaDownloadTask[] = [];
 let isProcessingMessages = false;
 let isProcessingAvatars = false;
+let isProcessingMedia = false;
 let io: SocketServer | null = null;
+
+// Uploads directory
+const UPLOADS_DIR = "./uploads";
 
 interface QueuedMessage {
   accountId: string;
@@ -26,12 +35,22 @@ interface QueuedMessage {
   senderDisplayName?: string;
   avatarUrl?: string;
   timestamp: string;
+  mediaInfo?: MediaInfo;
+  messageId?: string;
 }
 
 interface AvatarTask {
   accountId: string;
   phoneNumber: string;
   companyId: string;
+}
+
+interface MediaDownloadTask {
+  accountId: string;
+  companyId: string;
+  dbMessageId: string;
+  conversationId: string;
+  mediaInfo: MediaInfo;
 }
 
 export function setSocketServer(socketServer: SocketServer) {
@@ -172,9 +191,130 @@ async function processAvatarQueue() {
   isProcessingAvatars = false;
 }
 
+// Adicionar tarefa de media download à fila
+export function queueMediaDownload(task: MediaDownloadTask) {
+  mediaQueue.push(task);
+  processMediaQueue();
+}
+
+// Obter extensão de arquivo a partir do mimetype
+function getExtensionFromMimetype(mimetype: string): string {
+  const mimeToExt: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "video/mp4": "mp4",
+    "video/3gpp": "3gp",
+    "video/quicktime": "mov",
+    "audio/ogg": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/opus": "opus",
+    "audio/mp4": "m4a",
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "text/plain": "txt",
+  };
+  return mimeToExt[mimetype] || "bin";
+}
+
+// Processar fila de media em background
+async function processMediaQueue() {
+  if (isProcessingMedia || mediaQueue.length === 0) return;
+  
+  isProcessingMedia = true;
+  
+  while (mediaQueue.length > 0) {
+    const task = mediaQueue.shift();
+    if (!task) continue;
+    
+    try {
+      await processMediaDownload(task);
+    } catch (error) {
+      console.error("[Media] Error processing media download:", error);
+    }
+  }
+  
+  isProcessingMedia = false;
+}
+
+// Processar download de media individual
+async function processMediaDownload(task: MediaDownloadTask) {
+  const { accountId, companyId, dbMessageId, conversationId, mediaInfo } = task;
+  
+  try {
+    console.log(`[Media] Starting download for message ${dbMessageId}, type: ${mediaInfo.mediaType}`);
+    
+    // Download media from WhatsApp
+    const buffer = await whatsappBaileys.downloadMedia(
+      accountId,
+      mediaInfo.messageKey,
+      mediaInfo.message
+    );
+    
+    if (!buffer) {
+      console.error(`[Media] Failed to download media for message ${dbMessageId}`);
+      return;
+    }
+    
+    // Create uploads directory if it doesn't exist
+    const uploadsPath = path.join(UPLOADS_DIR, accountId);
+    if (!fs.existsSync(uploadsPath)) {
+      fs.mkdirSync(uploadsPath, { recursive: true });
+    }
+    
+    // Determine file extension
+    const extension = getExtensionFromMimetype(mediaInfo.mimetype);
+    const fileName = mediaInfo.fileName || `${dbMessageId}.${extension}`;
+    const filePath = path.join(uploadsPath, `${dbMessageId}.${extension}`);
+    
+    // Save file to disk
+    fs.writeFileSync(filePath, buffer);
+    
+    const fileSize = buffer.length;
+    const mediaUrl = `/uploads/${accountId}/${dbMessageId}.${extension}`;
+    
+    console.log(`[Media] Saved media to ${filePath} (${fileSize} bytes)`);
+    
+    // Update message in database with media info
+    await storage.updateMessage(dbMessageId, {
+      mediaUrl,
+      mediaType: mediaInfo.mediaType,
+      fileName,
+      mimetype: mediaInfo.mimetype,
+      fileSize: String(fileSize),
+    });
+    
+    console.log(`[Media] Updated message ${dbMessageId} with media info`);
+    
+    // Emit socket event for media ready
+    if (io) {
+      const companyRoom = `company:${companyId}`;
+      io.to(companyRoom).emit("message:media_ready", {
+        companyId,
+        conversationId,
+        messageId: dbMessageId,
+        mediaUrl,
+        mediaType: mediaInfo.mediaType,
+        fileName,
+        mimetype: mediaInfo.mimetype,
+        fileSize,
+      });
+      
+      console.log(`[Media] Emitted message:media_ready for message ${dbMessageId}`);
+    }
+    
+  } catch (error) {
+    console.error(`[Media] Error downloading media for message ${dbMessageId}:`, error);
+  }
+}
+
 // Processamento real da mensagem (DB operations)
 async function processMessageInBackground(msg: QueuedMessage) {
-  const { accountId, companyId, phoneNumber, contactName, content, direction, senderDisplayName, avatarUrl } = msg;
+  const { accountId, companyId, phoneNumber, contactName, content, direction, senderDisplayName, avatarUrl, mediaInfo } = msg;
   
   try {
     // Buscar ou criar contato (usar cache)
@@ -219,13 +359,29 @@ async function processMessageInBackground(msg: QueuedMessage) {
       setConversationInCache(contact.id, conversation);
     }
     
-    // Criar mensagem no banco
+    // Criar mensagem no banco (include mediaType if media is present, but not mediaUrl yet)
     const savedMessage = await storage.createMessage({
       conversationId: conversation.id,
       direction,
       content,
       senderDisplayName: senderDisplayName || (direction === "outgoing" ? "Celular" : undefined),
+      mediaType: mediaInfo?.mediaType,
+      fileName: mediaInfo?.fileName,
+      mimetype: mediaInfo?.mimetype,
+      fileSize: mediaInfo?.fileSize ? String(mediaInfo.fileSize) : undefined,
     });
+    
+    // If message has media, queue download in background
+    if (mediaInfo) {
+      queueMediaDownload({
+        accountId,
+        companyId,
+        dbMessageId: savedMessage.id,
+        conversationId: conversation.id,
+        mediaInfo,
+      });
+      console.log(`[Queue] Queued media download for message ${savedMessage.id}`);
+    }
     
     // Atualizar timestamp da conversa
     await storage.updateConversation(conversation.id, {
@@ -263,10 +419,11 @@ async function processMessageInBackground(msg: QueuedMessage) {
         messageId: savedMessage.id,
         content,
         phoneNumber,
+        mediaType: mediaInfo?.mediaType,
       }).catch(err => console.error("[Webhook] Error:", err));
     }
     
-    console.log(`[Queue] Message processed: ${direction} to ${phoneNumber}`);
+    console.log(`[Queue] Message processed: ${direction} to ${phoneNumber}${mediaInfo ? ` [${mediaInfo.mediaType}]` : ""}`);
     
   } catch (error) {
     console.error("[Queue] Error in processMessageInBackground:", error);
@@ -284,6 +441,8 @@ export async function handleMessageFast(
     senderDisplayName?: string;
     avatarUrl?: string;
     timestamp: string;
+    mediaInfo?: MediaInfo;
+    messageId?: string;
   }
 ) {
   // Buscar account do cache ou DB
@@ -328,6 +487,7 @@ export async function handleMessageFast(
           content: message.content,
           createdAt: message.timestamp,
           isPreview: true,
+          mediaType: message.mediaInfo?.mediaType,
         },
       });
       
@@ -346,6 +506,8 @@ export async function handleMessageFast(
     senderDisplayName: message.senderDisplayName,
     avatarUrl: message.avatarUrl,
     timestamp: message.timestamp,
+    mediaInfo: message.mediaInfo,
+    messageId: message.messageId,
   });
 }
 

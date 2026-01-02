@@ -8,6 +8,7 @@ import makeWASocket, {
   jidNormalizedUser,
   isLidUser,
   jidDecode,
+  downloadMediaMessage,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import { Server as SocketServer } from "socket.io";
@@ -43,6 +44,15 @@ interface SavedSessionStatus {
   lastConnectedAt: string;
 }
 
+export interface MediaInfo {
+  mediaType: "image" | "audio" | "document" | "video";
+  mimetype: string;
+  fileName?: string;
+  fileSize?: number;
+  messageKey: proto.IMessageKey;
+  message: proto.IMessage;
+}
+
 export interface IncomingMessage {
   phoneNumber: string;
   contactName: string;
@@ -51,6 +61,8 @@ export interface IncomingMessage {
   avatarUrl?: string;
   direction?: "incoming" | "outgoing";
   senderDisplayName?: string;
+  mediaInfo?: MediaInfo;
+  messageId?: string;
 }
 
 export type MessageHandler = (accountId: string, message: IncomingMessage) => Promise<void>;
@@ -390,6 +402,7 @@ class WhatsAppBaileysGateway {
 
     const messageType = getContentType(msg.message);
     let content = "";
+    let mediaInfo: MediaInfo | undefined;
 
     switch (messageType) {
       case "conversation":
@@ -400,15 +413,47 @@ class WhatsAppBaileysGateway {
         break;
       case "imageMessage":
         content = msg.message.imageMessage?.caption || "[Imagem]";
+        mediaInfo = {
+          mediaType: "image",
+          mimetype: msg.message.imageMessage?.mimetype || "image/jpeg",
+          fileName: undefined,
+          fileSize: msg.message.imageMessage?.fileLength ? Number(msg.message.imageMessage.fileLength) : undefined,
+          messageKey: msg.key,
+          message: msg.message,
+        };
         break;
       case "videoMessage":
         content = msg.message.videoMessage?.caption || "[Video]";
+        mediaInfo = {
+          mediaType: "video",
+          mimetype: msg.message.videoMessage?.mimetype || "video/mp4",
+          fileName: undefined,
+          fileSize: msg.message.videoMessage?.fileLength ? Number(msg.message.videoMessage.fileLength) : undefined,
+          messageKey: msg.key,
+          message: msg.message,
+        };
         break;
       case "audioMessage":
         content = "[Audio]";
+        mediaInfo = {
+          mediaType: "audio",
+          mimetype: msg.message.audioMessage?.mimetype || "audio/ogg",
+          fileName: undefined,
+          fileSize: msg.message.audioMessage?.fileLength ? Number(msg.message.audioMessage.fileLength) : undefined,
+          messageKey: msg.key,
+          message: msg.message,
+        };
         break;
       case "documentMessage":
         content = msg.message.documentMessage?.fileName || "[Documento]";
+        mediaInfo = {
+          mediaType: "document",
+          mimetype: msg.message.documentMessage?.mimetype || "application/octet-stream",
+          fileName: msg.message.documentMessage?.fileName || undefined,
+          fileSize: msg.message.documentMessage?.fileLength ? Number(msg.message.documentMessage.fileLength) : undefined,
+          messageKey: msg.key,
+          message: msg.message,
+        };
         break;
       case "stickerMessage":
         content = "[Sticker]";
@@ -429,17 +474,19 @@ class WhatsAppBaileysGateway {
     const contactName = msg.pushName || phoneNumber;
 
     console.log(
-      `[Baileys] ${direction === "outgoing" ? "Enviada" : "Recebida"} [${chatId}]: ${contactName}: ${content.substring(0, 50)}`
+      `[Baileys] ${direction === "outgoing" ? "Enviada" : "Recebida"} [${chatId}]: ${contactName}: ${content.substring(0, 50)}${mediaInfo ? ` [${mediaInfo.mediaType}]` : ""}`
     );
 
     if (this.messageHandler) {
       await this.messageHandler(accountId, {
-        phoneNumber, // Número normalizado ou LID_xxx
+        phoneNumber,
         contactName,
         content,
         timestamp: new Date().toISOString(),
         direction,
         senderDisplayName: direction === "outgoing" ? "Celular" : undefined,
+        mediaInfo,
+        messageId: messageId || undefined,
       });
     }
   }
@@ -551,6 +598,38 @@ class WhatsAppBaileysGateway {
         console.log(`[Baileys] Socket ${socketId} left room whatsapp:${accountId}`);
       }
     }
+  }
+
+  async downloadMedia(
+    accountId: string,
+    messageKey: proto.IMessageKey,
+    message: proto.IMessage
+  ): Promise<Buffer | null> {
+    const session = this.sessions.get(accountId);
+    if (!session?.socket || session.status !== "connected") {
+      console.error(`[Baileys] Cannot download media: session not connected`);
+      return null;
+    }
+
+    try {
+      const buffer = await downloadMediaMessage(
+        { key: messageKey, message } as proto.IWebMessageInfo,
+        "buffer",
+        {},
+        {
+          logger: this.logger,
+          reuploadRequest: session.socket.updateMediaMessage,
+        }
+      );
+      return buffer as Buffer;
+    } catch (error) {
+      console.error(`[Baileys] Error downloading media:`, error);
+      return null;
+    }
+  }
+
+  getSocketIO(): SocketServer | null {
+    return this.io;
   }
 }
 
