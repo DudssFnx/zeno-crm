@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, MessageSquare, Trash2, X, Star } from "lucide-react";
+import { Search, MessageSquare, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -350,19 +349,18 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                         {conv.lastMessage.content}
                       </p>
                     )}
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                       <StatusBadge status={conv.status as "open" | "pending" | "resolved" | "closed"} />
-                      {conv.contact.attributes && conv.contact.attributes.slice(0, 2).map((attr, idx) => (
-                        <Badge 
-                          key={`${conv.id}-attr-${idx}`}
-                          variant="outline" 
-                          className="text-[10px] px-1.5 py-0 h-5 border-amber-500/50 text-amber-600 dark:text-amber-400 bg-transparent"
-                          data-testid={`badge-attribute-${conv.id}-${idx}`}
+                      {conv.contact.attributes && conv.contact.attributes.length > 0 && (
+                        <span 
+                          className="text-[10px] text-muted-foreground truncate max-w-[120px]"
+                          title={conv.contact.attributes.join(" | ")}
+                          data-testid={`text-attributes-${conv.id}`}
                         >
-                          <Star className="h-3 w-3 mr-0.5 fill-current" />
-                          {attr}
-                        </Badge>
-                      ))}
+                          {conv.contact.attributes.slice(0, 2).join(" ")}
+                          {conv.contact.attributes.length > 2 && ` +${conv.contact.attributes.length - 2}`}
+                        </span>
+                      )}
                       {conv.tags && conv.tags.slice(0, 2).map((tag) => (
                         <TagChip key={tag.id} tag={tag} size="sm" />
                       ))}
