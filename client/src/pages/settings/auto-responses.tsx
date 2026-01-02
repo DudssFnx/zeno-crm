@@ -80,6 +80,7 @@ const autoResponseFormSchema = z.object({
   scheduleEndTime: z.string().optional().nullable(),
   skipIfConversationOpen: z.boolean().optional(),
   skipIfConversationResolved: z.boolean().optional(),
+  onlyFirstMessageDay: z.boolean().optional(),
   includeSignature: z.boolean().optional(),
   actions: z.array(autoResponseActionSchema),
 });
@@ -202,6 +203,7 @@ export default function AutoResponsesPage() {
       scheduleEndTime: null,
       skipIfConversationOpen: false,
       skipIfConversationResolved: false,
+      onlyFirstMessageDay: false,
       includeSignature: false,
       actions: [],
     },
@@ -334,6 +336,7 @@ export default function AutoResponsesPage() {
       scheduleEndTime: autoResponse.scheduleEndTime,
       skipIfConversationOpen: autoResponse.skipIfConversationOpen || false,
       skipIfConversationResolved: autoResponse.skipIfConversationResolved || false,
+      onlyFirstMessageDay: autoResponse.onlyFirstMessageDay || false,
       includeSignature: autoResponse.includeSignature || false,
       actions: autoResponse.actions as any || [],
     });
@@ -354,6 +357,7 @@ export default function AutoResponsesPage() {
       scheduleEndTime: null,
       skipIfConversationOpen: false,
       skipIfConversationResolved: false,
+      onlyFirstMessageDay: false,
       includeSignature: false,
       actions: [],
     });
@@ -622,6 +626,19 @@ export default function AutoResponsesPage() {
                               <Checkbox checked={field.value} onCheckedChange={field.onChange} data-testid="checkbox-skip-resolved" />
                             </FormControl>
                             <FormLabel className="!mt-0">Não acionar se conversa estiver resolvida</FormLabel>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="onlyFirstMessageDay"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center gap-2">
+                            <FormControl>
+                              <Checkbox checked={field.value} onCheckedChange={field.onChange} data-testid="checkbox-only-first-message-day" />
+                            </FormControl>
+                            <FormLabel className="!mt-0">Ativar apenas na primeira mensagem do dia</FormLabel>
                           </FormItem>
                         )}
                       />

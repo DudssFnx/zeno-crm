@@ -108,6 +108,12 @@ async function shouldTrigger(
     return false;
   }
   
+  // Check if should only trigger on first message of the day
+  if (autoResponse.onlyFirstMessageDay && !context.isFirstMessageToday) {
+    console.log(`[AutoResponse] ${autoResponse.name}: Skipping - not first message of the day`);
+    return false;
+  }
+  
   // Check trigger type
   switch (autoResponse.triggerType) {
     case "any_message":

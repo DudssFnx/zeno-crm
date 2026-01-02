@@ -370,6 +370,7 @@ export const autoResponses = pgTable("auto_responses", {
   scheduleEndTime: text("schedule_end_time"), // "18:00"
   skipIfConversationOpen: boolean("skip_if_conversation_open").notNull().default(false),
   skipIfConversationResolved: boolean("skip_if_conversation_resolved").notNull().default(false),
+  onlyFirstMessageDay: boolean("only_first_message_day").notNull().default(false),
   includeSignature: boolean("include_signature").notNull().default(false),
   
   priority: text("priority").notNull().default("0"), // Order of execution
