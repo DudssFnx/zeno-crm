@@ -28,6 +28,16 @@ interface LidMapping {
   [lid: string]: string; // LID -> phoneNumber
 }
 
+// Result of resolving chat identifiers
+interface ResolvedChatIdentifiers {
+  chatIdRaw: string;         // Original remoteJid (may be @lid or @s.whatsapp.net)
+  chatIdResolved: string;    // Phone jid if available, else @lid
+  phoneNumber: string;       // Extracted/normalized phone or LID_xxx
+  isLid: boolean;            // Whether original was a LID
+  altJidUsed: boolean;       // Whether we used an alt JID to resolve
+  resolvedFromCache: boolean; // Whether we resolved from mapping cache
+}
+
 interface BaileysSession {
   accountId: string;
   socket: WASocket | null;
@@ -122,6 +132,73 @@ class WhatsAppBaileysGateway {
   getPhoneFromLid(lid: string): string | null {
     const cleanLid = lid.replace("@lid", "").replace(/\D/g, "");
     return this.lidMapping[cleanLid] || null;
+  }
+
+  /**
+   * Resolve chat identifiers from a Baileys message.
+   * Uses remoteJidAlt/participantAlt (Baileys v7+) to resolve LIDs to real phone numbers.
+   * Falls back to cache mapping if alt fields not available.
+   */
+  resolveChatIdentifiers(msg: proto.IWebMessageInfo): ResolvedChatIdentifiers | null {
+    if (!msg.key?.remoteJid) return null;
+    
+    const rawJid = msg.key.remoteJid;
+    const isLid = isLidUser(rawJid) || rawJid.includes("@lid");
+    
+    let chatIdResolved = rawJid;
+    let altJidUsed = false;
+    let resolvedFromCache = false;
+    
+    if (isLid) {
+      // Try to resolve using Baileys v7+ ALT fields
+      // remoteJidAlt is available in Baileys v7+ for DM messages
+      const altJid = (msg.key as any).remoteJidAlt;
+      
+      if (altJid && typeof altJid === 'string' && altJid.endsWith("@s.whatsapp.net")) {
+        chatIdResolved = altJid;
+        altJidUsed = true;
+        
+        // Store this mapping for future use
+        const lidNumber = extractPhoneFromJid(rawJid);
+        const phoneNumber = extractPhoneFromJid(altJid);
+        if (lidNumber && phoneNumber) {
+          this.storeLidToPhoneMapping(lidNumber, phoneNumber);
+          console.log(`[Baileys] ALT JID resolved: ${rawJid} -> ${altJid}`);
+        }
+      } else {
+        // Try cache mapping
+        const mappedPhone = this.getPhoneFromLid(rawJid);
+        if (mappedPhone) {
+          chatIdResolved = normalizeJid(mappedPhone);
+          resolvedFromCache = true;
+          console.log(`[Baileys] Cache resolved: ${rawJid} -> ${chatIdResolved}`);
+        }
+      }
+    }
+    
+    // Normalize the resolved JID
+    chatIdResolved = jidNormalizedUser(chatIdResolved);
+    
+    // Extract phone number
+    let phoneNumber: string;
+    if (chatIdResolved.endsWith("@s.whatsapp.net")) {
+      phoneNumber = normalizePhone(extractPhoneFromJid(chatIdResolved));
+    } else if (chatIdResolved.endsWith("@lid")) {
+      // Still a LID, mark it specially
+      const lidDigits = extractPhoneFromJid(chatIdResolved);
+      phoneNumber = `LID_${lidDigits}`;
+    } else {
+      phoneNumber = extractPhoneFromJid(chatIdResolved);
+    }
+    
+    return {
+      chatIdRaw: rawJid,
+      chatIdResolved,
+      phoneNumber,
+      isLid,
+      altJidUsed,
+      resolvedFromCache,
+    };
   }
 
   setMessageHandler(handler: MessageHandler) {
@@ -464,30 +541,30 @@ class WhatsAppBaileysGateway {
       oldest.forEach((id) => session.processedMessages.delete(id));
     }
 
-    // REGRA DE OURO: Usar remoteJid normalizado como chave única
-    // Primeiro, tentar normalizar usando Baileys
-    let chatId = jidNormalizedUser(rawJid);
-    let phoneNumber = extractPhoneFromJid(chatId);
+    // Use resolveChatIdentifiers to get the best available phone number
+    const resolved = this.resolveChatIdentifiers(msg);
+    if (!resolved) {
+      console.log(`[Baileys] Could not resolve chat identifiers for message`);
+      return;
+    }
     
-    // Check if this is a LID (Linked Device ID)
-    const isLid = isLidUser(rawJid);
+    const { chatIdResolved, phoneNumber, isLid, altJidUsed, resolvedFromCache } = resolved;
     
+    // Log LID resolution details
     if (isLid) {
-      // Para LIDs, tentar resolver do cache
-      const mappedPhone = this.getPhoneFromLid(rawJid);
-      if (mappedPhone) {
-        console.log(`[Baileys] Resolvido LID ${rawJid} -> ${mappedPhone} do cache`);
-        phoneNumber = normalizePhone(mappedPhone);
-        chatId = normalizeJid(phoneNumber);
+      if (altJidUsed) {
+        console.log(`[Baileys] LID resolved via ALT JID: ${rawJid} -> ${phoneNumber}`);
+      } else if (resolvedFromCache) {
+        console.log(`[Baileys] LID resolved via cache: ${rawJid} -> ${phoneNumber}`);
       } else {
-        console.log(`[Baileys] LID não mapeado: ${rawJid}, pushName: ${msg.pushName}`);
-        // Marcar como LID para tratamento especial no routes.ts
-        phoneNumber = `LID_${phoneNumber}`;
+        console.log(`[Baileys] LID not resolvable: ${rawJid}, pushName: ${msg.pushName}`);
       }
-    } else {
-      // Para números normais, normalizar garantindo formato correto
-      phoneNumber = normalizePhone(phoneNumber);
-      chatId = normalizeJid(phoneNumber);
+      
+      // If we discovered a new mapping, notify to update existing LID contacts
+      if (altJidUsed && !phoneNumber.startsWith("LID_")) {
+        const lidDigits = extractPhoneFromJid(rawJid);
+        this.notifyLidMappingDiscovered(accountId, lidDigits, phoneNumber);
+      }
     }
     
     // Validar número de telefone (ignorar se for LID não mapeado)
