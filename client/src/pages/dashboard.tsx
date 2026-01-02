@@ -49,14 +49,17 @@ const navItems = [
   { icon: MessageSquare, label: "Atendimentos", path: "/" },
   { icon: Contact, label: "Contatos", path: "/contacts" },
   { icon: LayoutGrid, label: "Kanban", path: "/kanban" },
+];
+
+const settingsItems = [
   { icon: Users, label: "Usuários", path: "/settings/users", adminOnly: true },
-  { icon: Smartphone, label: "Contas WhatsApp", path: "/settings/accounts", operatorHidden: true },
-  { icon: Tag, label: "Etiquetas", path: "/settings/tags", operatorHidden: true },
-  { icon: Star, label: "Atributos", path: "/settings/attributes", operatorHidden: true },
-  { icon: Columns, label: "Estágios", path: "/settings/stages", operatorHidden: true },
-  { icon: Zap, label: "Respostas Rápidas", path: "/settings/canned-responses" },
-  { icon: PlaySquare, label: "Macros", path: "/settings/macros" },
-  { icon: Webhook, label: "Webhooks", path: "/settings/webhooks", operatorHidden: true },
+  { icon: Smartphone, label: "Contas WhatsApp", path: "/settings/accounts", adminOnly: true },
+  { icon: Tag, label: "Etiquetas", path: "/settings/tags", adminOnly: true },
+  { icon: Star, label: "Atributos", path: "/settings/attributes", adminOnly: true },
+  { icon: Columns, label: "Estágios", path: "/settings/stages", adminOnly: true },
+  { icon: Zap, label: "Respostas Rápidas", path: "/settings/canned-responses", adminOnly: true },
+  { icon: PlaySquare, label: "Macros", path: "/settings/macros", adminOnly: true },
+  { icon: Webhook, label: "Webhooks", path: "/settings/webhooks", adminOnly: true },
   { icon: Settings, label: "Meu Perfil", path: "/settings/profile" },
 ];
 
@@ -72,6 +75,11 @@ function MobileNavSheet({ user, isAdmin, isOperator, location, logout }: {
   logout: () => void;
 }) {
   const [open, setOpen] = useState(false);
+
+  const visibleSettingsItems = settingsItems.filter(item => {
+    if (item.adminOnly && !isAdmin) return false;
+    return true;
+  });
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -90,8 +98,6 @@ function MobileNavSheet({ user, isAdmin, isOperator, location, logout }: {
           <ScrollArea className="flex-1">
             <nav className="p-2 space-y-1">
               {navItems.map((item) => {
-                if (item.adminOnly && !isAdmin) return null;
-                if ((item as any).operatorHidden && isOperator) return null;
                 const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
                 return (
                   <Link key={item.path} href={item.path} onClick={() => setOpen(false)}>
@@ -108,6 +114,32 @@ function MobileNavSheet({ user, isAdmin, isOperator, location, logout }: {
                   </Link>
                 );
               })}
+              
+              {visibleSettingsItems.length > 0 && (
+                <>
+                  <Separator className="my-2" />
+                  <p className="px-3 py-1 text-xs font-medium text-muted-foreground uppercase">
+                    {isAdmin ? "Configurações" : "Minha Conta"}
+                  </p>
+                  {visibleSettingsItems.map((item) => {
+                    const isActive = location === item.path;
+                    return (
+                      <Link key={item.path} href={item.path} onClick={() => setOpen(false)}>
+                        <Button
+                          variant="ghost"
+                          className={cn(
+                            "w-full justify-start gap-3 min-h-[44px]",
+                            isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
+                          )}
+                        >
+                          <item.icon className="h-5 w-5" />
+                          <span>{item.label}</span>
+                        </Button>
+                      </Link>
+                    );
+                  })}
+                </>
+              )}
             </nav>
           </ScrollArea>
           <div className="p-4 border-t">
@@ -143,6 +175,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const isAdmin = user.role === "admin" || user.role === "master";
   const isOperator = user.role === "operator";
 
+  const visibleSettingsItems = settingsItems.filter(item => {
+    if (item.adminOnly && !isAdmin) return false;
+    return true;
+  });
+
   return (
     <div className="flex h-screen bg-background">
       <aside className={cn(
@@ -155,9 +192,29 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
         <nav className="flex-1 flex flex-col gap-2">
           {navItems.map((item) => {
-            if (item.adminOnly && !isAdmin) return null;
-            if ((item as any).operatorHidden && isOperator) return null;
             const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
+            return (
+              <Link key={item.path} href={item.path}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "w-10 h-10",
+                    isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
+                  )}
+                  title={item.label}
+                  data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                >
+                  <item.icon className="h-5 w-5" />
+                </Button>
+              </Link>
+            );
+          })}
+          
+          <Separator className="my-1" />
+          
+          {visibleSettingsItems.map((item) => {
+            const isActive = location === item.path;
             return (
               <Link key={item.path} href={item.path}>
                 <Button

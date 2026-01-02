@@ -80,19 +80,19 @@ function Router() {
         <AdminRoute component={UsersPage} />
       </Route>
       <Route path="/settings/accounts">
-        <ProtectedRoute component={AccountsPage} />
+        <AdminRoute component={AccountsPage} />
       </Route>
       <Route path="/settings/tags">
-        <ProtectedRoute component={TagsPage} />
+        <AdminRoute component={TagsPage} />
       </Route>
       <Route path="/settings/webhooks">
-        <ProtectedRoute component={WebhooksPage} />
+        <AdminRoute component={WebhooksPage} />
       </Route>
       <Route path="/settings/canned-responses">
-        <ProtectedRoute component={CannedResponsesPage} />
+        <AdminRoute component={CannedResponsesPage} />
       </Route>
       <Route path="/settings/macros">
-        <ProtectedRoute component={MacrosPage} />
+        <AdminRoute component={MacrosPage} />
       </Route>
       <Route path="/settings/profile">
         <ProtectedRoute component={ProfilePage} />
@@ -104,10 +104,10 @@ function Router() {
         <ProtectedRoute component={KanbanPage} />
       </Route>
       <Route path="/settings/stages">
-        <ProtectedRoute component={StagesPage} />
+        <AdminRoute component={StagesPage} />
       </Route>
       <Route path="/settings/attributes">
-        <ProtectedRoute component={AttributesPage} />
+        <AdminRoute component={AttributesPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>
