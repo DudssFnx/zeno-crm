@@ -93,6 +93,22 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 - Settings page at `/settings/macros`
 - Execute via macro button in chat window
 
+### Fluxos Conversacionais (Chat Flows)
+- Sistema de auto-atendimento estilo Typebot
+- Menus numerados para roteamento de clientes ("Digite 1 para Vendas, 2 para Suporte")
+- Settings page at `/settings/chat-flows`
+- Tipos de passos:
+  - **message** - Enviar mensagem de texto
+  - **menu** - Menu de opções numeradas
+  - **input** - Capturar dados do cliente (nome, email, etc.)
+  - **action** - Executar ações (atribuir agente, adicionar tag, definir status, encerrar fluxo)
+- Gatilhos:
+  - **triggerOnFirstMessage** - Iniciar na primeira mensagem da conversa
+  - **triggerKeywords** - Iniciar quando mensagem contém palavras-chave
+- Template variables: `{{nome}}`, `{{primeiro_nome}}`, `{{telefone}}`
+- Sessões rastreiam o progresso do cliente no fluxo
+- Tabelas: chat_flows, chat_flow_steps, chat_flow_sessions
+
 ### Media Handling
 - Upload/download media files (images, audio, video, documents)
 - Max file size: 25MB

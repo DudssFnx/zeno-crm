@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { normalizePhone } from "./jid-utils";
 import { dispatchWebhook } from "./webhook-dispatcher";
 import { whatsappBaileys, MediaInfo } from "./whatsapp-baileys";
-import { processAutoResponses, setAutoResponseSocket } from "./auto-response-processor";
+import { processFlowMessage } from "./flow-processor";
 import fs from "fs";
 import path from "path";
 import { proto } from "@whiskeysockets/baileys";
@@ -71,7 +71,6 @@ interface MediaDownloadTask {
 
 export function setSocketServer(socketServer: SocketServer) {
   io = socketServer;
-  setAutoResponseSocket(socketServer);
 }
 
 export function getAccountFromCache(accountId: string) {
@@ -506,9 +505,19 @@ async function processMessageInBackground(msg: QueuedMessage) {
         mediaType: mediaInfo?.mediaType,
       }).catch(err => console.error("[Webhook] Error:", err));
       
-      // Processar auto respostas em background
-      processAutoResponses(accountId, companyId, contact, conversation, content)
-        .catch(err => console.error("[AutoResponse] Error:", err));
+      // Processar fluxos conversacionais (auto-atendimento)
+      try {
+        const flowResult = await processFlowMessage(storage, conversation, savedMessage, accountId);
+        if (flowResult.processed && flowResult.responses.length > 0) {
+          console.log(`[FlowProcessor] Sending ${flowResult.responses.length} flow responses`);
+          for (const responseText of flowResult.responses) {
+            // Enviar mensagem via WhatsApp
+            await whatsappBaileys.sendMessage(accountId, phoneNumber, responseText);
+          }
+        }
+      } catch (flowErr) {
+        console.error("[FlowProcessor] Error processing flow:", flowErr);
+      }
     }
     
     console.log(`[ZERO_LOSS] SAVED: msgId=${savedMessage.id} convId=${conversation.id} phone=${phoneNumber} content="${content.substring(0, 30)}"`);

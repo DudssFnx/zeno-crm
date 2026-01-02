@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import {
   MessageSquare,
+  MessageCircle,
   Users,
   Smartphone,
   Tag,
@@ -60,7 +61,7 @@ const settingsItems = [
   { icon: Columns, label: "Estágios", path: "/settings/stages", adminOnly: true },
   { icon: Zap, label: "Respostas Rápidas", path: "/settings/canned-responses", adminOnly: true },
   { icon: PlaySquare, label: "Macros", path: "/settings/macros", adminOnly: true },
-  { icon: Bot, label: "Auto Atendimento", path: "/settings/auto-responses", adminOnly: true },
+  { icon: MessageCircle, label: "Fluxos", path: "/settings/chat-flows", adminOnly: true },
   { icon: Webhook, label: "Webhooks", path: "/settings/webhooks", adminOnly: true },
   { icon: Settings, label: "Meu Perfil", path: "/settings/profile" },
 ];

@@ -1171,6 +1171,178 @@ export async function registerRoutes(
     }
   });
 
+  // ============ Chat Flows (Fluxos Conversacionais) ============
+  
+  // Listar fluxos
+  app.get("/api/chat-flows", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const flows = await storage.getChatFlows(req.user!.companyId);
+      res.json(flows);
+    } catch (error) {
+      console.error("Get chat flows error:", error);
+      res.status(500).json({ message: "Falha ao listar fluxos" });
+    }
+  });
+
+  // Obter fluxo com steps
+  app.get("/api/chat-flows/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const flow = await storage.getChatFlow(req.params.id);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const steps = await storage.getChatFlowSteps(flow.id);
+      res.json({ ...flow, steps });
+    } catch (error) {
+      console.error("Get chat flow error:", error);
+      res.status(500).json({ message: "Falha ao obter fluxo" });
+    }
+  });
+
+  // Criar fluxo
+  app.post("/api/chat-flows", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name } = req.body;
+      if (!name || typeof name !== "string" || name.trim().length === 0) {
+        return res.status(400).json({ message: "Nome é obrigatório" });
+      }
+      const flow = await storage.createChatFlow({ ...req.body, companyId: req.user!.companyId });
+      res.json(flow);
+    } catch (error) {
+      console.error("Create chat flow error:", error);
+      res.status(500).json({ message: "Falha ao criar fluxo" });
+    }
+  });
+
+  // Atualizar fluxo
+  app.put("/api/chat-flows/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const existingFlow = await storage.getChatFlow(req.params.id);
+      if (!existingFlow || existingFlow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const { companyId, ...updateData } = req.body;
+      const flow = await storage.updateChatFlow(req.params.id, updateData);
+      if (!flow) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      res.json(flow);
+    } catch (error) {
+      console.error("Update chat flow error:", error);
+      res.status(500).json({ message: "Falha ao atualizar fluxo" });
+    }
+  });
+
+  // Deletar fluxo
+  app.delete("/api/chat-flows/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const flow = await storage.getChatFlow(req.params.id);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      await storage.deleteChatFlow(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete chat flow error:", error);
+      res.status(500).json({ message: "Falha ao deletar fluxo" });
+    }
+  });
+
+  // Toggle ativo/inativo
+  app.patch("/api/chat-flows/:id/toggle", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const flow = await storage.getChatFlow(req.params.id);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const updated = await storage.updateChatFlow(req.params.id, { isActive: !flow.isActive });
+      res.json(updated);
+    } catch (error) {
+      console.error("Toggle chat flow error:", error);
+      res.status(500).json({ message: "Falha ao alternar status do fluxo" });
+    }
+  });
+
+  // ============ Chat Flow Steps ============
+  
+  // Criar step
+  app.post("/api/chat-flows/:flowId/steps", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const flow = await storage.getChatFlow(req.params.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const step = await storage.createChatFlowStep({ ...req.body, flowId: req.params.flowId });
+      res.json(step);
+    } catch (error) {
+      console.error("Create chat flow step error:", error);
+      res.status(500).json({ message: "Falha ao criar step" });
+    }
+  });
+
+  // Atualizar step
+  app.put("/api/chat-flow-steps/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const existingStep = await storage.getChatFlowStep(req.params.id);
+      if (!existingStep) {
+        return res.status(404).json({ message: "Step não encontrado" });
+      }
+      const flow = await storage.getChatFlow(existingStep.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const step = await storage.updateChatFlowStep(req.params.id, req.body);
+      if (!step) {
+        return res.status(404).json({ message: "Step não encontrado" });
+      }
+      res.json(step);
+    } catch (error) {
+      console.error("Update chat flow step error:", error);
+      res.status(500).json({ message: "Falha ao atualizar step" });
+    }
+  });
+
+  // Deletar step
+  app.delete("/api/chat-flow-steps/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const existingStep = await storage.getChatFlowStep(req.params.id);
+      if (!existingStep) {
+        return res.status(404).json({ message: "Step não encontrado" });
+      }
+      const flow = await storage.getChatFlow(existingStep.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      await storage.deleteChatFlowStep(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete chat flow step error:", error);
+      res.status(500).json({ message: "Falha ao deletar step" });
+    }
+  });
+
+  // Reordenar steps
+  app.put("/api/chat-flows/:flowId/steps/reorder", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const flow = await storage.getChatFlow(req.params.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const { stepIds } = req.body;
+      if (!stepIds || !Array.isArray(stepIds)) {
+        return res.status(400).json({ message: "stepIds é obrigatório" });
+      }
+      for (let i = 0; i < stepIds.length; i++) {
+        await storage.updateChatFlowStep(stepIds[i], { stepOrder: i });
+      }
+      const steps = await storage.getChatFlowSteps(req.params.flowId);
+      res.json(steps);
+    } catch (error) {
+      console.error("Reorder chat flow steps error:", error);
+      res.status(500).json({ message: "Falha ao reordenar steps" });
+    }
+  });
+
   // ================== MACROS ==================
   
   // Template engine para variáveis nas mensagens
@@ -1650,134 +1822,6 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Delete contact attribute error:", error);
       res.status(500).json({ message: "Falha ao excluir atributo" });
-    }
-  });
-
-  // Auto Response routes (Auto Atendimento)
-  app.get("/api/auto-responses", authMiddleware(storage), async (req: AuthRequest, res) => {
-    const responses = await storage.getAutoResponses(req.user!.companyId);
-    res.json(responses);
-  });
-
-  app.get("/api/auto-responses/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
-    const response = await storage.getAutoResponse(req.params.id);
-    if (!response) {
-      return res.status(404).json({ message: "Auto atendimento não encontrado" });
-    }
-    res.json(response);
-  });
-
-  app.post("/api/auto-responses", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const { name, triggerType, keywords, actions, whatsappAccountId, isActive,
-        allowGroups, scheduleEnabled, scheduleDays, scheduleStartTime, scheduleEndTime,
-        skipIfConversationOpen, skipIfConversationResolved, includeSignature } = req.body;
-      
-      if (!name || !triggerType) {
-        return res.status(400).json({ message: "Nome e tipo de acionamento são obrigatórios" });
-      }
-
-      const response = await storage.createAutoResponse({
-        companyId: req.user!.companyId,
-        name,
-        triggerType,
-        keywords: keywords || [],
-        actions: actions || [],
-        whatsappAccountId: whatsappAccountId || null,
-        isActive: isActive !== false,
-        allowGroups: allowGroups || false,
-        scheduleEnabled: scheduleEnabled || false,
-        scheduleDays: scheduleDays || [],
-        scheduleStartTime: scheduleStartTime || null,
-        scheduleEndTime: scheduleEndTime || null,
-        skipIfConversationOpen: skipIfConversationOpen || false,
-        skipIfConversationResolved: skipIfConversationResolved || false,
-        includeSignature: includeSignature || false,
-      });
-
-      res.json(response);
-    } catch (error) {
-      console.error("Create auto response error:", error);
-      res.status(500).json({ message: "Falha ao criar auto atendimento" });
-    }
-  });
-
-  app.put("/api/auto-responses/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const { name, triggerType, keywords, actions, whatsappAccountId, isActive,
-        allowGroups, scheduleEnabled, scheduleDays, scheduleStartTime, scheduleEndTime,
-        skipIfConversationOpen, skipIfConversationResolved, includeSignature, priority } = req.body;
-      
-      const response = await storage.updateAutoResponse(req.params.id, {
-        name,
-        triggerType,
-        keywords,
-        actions,
-        whatsappAccountId,
-        isActive,
-        allowGroups,
-        scheduleEnabled,
-        scheduleDays,
-        scheduleStartTime,
-        scheduleEndTime,
-        skipIfConversationOpen,
-        skipIfConversationResolved,
-        includeSignature,
-        priority,
-      });
-      
-      if (!response) {
-        return res.status(404).json({ message: "Auto atendimento não encontrado" });
-      }
-      res.json(response);
-    } catch (error) {
-      console.error("Update auto response error:", error);
-      res.status(500).json({ message: "Falha ao atualizar auto atendimento" });
-    }
-  });
-
-  app.delete("/api/auto-responses/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      await storage.deleteAutoResponse(req.params.id);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Delete auto response error:", error);
-      res.status(500).json({ message: "Falha ao excluir auto atendimento" });
-    }
-  });
-
-  app.put("/api/auto-responses/reorder", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const { autoResponseIds } = req.body;
-      if (!autoResponseIds || !Array.isArray(autoResponseIds)) {
-        return res.status(400).json({ message: "autoResponseIds é obrigatório" });
-      }
-
-      // Update priority for each auto response
-      const updated: any[] = [];
-      for (let i = 0; i < autoResponseIds.length; i++) {
-        const response = await storage.updateAutoResponse(autoResponseIds[i], { priority: String(i) });
-        if (response) updated.push(response);
-      }
-      res.json(updated);
-    } catch (error) {
-      console.error("Reorder auto responses error:", error);
-      res.status(500).json({ message: "Falha ao reordenar auto atendimentos" });
-    }
-  });
-
-  // Toggle auto response active status
-  app.patch("/api/auto-responses/:id/toggle", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const current = await storage.getAutoResponse(req.params.id);
-      if (!current) {
-        return res.status(404).json({ message: "Auto atendimento não encontrado" });
-      }
-      const response = await storage.updateAutoResponse(req.params.id, { isActive: !current.isActive });
-      res.json(response);
-    } catch (error) {
-      console.error("Toggle auto response error:", error);
-      res.status(500).json({ message: "Falha ao alternar auto atendimento" });
     }
   });
 
