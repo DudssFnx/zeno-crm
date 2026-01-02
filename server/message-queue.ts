@@ -364,13 +364,18 @@ async function processMediaDownload(task: MediaDownloadTask) {
 
 // Processamento real da mensagem (DB operations)
 async function processMessageInBackground(msg: QueuedMessage) {
-  const { accountId, companyId, phoneNumber, contactName, content, direction, senderDisplayName, avatarUrl, mediaInfo } = msg;
+  const { accountId, companyId, phoneNumber, contactName, content, direction, senderDisplayName, avatarUrl, mediaInfo, messageId } = msg;
   
-  // CRITICAL: Skip outgoing messages in background processing as well
-  // Outgoing messages from CRM are saved directly in routes.ts
-  if (direction === "outgoing") {
-    console.log(`[Queue] Skipping outgoing message echo for ${accountId}`);
+  // IMPORTANT: Only skip outgoing messages that were sent by CRM (to avoid duplicates)
+  // Outgoing messages from phone/linked device should be processed normally
+  if (direction === "outgoing" && messageId && wasMessageSentByCrm(messageId)) {
+    console.log(`[Queue] Skipping CRM outgoing message echo: ${messageId}`);
     return;
+  }
+  
+  // Log outgoing messages from phone that will be processed
+  if (direction === "outgoing") {
+    console.log(`[ZERO_LOSS] PROCESSING_OUTGOING_BACKGROUND: phone=${phoneNumber} content="${content.substring(0, 30)}"`);
   }
 
   try {
@@ -385,8 +390,10 @@ async function processMessageInBackground(msg: QueuedMessage) {
       }
     }
     
+    const logPrefix = direction === "outgoing" ? "[PHONE_MSG]" : "[INBOUND]";
+    
     if (!contact) {
-      console.log(`[INBOUND] phone=${phoneNumber} contact=NOT_FOUND → CREATING CONTACT`);
+      console.log(`${logPrefix} phone=${phoneNumber} contact=NOT_FOUND → CREATING CONTACT`);
       contact = await storage.createContact({
         companyId,
         whatsappAccountId: accountId,
@@ -397,7 +404,7 @@ async function processMessageInBackground(msg: QueuedMessage) {
       });
       setContactInCache(companyId, phoneNumber, contact);
       contactCreated = true;
-      console.log(`[INBOUND] Created contact: ${contact.id} name="${contact.name}"`);
+      console.log(`${logPrefix} Created contact: ${contact.id} name="${contact.name}"`);
       
       // Enfileirar busca de avatar em background
       queueAvatarFetch({
@@ -420,7 +427,7 @@ async function processMessageInBackground(msg: QueuedMessage) {
     }
     
     if (!conversation) {
-      console.log(`[INBOUND] phone=${phoneNumber} conversation=NOT_FOUND → CREATING CHAT`);
+      console.log(`${logPrefix} phone=${phoneNumber} conversation=NOT_FOUND → CREATING CHAT`);
       conversation = await storage.createConversation({
         companyId,
         whatsappAccountId: accountId,
@@ -430,16 +437,16 @@ async function processMessageInBackground(msg: QueuedMessage) {
       });
       setConversationInCache(contact.id, conversation);
       conversationCreated = true;
-      console.log(`[INBOUND] Created conversation: ${conversation.id} for contact=${contact.id}`);
+      console.log(`${logPrefix} Created conversation: ${conversation.id} for contact=${contact.id}`);
     }
     
     // Criar mensagem no banco (include mediaType if media is present, but not mediaUrl yet)
-    // Note: At this point, direction is always "incoming" since outgoing messages are skipped earlier
+    // Note: For outgoing messages from phone, senderDisplayName is "Celular" (set in whatsapp-baileys.ts)
     const savedMessage = await storage.createMessage({
       conversationId: conversation.id,
       direction,
       content,
-      senderDisplayName: senderDisplayName,
+      senderDisplayName: direction === "outgoing" ? (senderDisplayName || "Celular") : undefined,
       mediaType: mediaInfo?.mediaType,
       fileName: mediaInfo?.fileName,
       mimetype: mediaInfo?.mimetype,
