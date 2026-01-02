@@ -8,6 +8,7 @@ import { whatsappBaileys } from "./whatsapp-baileys";
 import { dispatchWebhook } from "./webhook-dispatcher";
 import { loginSchema, insertTagSchema, insertWebhookConfigSchema } from "@shared/schema";
 import { normalizePhone, normalizeJid, isValidPhoneNumber } from "./jid-utils";
+import * as messageQueue from "./message-queue";
 
 // Seed master user on startup
 async function seedMasterUser() {
@@ -45,228 +46,50 @@ export async function registerRoutes(
 
   // Connect Baileys gateway to Socket.IO
   whatsappBaileys.setSocketServer(io);
+  
+  // Conectar o módulo de filas ao Socket.IO
+  messageQueue.setSocketServer(io);
 
   // Set up status update handler to sync database with WhatsApp connection status
   whatsappBaileys.setStatusUpdateHandler(async (accountId, status) => {
     try {
       await storage.updateWhatsappAccount(accountId, { status });
+      // Atualizar cache
+      const account = await storage.getWhatsappAccount(accountId);
+      if (account) {
+        messageQueue.setAccountInCache(accountId, account);
+      }
       console.log(`[WhatsApp] Updated database status for ${accountId}: ${status}`);
     } catch (error) {
       console.error(`[WhatsApp] Failed to update database status for ${accountId}:`, error);
     }
   });
 
-  // Set up message handler to save messages to database (both incoming and outgoing from phone)
+  // HANDLER OTIMIZADO: Emite imediatamente e processa em background
   whatsappBaileys.setMessageHandler(async (accountId, message) => {
-    const correlationId = `msg_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const log = (level: string, msg: string, data?: object) => {
-      const entry = { correlationId, level, msg, ...data, timestamp: new Date().toISOString() };
-      if (level === "error") console.error(JSON.stringify(entry));
-      else console.log(JSON.stringify(entry));
-    };
+    const startTime = Date.now();
     
     try {
-      log("info", "Processing message", { accountId, direction: message.direction });
-      
-      const account = await storage.getWhatsappAccount(accountId);
-      if (!account) {
-        log("error", "Account not found", { accountId });
-        return;
-      }
-
-      const companyId = account.companyId;
-      const direction = message.direction || "incoming";
-      
-      // Check if this is a LID (Linked Device ID) - internal WhatsApp ID, not a real phone
-      const isLid = message.phoneNumber.startsWith("LID_");
-      // REGRA: Sempre normalizar o número de telefone para garantir consistência
-      let phoneNumber = isLid 
-        ? message.phoneNumber.replace("LID_", "").replace(/\D/g, "")
-        : normalizePhone(message.phoneNumber);
-      
-      // For LIDs, we need to find the contact by name instead of phone number
-      let contact = null;
-      
-      if (isLid) {
-        // Remove the LID prefix from the phone number
-        const lidNumber = message.phoneNumber.replace("LID_", "").replace(/\D/g, "");
-        log("info", "LID detected, searching for contact", { contactName: message.contactName, lidNumber });
-        
-        // Strategy 1: Find contact by name with valid phone number
-        const allContacts = await storage.getContacts(companyId);
-        contact = allContacts.find(c => {
-          if (c.name.toLowerCase() !== message.contactName?.toLowerCase()) return false;
-          const phoneDigits = c.phoneNumber.replace(/\D/g, "");
-          return phoneDigits.length >= 10 && phoneDigits.length <= 13;
-        });
-        
-        // Strategy 2: If not found by name, find by most recent open conversation for this account
-        // Optimized: just use the first conversation with valid phone number (no extra DB queries)
-        if (!contact) {
-          log("info", "Contact not found by name, searching by recent conversation");
-          const recentConversations = await storage.getConversations(companyId, {
-            whatsappAccountId: accountId,
-            status: "open"
-          });
-          
-          // Find first conversation with a valid phone number (conversations are already sorted by lastMessageAt)
-          for (const conv of recentConversations) {
-            if (conv.contact) {
-              const phoneDigits = conv.contact.phoneNumber.replace(/\D/g, "");
-              if (phoneDigits.length >= 10 && phoneDigits.length <= 13) {
-                contact = conv.contact;
-                log("info", "Found contact from recent conversation", { contactId: contact.id, name: contact.name });
-                break;
-              }
-            }
-          }
-        }
-        
-        if (contact) {
-          log("info", "Found contact for LID", { contactId: contact.id, name: contact.name, phone: contact.phoneNumber });
-          // Store the LID -> Phone mapping for future resolution
-          whatsappBaileys.storeLidToPhoneMapping(lidNumber, contact.phoneNumber);
-          phoneNumber = contact.phoneNumber;
-        } else {
-          // If no contact found, skip this message to avoid creating duplicate contacts
-          log("warn", "LID message with unknown contact, skipping", { contactName: message.contactName, lidNumber });
-          return;
-        }
-      } else {
-        // Normal phone number - find or create contact
-        contact = await storage.getContactByPhone(companyId, phoneNumber);
-        if (!contact) {
-          contact = await storage.createContact({
-            companyId,
-            whatsappAccountId: accountId,
-            name: message.contactName || phoneNumber,
-            phoneNumber,
-            avatarUrl: message.avatarUrl,
-          });
-          log("info", "Created contact", { contactId: contact.id, name: contact.name, phone: phoneNumber });
-        }
-      }
-      
-      if (message.avatarUrl && message.avatarUrl !== contact.avatarUrl) {
-        // Update avatar if we got a new/different one
-        const oldAvatar = contact.avatarUrl;
-        contact = await storage.updateContact(contact.id, { avatarUrl: message.avatarUrl }) || contact;
-        log("info", "Updated avatar", { contactId: contact.id, changed: !!oldAvatar });
-        
-        // Emit contact update event (company-scoped)
-        io.to(`company:${companyId}`).emit("contact:updated", {
-          companyId,
-          contactId: contact.id,
-          avatarUrl: message.avatarUrl,
-        });
-      }
-
-      // Find or create open conversation
-      let conversation = await storage.getOpenConversationByContact(contact.id);
-      if (!conversation) {
-        conversation = await storage.createConversation({
-          companyId,
-          whatsappAccountId: accountId,
-          contactId: contact.id,
-          status: "open",
-          inbox: "whatsapp",
-        });
-        log("info", "Created conversation", { conversationId: conversation.id, contactId: contact.id });
-      }
-
-      // Check if we already have this message (to avoid duplicates)
-      const existingMessages = await storage.getMessages(conversation.id);
-      
-      // Get the last message in this conversation
-      const lastMessage = existingMessages.length > 0 
-        ? existingMessages[existingMessages.length - 1] 
-        : null;
-      
-      // Skip if the last message is the same content and direction
-      // This prevents re-importing old messages when session restarts
-      if (lastMessage && 
-          lastMessage.content === message.content && 
-          lastMessage.direction === direction) {
-        const messageAge = Date.now() - new Date(lastMessage.createdAt).getTime();
-        if (messageAge < 300000) {
-          log("info", "Skipping duplicate", { direction, reason: "same_as_last" });
-        }
+      // Verificar se é LID - se for, ignorar (muito lento para resolver)
+      if (message.phoneNumber.startsWith("LID_")) {
+        console.log(`[FastHandler] Skipping LID message: ${message.phoneNumber}`);
         return;
       }
       
-      // Also check if this exact message already exists anywhere in recent history
-      const recentDuplicate = existingMessages.some(m => 
-        m.content === message.content && 
-        m.direction === direction &&
-        Math.abs(new Date(m.createdAt).getTime() - Date.now()) < 300000 // Within 5 minutes
-      );
-      
-      if (recentDuplicate) {
-        log("info", "Skipping duplicate", { direction, reason: "recent_history" });
-        return;
-      }
-
-      // Create the message
-      const savedMessage = await storage.createMessage({
-        conversationId: conversation.id,
-        direction: direction,
-        content: message.content,
-        senderDisplayName: message.senderDisplayName || (direction === "outgoing" ? "Celular" : undefined),
-      });
-
-      // Update conversation timestamp so it appears at top of list
-      await storage.updateConversation(conversation.id, { 
-        updatedAt: new Date(),
-        lastMessageAt: new Date(),
-      });
-
-      log("info", "Message saved", { 
-        messageId: savedMessage.id, 
-        direction, 
+      // Usar o handler rápido que emite imediatamente e processa em background
+      await messageQueue.handleMessageFast(accountId, {
+        phoneNumber: message.phoneNumber,
         contactName: message.contactName,
-        preview: message.content.substring(0, 30)
+        content: message.content,
+        direction: message.direction || "incoming",
+        senderDisplayName: message.senderDisplayName,
+        avatarUrl: message.avatarUrl,
+        timestamp: message.timestamp,
       });
-
-      // Emit Socket.IO events for real-time updates (company-scoped)
-      const companyRoom = `company:${companyId}`;
       
-      // Get room info for debugging
-      const room = io.sockets.adapter.rooms.get(companyRoom);
-      const roomSize = room ? room.size : 0;
-      console.log(`[Socket.IO] Emitting to room ${companyRoom} with ${roomSize} clients`);
-      
-      const messageEvent = {
-        companyId,
-        conversationId: conversation.id,
-        contactId: contact.id,
-        message: savedMessage,
-      };
-      console.log(`[Socket.IO] Emitting message:created`, {
-        conversationId: conversation.id,
-        messageId: savedMessage.id,
-        direction,
-      });
-      io.to(companyRoom).emit("message:created", messageEvent);
-      
-      io.to(companyRoom).emit("conversation:updated", {
-        companyId,
-        conversationId: conversation.id,
-        lastMessage: message.content,
-        lastMessageAt: new Date().toISOString(),
-      });
-
-      // Dispatch webhook for incoming message only
-      if (direction === "incoming") {
-        await dispatchWebhook(companyId, "message.incoming", {
-          conversationId: conversation.id,
-          contactId: contact.id,
-          messageId: savedMessage.id,
-          content: message.content,
-          phoneNumber,
-        });
-      }
+      console.log(`[FastHandler] Processed in ${Date.now() - startTime}ms`);
     } catch (error) {
-      log("error", "Message handler failed", { error: String(error) });
+      console.error(`[FastHandler] Error:`, error);
     }
   });
 

@@ -301,15 +301,17 @@ class WhatsAppBaileysGateway {
       }
     });
 
-    sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    sock.ev.on("messages.upsert", ({ messages, type }) => {
+      // IMPORTANTE: Não usar await aqui para não bloquear o event loop
       console.log(`[Baileys] Messages upsert: ${messages.length} messages, type: ${type}`);
 
       for (const msg of messages) {
-        try {
-          await this.processMessage(accountId, msg, type);
-        } catch (error) {
-          console.error(`[Baileys] Error processing message:`, error);
-        }
+        // Processar cada mensagem de forma assíncrona sem bloquear
+        setImmediate(() => {
+          this.processMessage(accountId, msg, type).catch(error => {
+            console.error(`[Baileys] Error processing message:`, error);
+          });
+        });
       }
     });
 
