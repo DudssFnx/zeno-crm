@@ -6,6 +6,8 @@ import makeWASocket, {
   proto,
   getContentType,
   jidNormalizedUser,
+  isLidUser,
+  jidDecode,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import { Server as SocketServer } from "socket.io";
@@ -17,6 +19,11 @@ import QRCode from "qrcode";
 
 const SESSION_DIR = "./whatsapp-sessions-baileys";
 const SESSION_STATUS_FILE = "./whatsapp-sessions-baileys/session-status.json";
+const LID_MAPPING_FILE = "./whatsapp-sessions-baileys/lid-mapping.json";
+
+interface LidMapping {
+  [lid: string]: string; // LID -> phoneNumber
+}
 
 interface BaileysSession {
   accountId: string;
@@ -56,6 +63,50 @@ class WhatsAppBaileysGateway {
   private isInitialized: boolean = false;
   private msgRetryCounterCache = new NodeCache();
   private logger = pino({ level: "silent" });
+  private lidMapping: LidMapping = {};
+
+  constructor() {
+    this.loadLidMapping();
+  }
+
+  private loadLidMapping(): void {
+    try {
+      if (fs.existsSync(LID_MAPPING_FILE)) {
+        const data = fs.readFileSync(LID_MAPPING_FILE, "utf-8");
+        this.lidMapping = JSON.parse(data);
+        console.log(`[Baileys] Loaded ${Object.keys(this.lidMapping).length} LID mappings`);
+      }
+    } catch (error) {
+      console.error("[Baileys] Error loading LID mapping:", error);
+      this.lidMapping = {};
+    }
+  }
+
+  private saveLidMapping(): void {
+    try {
+      if (!fs.existsSync(SESSION_DIR)) {
+        fs.mkdirSync(SESSION_DIR, { recursive: true });
+      }
+      fs.writeFileSync(LID_MAPPING_FILE, JSON.stringify(this.lidMapping, null, 2));
+    } catch (error) {
+      console.error("[Baileys] Error saving LID mapping:", error);
+    }
+  }
+
+  storeLidToPhoneMapping(lid: string, phoneNumber: string): void {
+    const cleanLid = lid.replace("@lid", "").replace(/\D/g, "");
+    const cleanPhone = phoneNumber.replace(/\D/g, "");
+    if (cleanLid && cleanPhone && !this.lidMapping[cleanLid]) {
+      this.lidMapping[cleanLid] = cleanPhone;
+      this.saveLidMapping();
+      console.log(`[Baileys] Stored LID mapping: ${cleanLid} -> ${cleanPhone}`);
+    }
+  }
+
+  getPhoneFromLid(lid: string): string | null {
+    const cleanLid = lid.replace("@lid", "").replace(/\D/g, "");
+    return this.lidMapping[cleanLid] || null;
+  }
 
   setMessageHandler(handler: MessageHandler) {
     this.messageHandler = handler;
@@ -300,13 +351,32 @@ class WhatsAppBaileysGateway {
     const rawJid = msg.key.remoteJid;
     const isGroup = rawJid.endsWith("@g.us");
     
+    // Check if this is a LID (Linked Device ID) instead of a real phone number
+    const isLid = isLidUser(rawJid);
+    
     // Normalize JID to ensure consistent phone number format
-    const normalizedJid = isGroup ? rawJid : jidNormalizedUser(rawJid);
-    const phoneNumber = isGroup ? rawJid : normalizedJid.replace("@s.whatsapp.net", "");
+    let normalizedJid = isGroup ? rawJid : jidNormalizedUser(rawJid);
+    let phoneNumber = isGroup ? rawJid : normalizedJid.replace("@s.whatsapp.net", "").replace("@lid", "");
+    
+    // For LIDs, we need to handle them specially
+    // LIDs are internal WhatsApp IDs that don't correspond to real phone numbers
+    if (isLid && !isGroup) {
+      // First, check if we have a mapping for this LID
+      const mappedPhone = this.getPhoneFromLid(rawJid);
+      if (mappedPhone) {
+        console.log(`[Baileys] Resolved LID ${rawJid} to phone ${mappedPhone} from cache`);
+        phoneNumber = mappedPhone;
+      } else {
+        console.log(`[Baileys] Detected unmapped LID: ${rawJid}, pushName: ${msg.pushName}`);
+        // Mark this as a LID-based phone number for special handling
+        phoneNumber = `LID_${phoneNumber}`;
+      }
+    }
     
     // Skip invalid phone numbers (like internal WhatsApp IDs that are too long)
     // Valid phone numbers are typically 10-15 digits
-    if (!isGroup) {
+    // But allow LID-prefixed numbers through
+    if (!isGroup && !phoneNumber.startsWith("LID_")) {
       const digitsOnly = phoneNumber.replace(/\D/g, "");
       if (digitsOnly.length > 15 || digitsOnly.length < 8) {
         console.log(`[Baileys] Skipping invalid phone number: ${phoneNumber} (length: ${digitsOnly.length})`);

@@ -74,21 +74,52 @@ export async function registerRoutes(
       }
 
       const companyId = account.companyId;
-      const phoneNumber = message.phoneNumber.replace(/\D/g, "");
       const direction = message.direction || "incoming";
-
-      // Find or create contact
-      let contact = await storage.getContactByPhone(companyId, phoneNumber);
-      if (!contact) {
-        contact = await storage.createContact({
-          companyId,
-          whatsappAccountId: accountId,
-          name: message.contactName || phoneNumber,
-          phoneNumber,
-          avatarUrl: message.avatarUrl,
-        });
-        log("info", "Created contact", { contactId: contact.id, name: contact.name, phone: phoneNumber });
-      } else if (message.avatarUrl && message.avatarUrl !== contact.avatarUrl) {
+      
+      // Check if this is a LID (Linked Device ID) - internal WhatsApp ID, not a real phone
+      const isLid = message.phoneNumber.startsWith("LID_");
+      let phoneNumber = message.phoneNumber.replace(/\D/g, "");
+      
+      // For LIDs, we need to find the contact by name instead of phone number
+      let contact = null;
+      
+      if (isLid) {
+        // Remove the LID prefix from the phone number
+        const lidNumber = message.phoneNumber.replace("LID_", "").replace(/\D/g, "");
+        log("info", "LID detected, searching by name", { contactName: message.contactName, lidNumber });
+        
+        // First, try to find an existing contact with the same name
+        const allContacts = await storage.getContacts(companyId);
+        contact = allContacts.find(c => 
+          c.name.toLowerCase() === message.contactName?.toLowerCase()
+        );
+        
+        if (contact) {
+          log("info", "Found contact by name for LID", { contactId: contact.id, name: contact.name });
+          // Store the LID -> Phone mapping for future resolution
+          whatsappBaileys.storeLidToPhoneMapping(lidNumber, contact.phoneNumber);
+          phoneNumber = contact.phoneNumber;
+        } else {
+          // If no contact found by name, skip this message to avoid creating duplicate contacts
+          log("warn", "LID message with unknown contact, skipping", { contactName: message.contactName, lidNumber });
+          return;
+        }
+      } else {
+        // Normal phone number - find or create contact
+        contact = await storage.getContactByPhone(companyId, phoneNumber);
+        if (!contact) {
+          contact = await storage.createContact({
+            companyId,
+            whatsappAccountId: accountId,
+            name: message.contactName || phoneNumber,
+            phoneNumber,
+            avatarUrl: message.avatarUrl,
+          });
+          log("info", "Created contact", { contactId: contact.id, name: contact.name, phone: phoneNumber });
+        }
+      }
+      
+      if (message.avatarUrl && message.avatarUrl !== contact.avatarUrl) {
         // Update avatar if we got a new/different one
         const oldAvatar = contact.avatarUrl;
         contact = await storage.updateContact(contact.id, { avatarUrl: message.avatarUrl }) || contact;
