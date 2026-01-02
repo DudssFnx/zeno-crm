@@ -18,6 +18,7 @@ import pino from "pino";
 import NodeCache from "node-cache";
 import QRCode from "qrcode";
 import { normalizeJid, extractPhoneFromJid, isValidChatJid, isValidPhoneNumber, normalizePhone } from "./jid-utils";
+import { storage } from "./storage";
 
 const SESSION_DIR = "./whatsapp-sessions-baileys";
 const SESSION_STATUS_FILE = "./whatsapp-sessions-baileys/session-status.json";
@@ -211,6 +212,21 @@ class WhatsAppBaileysGateway {
     console.log(`[Baileys] Found ${sessionsToReconnect.length} session(s) to auto-reconnect`);
 
     for (const session of sessionsToReconnect) {
+      // ZERO_LOSS: Verificar se a conta existe no banco de dados antes de reconectar
+      // Evita perda de mensagens de sessões órfãs
+      try {
+        const account = await storage.getWhatsappAccount(session.accountId);
+        if (!account) {
+          console.warn(`[Baileys] SKIP auto-reconnect: Account ${session.accountId} not found in database - removing orphan session`);
+          // Remover a sessão órfã do status
+          this.saveSessionStatus(session.accountId, false);
+          continue;
+        }
+      } catch (error) {
+        console.error(`[Baileys] Error checking account ${session.accountId}:`, error);
+        continue;
+      }
+      
       console.log(`[Baileys] Auto-reconnecting session: ${session.accountId}`);
       try {
         await this.startSession(session.accountId);

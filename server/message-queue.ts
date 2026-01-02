@@ -473,10 +473,10 @@ async function processMessageInBackground(msg: QueuedMessage) {
       }).catch(err => console.error("[Webhook] Error:", err));
     }
     
-    console.log(`[Queue] Message processed: ${direction} to ${phoneNumber}${mediaInfo ? ` [${mediaInfo.mediaType}]` : ""}`);
+    console.log(`[ZERO_LOSS] SAVED: msgId=${savedMessage.id} convId=${conversation.id} phone=${phoneNumber} content="${content.substring(0, 30)}"`);
     
   } catch (error) {
-    console.error("[Queue] Error in processMessageInBackground:", error);
+    console.error("[ZERO_LOSS] ERROR in processMessageInBackground:", error);
   }
 }
 
@@ -495,11 +495,14 @@ export async function handleMessageFast(
     messageId?: string;
   }
 ) {
+  // LOG CRÍTICO: Toda mensagem que chega aqui DEVE ser processada
+  console.log(`[ZERO_LOSS] RECEIVED: phone=${message.phoneNumber} direction=${message.direction} content="${message.content.substring(0, 50)}" contact="${message.contactName}"`);
+  
   // IGNORAR mensagens de saída (outgoing) - elas são eco do WhatsApp
   // As mensagens enviadas pelo CRM já são salvas diretamente em routes.ts
   // Isso evita duplicação de mensagens
   if (message.direction === "outgoing") {
-    console.log(`[Queue] Ignorando eco de mensagem enviada: ${message.content.substring(0, 30)}...`);
+    console.log(`[ZERO_LOSS] SKIP_OUTGOING: eco de mensagem enviada`);
     return;
   }
   
@@ -514,12 +517,13 @@ export async function handleMessageFast(
   }
   
   if (!account) {
-    console.error("[Queue] Account not found:", accountId);
+    console.error("[ZERO_LOSS] CRITICAL: Account not found:", accountId);
     return;
   }
   
   const companyId = account.companyId;
   const phoneNumber = normalizePhone(message.phoneNumber);
+  console.log(`[ZERO_LOSS] PROCESSING: phone=${phoneNumber} company=${companyId}`);
   
   // Tentar buscar conversa existente do cache para emitir imediatamente
   let contact = getContactFromCache(companyId, phoneNumber) as any;

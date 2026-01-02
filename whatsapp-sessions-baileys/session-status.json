@@ -1,17 +1,7 @@
 [
   {
-    "accountId": "9c68dc39-a27f-4550-ba72-b2c8ec6a8903",
-    "wasConnected": false,
-    "lastConnectedAt": "2026-01-02T14:09:15.050Z"
-  },
-  {
-    "accountId": "b58e30ed-58ce-4599-8fa7-070cc1940b18",
-    "wasConnected": true,
-    "lastConnectedAt": "2026-01-02T17:47:27.020Z"
-  },
-  {
     "accountId": "7ddbf6c1-af8b-4d83-b841-65f1184b28ad",
     "wasConnected": true,
-    "lastConnectedAt": "2026-01-02T17:47:27.046Z"
+    "lastConnectedAt": "2026-01-02T17:55:16.789Z"
   }
 ]
