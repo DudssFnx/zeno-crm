@@ -253,6 +253,7 @@ export const cannedResponses = pgTable("canned_responses", {
   companyId: varchar("company_id").notNull().references(() => companies.id),
   shortcut: text("shortcut").notNull(),
   content: text("content").notNull(),
+  attribute: text("attribute"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Zap, MessageSquareText } from "lucide-react";
+import { Plus, Pencil, Trash2, Zap, MessageSquareText, Star } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,17 +12,19 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DashboardLayout } from "../dashboard";
 import { LoadingSpinner, LoadingCard } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import type { CannedResponse } from "@shared/schema";
+import type { CannedResponse, ContactAttribute } from "@shared/schema";
 
 const cannedResponseFormSchema = z.object({
   shortcut: z.string().min(1, "O atalho é obrigatório").max(50, "Máximo 50 caracteres"),
   content: z.string().min(1, "O conteúdo é obrigatório"),
+  attribute: z.string().optional(),
 });
 
 type CannedResponseFormData = z.infer<typeof cannedResponseFormSchema>;
@@ -35,7 +37,16 @@ export default function CannedResponsesPage() {
 
   const form = useForm<CannedResponseFormData>({
     resolver: zodResolver(cannedResponseFormSchema),
-    defaultValues: { shortcut: "", content: "" },
+    defaultValues: { shortcut: "", content: "", attribute: "" },
+  });
+
+  const { data: contactAttributes = [] } = useQuery<ContactAttribute[]>({
+    queryKey: ["/api/contact-attributes"],
+    queryFn: async () => {
+      const res = await authFetch("/api/contact-attributes");
+      if (!res.ok) throw new Error("Failed to fetch contact attributes");
+      return res.json();
+    },
   });
 
   const { data: cannedResponses = [], isLoading } = useQuery<CannedResponse[]>({
@@ -51,7 +62,10 @@ export default function CannedResponsesPage() {
     mutationFn: async (data: CannedResponseFormData) => {
       const res = await authFetch("/api/canned-responses", {
         method: "POST",
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          attribute: data.attribute === "NONE" ? null : data.attribute,
+        }),
       });
       if (!res.ok) {
         const error = await res.json();
@@ -77,6 +91,7 @@ export default function CannedResponsesPage() {
         body: JSON.stringify({
           shortcut: data.shortcut,
           content: data.content,
+          attribute: data.attribute === "NONE" ? null : data.attribute,
         }),
       });
       if (!res.ok) {
@@ -118,10 +133,11 @@ export default function CannedResponsesPage() {
       form.reset({
         shortcut: response.shortcut,
         content: response.content,
+        attribute: response.attribute || "",
       });
     } else {
       setEditingResponse(null);
-      form.reset({ shortcut: "", content: "" });
+      form.reset({ shortcut: "", content: "", attribute: "" });
     }
     setIsDialogOpen(true);
   };
@@ -208,6 +224,43 @@ export default function CannedResponsesPage() {
                         </FormItem>
                       )}
                     />
+                    <FormField
+                      control={form.control}
+                      name="attribute"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Atributo (opcional)</FormLabel>
+                          <Select
+                            value={field.value || ""}
+                            onValueChange={field.onChange}
+                          >
+                            <FormControl>
+                              <SelectTrigger data-testid="select-canned-response-attribute">
+                                <SelectValue placeholder="Selecione um atributo" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="NONE">Nenhum</SelectItem>
+                              {contactAttributes.map((attr) => (
+                                <SelectItem key={attr.id} value={attr.name}>
+                                  <span className="flex items-center gap-2">
+                                    <span
+                                      className="w-3 h-3 rounded-full"
+                                      style={{ backgroundColor: attr.color }}
+                                    />
+                                    {attr.name}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Se selecionado, o atributo será aplicado ao contato ao enviar
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                         Cancelar
@@ -257,10 +310,19 @@ export default function CannedResponsesPage() {
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <Badge variant="secondary" className="font-mono">
                             /{response.shortcut}
                           </Badge>
+                          {response.attribute && (
+                            <Badge 
+                              variant="outline" 
+                              className="text-xs border-amber-500/50 text-amber-600 dark:text-amber-400"
+                            >
+                              <Star className="h-3 w-3 mr-1 fill-current" />
+                              {response.attribute}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap line-clamp-3">
                           {response.content}

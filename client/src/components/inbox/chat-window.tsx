@@ -197,6 +197,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [pendingAttribute, setPendingAttribute] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -299,15 +300,31 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       setMessage("");
       setIsTyping(false);
       clearSelectedFile();
+      
+      // Aplicar atributo se houver um pendente da resposta rápida
+      if (pendingAttribute && conversation?.contact?.id) {
+        try {
+          await authFetch(`/api/contacts/${conversation.contact.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ attribute: pendingAttribute }),
+          });
+          queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+        } catch (e) {
+          console.error("[ChatWindow] Falha ao aplicar atributo:", e);
+        }
+        setPendingAttribute(null);
+      }
+      
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     },
     onError: (error: Error) => {
       toast({ title: error.message || "Falha ao enviar mensagem", variant: "destructive" });
+      setPendingAttribute(null);
     },
   });
 
@@ -422,6 +439,9 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     setMessage(response.content);
     setShowCannedResponses(false);
     setCannedSearchTerm("");
+    if (response.attribute) {
+      setPendingAttribute(response.attribute);
+    }
     textareaRef.current?.focus();
   };
 
