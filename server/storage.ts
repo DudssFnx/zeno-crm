@@ -3,7 +3,7 @@ import { eq, and, desc, sql, asc } from "drizzle-orm";
 import {
   companies, users, whatsappAccounts, contacts, tags, contactTags,
   conversations, messages, webhookConfigs, automationLogs, cannedResponses,
-  macros, macroExecutions, stages, contactAttributes,
+  macros, macroExecutions, stages, contactAttributes, autoResponses, autoResponseLogs,
   type Company, type InsertCompany, type User, type InsertUser,
   type WhatsappAccount, type InsertWhatsappAccount,
   type Contact, type InsertContact, type Tag, type InsertTag,
@@ -16,6 +16,8 @@ import {
   type MacroExecution, type InsertMacroExecution,
   type Stage, type InsertStage,
   type ContactAttribute, type InsertContactAttribute,
+  type AutoResponse, type InsertAutoResponse,
+  type AutoResponseLog, type InsertAutoResponseLog,
   type ConversationWithDetails, type ContactWithTags, type MessageWithSender,
 } from "@shared/schema";
 import { normalizePhone } from "./jid-utils";
@@ -123,6 +125,21 @@ export interface IStorage {
   getContactAttributes(companyId: string): Promise<ContactAttribute[]>;
   updateContactAttribute(id: string, data: Partial<InsertContactAttribute>): Promise<ContactAttribute | undefined>;
   deleteContactAttribute(id: string): Promise<void>;
+
+  // Auto Responses
+  createAutoResponse(data: InsertAutoResponse): Promise<AutoResponse>;
+  getAutoResponse(id: string): Promise<AutoResponse | undefined>;
+  getAutoResponses(companyId: string): Promise<AutoResponse[]>;
+  getActiveAutoResponses(companyId: string, whatsappAccountId?: string): Promise<AutoResponse[]>;
+  updateAutoResponse(id: string, data: Partial<InsertAutoResponse>): Promise<AutoResponse | undefined>;
+  deleteAutoResponse(id: string): Promise<void>;
+
+  // Auto Response Logs
+  createAutoResponseLog(data: InsertAutoResponseLog): Promise<AutoResponseLog>;
+  getAutoResponseLogs(autoResponseId: string): Promise<AutoResponseLog[]>;
+  getContactLastAutoResponseTime(contactId: string, autoResponseId: string): Promise<Date | null>;
+  hasContactReceivedAutoResponseToday(contactId: string, autoResponseId: string): Promise<boolean>;
+  hasContactEverReceivedAutoResponse(contactId: string, autoResponseId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -696,6 +713,107 @@ export class DatabaseStorage implements IStorage {
 
   async deleteContactAttribute(id: string): Promise<void> {
     await db.delete(contactAttributes).where(eq(contactAttributes.id, id));
+  }
+
+  // Auto Responses
+  async createAutoResponse(data: InsertAutoResponse): Promise<AutoResponse> {
+    const existingResponses = await this.getAutoResponses(data.companyId);
+    const maxPriority = existingResponses.length > 0
+      ? Math.max(...existingResponses.map(r => parseInt(r.priority || "0")))
+      : -1;
+    const [response] = await db.insert(autoResponses).values({
+      ...data,
+      priority: String(maxPriority + 1),
+    }).returning();
+    return response;
+  }
+
+  async getAutoResponse(id: string): Promise<AutoResponse | undefined> {
+    const [response] = await db.select().from(autoResponses).where(eq(autoResponses.id, id));
+    return response;
+  }
+
+  async getAutoResponses(companyId: string): Promise<AutoResponse[]> {
+    return db.select().from(autoResponses)
+      .where(eq(autoResponses.companyId, companyId))
+      .orderBy(asc(autoResponses.priority));
+  }
+
+  async getActiveAutoResponses(companyId: string, whatsappAccountId?: string): Promise<AutoResponse[]> {
+    const allResponses = await db.select().from(autoResponses)
+      .where(and(
+        eq(autoResponses.companyId, companyId),
+        eq(autoResponses.isActive, true)
+      ))
+      .orderBy(asc(autoResponses.priority));
+    
+    // Filter by whatsappAccountId if provided
+    if (whatsappAccountId) {
+      return allResponses.filter(r => 
+        r.whatsappAccountId === null || r.whatsappAccountId === whatsappAccountId
+      );
+    }
+    return allResponses;
+  }
+
+  async updateAutoResponse(id: string, data: Partial<InsertAutoResponse>): Promise<AutoResponse | undefined> {
+    const [response] = await db
+      .update(autoResponses)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(autoResponses.id, id))
+      .returning();
+    return response;
+  }
+
+  async deleteAutoResponse(id: string): Promise<void> {
+    await db.delete(autoResponses).where(eq(autoResponses.id, id));
+  }
+
+  // Auto Response Logs
+  async createAutoResponseLog(data: InsertAutoResponseLog): Promise<AutoResponseLog> {
+    const [log] = await db.insert(autoResponseLogs).values(data).returning();
+    return log;
+  }
+
+  async getAutoResponseLogs(autoResponseId: string): Promise<AutoResponseLog[]> {
+    return db.select().from(autoResponseLogs)
+      .where(eq(autoResponseLogs.autoResponseId, autoResponseId))
+      .orderBy(desc(autoResponseLogs.executedAt));
+  }
+
+  async getContactLastAutoResponseTime(contactId: string, autoResponseId: string): Promise<Date | null> {
+    const [log] = await db.select().from(autoResponseLogs)
+      .where(and(
+        eq(autoResponseLogs.contactId, contactId),
+        eq(autoResponseLogs.autoResponseId, autoResponseId)
+      ))
+      .orderBy(desc(autoResponseLogs.executedAt))
+      .limit(1);
+    return log?.executedAt || null;
+  }
+
+  async hasContactReceivedAutoResponseToday(contactId: string, autoResponseId: string): Promise<boolean> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const [log] = await db.select().from(autoResponseLogs)
+      .where(and(
+        eq(autoResponseLogs.contactId, contactId),
+        eq(autoResponseLogs.autoResponseId, autoResponseId),
+        sql`${autoResponseLogs.executedAt} >= ${today}`
+      ))
+      .limit(1);
+    return !!log;
+  }
+
+  async hasContactEverReceivedAutoResponse(contactId: string, autoResponseId: string): Promise<boolean> {
+    const [log] = await db.select().from(autoResponseLogs)
+      .where(and(
+        eq(autoResponseLogs.contactId, contactId),
+        eq(autoResponseLogs.autoResponseId, autoResponseId)
+      ))
+      .limit(1);
+    return !!log;
   }
 }
 

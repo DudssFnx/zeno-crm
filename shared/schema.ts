@@ -347,6 +347,80 @@ export type InsertMacroExecution = z.infer<typeof insertMacroExecutionSchema>;
 export type Stage = typeof stages.$inferSelect;
 export type InsertStage = z.infer<typeof insertStageSchema>;
 
+// Auto Responses (Auto Atendimento)
+export const autoResponses = pgTable("auto_responses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id),
+  whatsappAccountId: varchar("whatsapp_account_id").references(() => whatsappAccounts.id), // null = all accounts
+  name: text("name").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  
+  // Triggers (Acionamentos)
+  triggerType: text("trigger_type").notNull(), // any_message | keyword | first_message_day | first_message_ever
+  keywords: text("keywords").array(), // For keyword trigger
+  
+  // Actions (Ações)
+  actions: jsonb("actions").notNull().default([]), // [{type: "send_text", content}, {type: "send_image", mediaUrl}, {type: "add_tag", tagId}]
+  
+  // Rules (Regras de Acionamento)
+  allowGroups: boolean("allow_groups").notNull().default(false),
+  scheduleEnabled: boolean("schedule_enabled").notNull().default(false),
+  scheduleDays: text("schedule_days").array(), // ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+  scheduleStartTime: text("schedule_start_time"), // "08:00"
+  scheduleEndTime: text("schedule_end_time"), // "18:00"
+  skipIfConversationOpen: boolean("skip_if_conversation_open").notNull().default(false),
+  skipIfConversationResolved: boolean("skip_if_conversation_resolved").notNull().default(false),
+  includeSignature: boolean("include_signature").notNull().default(false),
+  
+  priority: text("priority").notNull().default("0"), // Order of execution
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const autoResponsesRelations = relations(autoResponses, ({ one }) => ({
+  company: one(companies, { fields: [autoResponses.companyId], references: [companies.id] }),
+  whatsappAccount: one(whatsappAccounts, { fields: [autoResponses.whatsappAccountId], references: [whatsappAccounts.id] }),
+}));
+
+// Auto Response action types
+export const autoResponseActionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("send_text"), content: z.string() }),
+  z.object({ type: z.literal("send_image"), mediaUrl: z.string(), caption: z.string().optional() }),
+  z.object({ type: z.literal("send_video"), mediaUrl: z.string(), caption: z.string().optional() }),
+  z.object({ type: z.literal("send_audio"), mediaUrl: z.string() }),
+  z.object({ type: z.literal("send_document"), mediaUrl: z.string(), fileName: z.string().optional() }),
+  z.object({ type: z.literal("add_tag"), tagId: z.string() }),
+  z.object({ type: z.literal("remove_tag"), tagId: z.string() }),
+  z.object({ type: z.literal("set_status"), status: z.enum(["open", "pending", "resolved", "closed"]) }),
+]);
+
+export type AutoResponseAction = z.infer<typeof autoResponseActionSchema>;
+
+export const insertAutoResponseSchema = createInsertSchema(autoResponses).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAutoResponse = z.infer<typeof insertAutoResponseSchema>;
+export type AutoResponse = typeof autoResponses.$inferSelect;
+
+// Auto Response Logs (registro de execuções)
+export const autoResponseLogs = pgTable("auto_response_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  autoResponseId: varchar("auto_response_id").notNull().references(() => autoResponses.id, { onDelete: "cascade" }),
+  conversationId: varchar("conversation_id").references(() => conversations.id),
+  contactId: varchar("contact_id").references(() => contacts.id),
+  triggerMessage: text("trigger_message"),
+  actionsTaken: jsonb("actions_taken").notNull().default([]),
+  executedAt: timestamp("executed_at").defaultNow().notNull(),
+});
+
+export const autoResponseLogsRelations = relations(autoResponseLogs, ({ one }) => ({
+  autoResponse: one(autoResponses, { fields: [autoResponseLogs.autoResponseId], references: [autoResponses.id] }),
+  conversation: one(conversations, { fields: [autoResponseLogs.conversationId], references: [conversations.id] }),
+  contact: one(contacts, { fields: [autoResponseLogs.contactId], references: [contacts.id] }),
+}));
+
+export const insertAutoResponseLogSchema = createInsertSchema(autoResponseLogs).omit({ id: true, executedAt: true });
+export type InsertAutoResponseLog = z.infer<typeof insertAutoResponseLogSchema>;
+export type AutoResponseLog = typeof autoResponseLogs.$inferSelect;
+
 // Auth schemas
 export const loginSchema = z.object({
   email: z.string().email(),

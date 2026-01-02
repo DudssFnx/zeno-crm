@@ -1653,6 +1653,134 @@ export async function registerRoutes(
     }
   });
 
+  // Auto Response routes (Auto Atendimento)
+  app.get("/api/auto-responses", authMiddleware(storage), async (req: AuthRequest, res) => {
+    const responses = await storage.getAutoResponses(req.user!.companyId);
+    res.json(responses);
+  });
+
+  app.get("/api/auto-responses/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+    const response = await storage.getAutoResponse(req.params.id);
+    if (!response) {
+      return res.status(404).json({ message: "Auto atendimento não encontrado" });
+    }
+    res.json(response);
+  });
+
+  app.post("/api/auto-responses", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name, triggerType, keywords, actions, whatsappAccountId, isActive,
+        allowGroups, scheduleEnabled, scheduleDays, scheduleStartTime, scheduleEndTime,
+        skipIfConversationOpen, skipIfConversationResolved, includeSignature } = req.body;
+      
+      if (!name || !triggerType) {
+        return res.status(400).json({ message: "Nome e tipo de acionamento são obrigatórios" });
+      }
+
+      const response = await storage.createAutoResponse({
+        companyId: req.user!.companyId,
+        name,
+        triggerType,
+        keywords: keywords || [],
+        actions: actions || [],
+        whatsappAccountId: whatsappAccountId || null,
+        isActive: isActive !== false,
+        allowGroups: allowGroups || false,
+        scheduleEnabled: scheduleEnabled || false,
+        scheduleDays: scheduleDays || [],
+        scheduleStartTime: scheduleStartTime || null,
+        scheduleEndTime: scheduleEndTime || null,
+        skipIfConversationOpen: skipIfConversationOpen || false,
+        skipIfConversationResolved: skipIfConversationResolved || false,
+        includeSignature: includeSignature || false,
+      });
+
+      res.json(response);
+    } catch (error) {
+      console.error("Create auto response error:", error);
+      res.status(500).json({ message: "Falha ao criar auto atendimento" });
+    }
+  });
+
+  app.put("/api/auto-responses/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name, triggerType, keywords, actions, whatsappAccountId, isActive,
+        allowGroups, scheduleEnabled, scheduleDays, scheduleStartTime, scheduleEndTime,
+        skipIfConversationOpen, skipIfConversationResolved, includeSignature, priority } = req.body;
+      
+      const response = await storage.updateAutoResponse(req.params.id, {
+        name,
+        triggerType,
+        keywords,
+        actions,
+        whatsappAccountId,
+        isActive,
+        allowGroups,
+        scheduleEnabled,
+        scheduleDays,
+        scheduleStartTime,
+        scheduleEndTime,
+        skipIfConversationOpen,
+        skipIfConversationResolved,
+        includeSignature,
+        priority,
+      });
+      
+      if (!response) {
+        return res.status(404).json({ message: "Auto atendimento não encontrado" });
+      }
+      res.json(response);
+    } catch (error) {
+      console.error("Update auto response error:", error);
+      res.status(500).json({ message: "Falha ao atualizar auto atendimento" });
+    }
+  });
+
+  app.delete("/api/auto-responses/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteAutoResponse(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete auto response error:", error);
+      res.status(500).json({ message: "Falha ao excluir auto atendimento" });
+    }
+  });
+
+  app.put("/api/auto-responses/reorder", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { autoResponseIds } = req.body;
+      if (!autoResponseIds || !Array.isArray(autoResponseIds)) {
+        return res.status(400).json({ message: "autoResponseIds é obrigatório" });
+      }
+
+      // Update priority for each auto response
+      const updated: any[] = [];
+      for (let i = 0; i < autoResponseIds.length; i++) {
+        const response = await storage.updateAutoResponse(autoResponseIds[i], { priority: String(i) });
+        if (response) updated.push(response);
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Reorder auto responses error:", error);
+      res.status(500).json({ message: "Falha ao reordenar auto atendimentos" });
+    }
+  });
+
+  // Toggle auto response active status
+  app.patch("/api/auto-responses/:id/toggle", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const current = await storage.getAutoResponse(req.params.id);
+      if (!current) {
+        return res.status(404).json({ message: "Auto atendimento não encontrado" });
+      }
+      const response = await storage.updateAutoResponse(req.params.id, { isActive: !current.isActive });
+      res.json(response);
+    } catch (error) {
+      console.error("Toggle auto response error:", error);
+      res.status(500).json({ message: "Falha ao alternar auto atendimento" });
+    }
+  });
+
   // Dev endpoint: Simulate incoming message
   app.post("/api/dev/simulate-incoming-message", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
