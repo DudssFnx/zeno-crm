@@ -41,15 +41,18 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 
 ### Tables
 - **companies** - Multi-tenant company accounts
-- **users** - Users with roles (admin/agent)
+- **users** - Users with roles (admin/agent), displayName, prefixMode
 - **whatsapp_accounts** - WhatsApp connection accounts
-- **contacts** - Customer contacts
+- **contacts** - Customer contacts with avatar support
 - **tags** - Labels for categorizing contacts
 - **contact_tags** - Junction table for contact-tag relationships
-- **conversations** - Chat conversations
-- **messages** - Individual messages (incoming, outgoing, internal notes)
+- **conversations** - Chat conversations with stageId for Kanban
+- **messages** - Individual messages with media support (mediaType, mediaUrl, fileName, mimetype, fileSize)
+- **stages** - Kanban stages for funnel management
 - **webhook_configs** - Webhook configuration
 - **automation_logs** - Webhook execution logs
+- **macros** - Automated actions configuration
+- **macro_executions** - Log of macro executions
 
 ## Key Features
 
@@ -88,6 +91,37 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 - Template variables: `{{nome}}`, `{{telefone}}`, `{{primeiro_nome}}`, `{{empresa}}`, `{{tags}}`, `{{atendente}}`
 - Settings page at `/settings/macros`
 - Execute via macro button in chat window
+
+### Media Handling
+- Upload/download media files (images, audio, video, documents)
+- Max file size: 25MB
+- Media types supported:
+  - **image**: Display thumbnail, click to view full-size
+  - **audio**: HTML5 audio player
+  - **video**: HTML5 video player
+  - **document/PDF**: File icon with download link
+- Media stored in /uploads/<companyId>/
+- Background queue for media downloads (non-blocking)
+
+### Operator Name Configuration
+- User settings page at `/settings/profile`
+- Display name configuration (Nome de Exibição)
+- Prefix mode options:
+  - **prefix**: `[Operator Name]: message`
+  - **firstLine**: `Operator Name:\nmessage`
+  - **none**: No operator identification
+
+### Kanban Board
+- Visual pipeline management at `/kanban`
+- Drag & drop conversations between stages
+- Stage settings at `/settings/stages`
+- Color-coded stages
+- Reorderable stages
+
+### Emoji Picker
+- Built-in emoji picker in message input
+- Click smile icon to open picker
+- Insert emoji at cursor position
 
 ### Webhooks
 - Event notifications for:
@@ -140,6 +174,21 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 - `PUT /api/macros/:id` - Update macro (admin only)
 - `DELETE /api/macros/:id` - Delete macro (admin only)
 - `POST /api/macros/execute` - Execute macro (all users)
+
+### Stages (Kanban)
+- `GET /api/stages` - List stages for company
+- `POST /api/stages` - Create stage
+- `PUT /api/stages/:id` - Update stage
+- `DELETE /api/stages/:id` - Delete stage
+- `PUT /api/stages/reorder` - Reorder stages
+- `PATCH /api/conversations/:id/stage` - Update conversation stage
+
+### User Settings
+- `GET /api/users/me/settings` - Get user settings
+- `PUT /api/users/me/settings` - Update displayName and prefixMode
+
+### Media Upload
+- `POST /api/upload` - Upload media file (multipart/form-data, max 25MB)
 
 ### Dev Tools
 - `POST /api/dev/simulate-incoming-message` - Simulate incoming message
