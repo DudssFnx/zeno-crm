@@ -179,10 +179,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getContactByPhone(companyId: string, phoneNumber: string): Promise<Contact | undefined> {
-    const [contact] = await db
+    // Normalize input phone number - keep only digits
+    const normalizedInput = phoneNumber.replace(/\D/g, "");
+    
+    // Get all contacts for this company and find match
+    const allContacts = await db
       .select()
       .from(contacts)
-      .where(and(eq(contacts.companyId, companyId), eq(contacts.phoneNumber, phoneNumber)));
+      .where(eq(contacts.companyId, companyId));
+    
+    // Find contact where normalized phone numbers match
+    // Check if one ends with the other (to handle missing country codes)
+    const contact = allContacts.find(c => {
+      const normalizedStored = c.phoneNumber.replace(/\D/g, "");
+      return normalizedStored === normalizedInput || 
+             normalizedStored.endsWith(normalizedInput) || 
+             normalizedInput.endsWith(normalizedStored);
+    });
+    
     return contact;
   }
 

@@ -5,6 +5,7 @@ import makeWASocket, {
   WASocket,
   proto,
   getContentType,
+  jidNormalizedUser,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import { Server as SocketServer } from "socket.io";
@@ -296,9 +297,22 @@ class WhatsAppBaileysGateway {
       oldest.forEach((id) => session.processedMessages.delete(id));
     }
 
-    const jid = msg.key.remoteJid;
-    const isGroup = jid.endsWith("@g.us");
-    const phoneNumber = isGroup ? jid : jid.replace("@s.whatsapp.net", "");
+    const rawJid = msg.key.remoteJid;
+    const isGroup = rawJid.endsWith("@g.us");
+    
+    // Normalize JID to ensure consistent phone number format
+    const normalizedJid = isGroup ? rawJid : jidNormalizedUser(rawJid);
+    const phoneNumber = isGroup ? rawJid : normalizedJid.replace("@s.whatsapp.net", "");
+    
+    // Skip invalid phone numbers (like internal WhatsApp IDs that are too long)
+    // Valid phone numbers are typically 10-15 digits
+    if (!isGroup) {
+      const digitsOnly = phoneNumber.replace(/\D/g, "");
+      if (digitsOnly.length > 15 || digitsOnly.length < 8) {
+        console.log(`[Baileys] Skipping invalid phone number: ${phoneNumber} (length: ${digitsOnly.length})`);
+        return;
+      }
+    }
 
     const messageType = getContentType(msg.message);
     let content = "";
@@ -378,10 +392,12 @@ class WhatsAppBaileysGateway {
     }
 
     try {
-      const jid = phoneNumber.includes("@") ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
+      // Normalize phone number - remove all non-digits and ensure proper JID format
+      const cleanNumber = phoneNumber.replace(/\D/g, "");
+      const jid = jidNormalizedUser(`${cleanNumber}@s.whatsapp.net`);
       const result = await session.socket.sendMessage(jid, { text: content });
 
-      console.log(`[Baileys] Message sent to ${phoneNumber}: ${content.substring(0, 50)}`);
+      console.log(`[Baileys] Message sent to ${cleanNumber} (jid: ${jid}): ${content.substring(0, 50)}`);
 
       return { success: true, messageId: result?.key?.id || undefined };
     } catch (error) {
