@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
 import { StatusBadge } from "@/components/status-badge";
 import { TagChip } from "@/components/tag-chip";
+import { AttributeChip } from "@/components/attribute-chip";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch } from "@/lib/auth";
@@ -349,16 +350,14 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                         {conv.lastMessage.content}
                       </p>
                     )}
-                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                    <div className="flex items-center gap-1 mt-1.5 flex-wrap">
                       <StatusBadge status={conv.status as "open" | "pending" | "resolved" | "closed"} />
-                      {conv.contact.attributes && conv.contact.attributes.length > 0 && (
-                        <span 
-                          className="text-[10px] text-muted-foreground truncate max-w-[120px]"
-                          title={conv.contact.attributes.join(" | ")}
-                          data-testid={`text-attributes-${conv.id}`}
-                        >
-                          {conv.contact.attributes.slice(0, 2).join(" ")}
-                          {conv.contact.attributes.length > 2 && ` +${conv.contact.attributes.length - 2}`}
+                      {conv.contact.attributes && conv.contact.attributes.slice(0, 2).map((attr, idx) => (
+                        <AttributeChip key={`${conv.id}-attr-${idx}`} name={attr} size="sm" />
+                      ))}
+                      {conv.contact.attributes && conv.contact.attributes.length > 2 && (
+                        <span className="text-[10px] text-muted-foreground" title={conv.contact.attributes.slice(2).join(", ")}>
+                          +{conv.contact.attributes.length - 2}
                         </span>
                       )}
                       {conv.tags && conv.tags.slice(0, 2).map((tag) => (
