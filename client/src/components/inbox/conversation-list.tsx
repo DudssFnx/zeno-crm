@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, MessageSquare, Trash2, X } from "lucide-react";
+import { Search, MessageSquare, Trash2, X, MessageCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -45,6 +45,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
   const [accountFilter, setAccountFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
+  const [unreadFilter, setUnreadFilter] = useState<boolean>(false);
   const [selectedConversations, setSelectedConversations] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -136,6 +137,12 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
     if (tagFilter !== "all") {
       const hasTag = conv.tags?.some(t => t.id === tagFilter);
       if (!hasTag) return false;
+    }
+    
+    // Filtro de não lidas: última mensagem é do cliente (incoming)
+    if (unreadFilter) {
+      const isUnread = conv.lastMessage?.direction === "incoming";
+      if (!isUnread) return false;
     }
     
     return true;
@@ -231,6 +238,20 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
               ))}
             </SelectContent>
           </Select>
+
+          <Button 
+            variant={unreadFilter ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setUnreadFilter(!unreadFilter)}
+            className={cn(
+              "min-h-[36px] gap-1.5 whitespace-nowrap",
+              unreadFilter && "bg-primary text-primary-foreground"
+            )}
+            data-testid="button-unread-filter"
+          >
+            <MessageCircle className="h-4 w-4" />
+            Não Lidas
+          </Button>
 
           {!isOperator && (
             <Button 
