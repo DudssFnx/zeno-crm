@@ -16,16 +16,7 @@ import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
-import type { ConversationWithDetails, ContactWithTags, Tag } from "@shared/schema";
-
-const ATTRIBUTE_OPTIONS = [
-  { value: "NONE", label: "Nenhum" },
-  { value: "CLIENTE", label: "Cliente" },
-  { value: "FORNECEDOR", label: "Fornecedor" },
-  { value: "PARCEIRO", label: "Parceiro" },
-  { value: "LEAD", label: "Lead" },
-  { value: "VIP", label: "VIP" },
-];
+import type { ConversationWithDetails, ContactWithTags, Tag, ContactAttribute } from "@shared/schema";
 
 interface ContactDetailsProps {
   conversationId: string;
@@ -70,6 +61,21 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
       return res.json();
     },
   });
+
+  const { data: contactAttributes = [] } = useQuery<ContactAttribute[]>({
+    queryKey: ["/api/contact-attributes"],
+    queryFn: async () => {
+      const res = await authFetch("/api/contact-attributes");
+      if (!res.ok) throw new Error("Failed to fetch contact attributes");
+      return res.json();
+    },
+    enabled: !!user,
+  });
+
+  const getAttributeInfo = (attributeName: string | null | undefined) => {
+    if (!attributeName) return null;
+    return contactAttributes.find(attr => attr.name === attributeName);
+  };
 
   useEffect(() => {
     if (contactWithTags?.notes !== undefined) {
@@ -270,11 +276,22 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
               </div>
             )}
             
-            {contactWithTags.attribute && (
-              <Badge variant="secondary" className="mb-2 bg-orange-500/20 text-orange-600 dark:text-orange-400" data-testid="badge-attribute">
-                {contactWithTags.attribute}
-              </Badge>
-            )}
+            {contactWithTags.attribute && (() => {
+              const attrInfo = getAttributeInfo(contactWithTags.attribute);
+              return (
+                <Badge 
+                  variant="secondary" 
+                  className="mb-2" 
+                  style={attrInfo ? { 
+                    backgroundColor: `${attrInfo.color}20`, 
+                    color: attrInfo.color,
+                  } : undefined}
+                  data-testid="badge-attribute"
+                >
+                  {contactWithTags.attribute}
+                </Badge>
+              );
+            })()}
             
             <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
               <Phone className="h-3 w-3" />
@@ -332,9 +349,16 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
                     <SelectValue placeholder="Selecione um atributo" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ATTRIBUTE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                    <SelectItem value="NONE">Nenhum</SelectItem>
+                    {contactAttributes.map((attr) => (
+                      <SelectItem key={attr.id} value={attr.name}>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: attr.color }}
+                          />
+                          {attr.name}
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>

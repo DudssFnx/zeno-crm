@@ -43,7 +43,8 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 - **companies** - Multi-tenant company accounts
 - **users** - Users with roles (admin/agent), displayName, prefixMode
 - **whatsapp_accounts** - WhatsApp connection accounts
-- **contacts** - Customer contacts with avatar support
+- **contacts** - Customer contacts with avatar support and attribute field
+- **contact_attributes** - Custom attribute definitions (CLIENTE, FORNECEDOR, LEAD, VIP, etc.)
 - **tags** - Labels for categorizing contacts
 - **contact_tags** - Junction table for contact-tag relationships
 - **conversations** - Chat conversations with stageId for Kanban
