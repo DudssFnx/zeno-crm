@@ -16,6 +16,7 @@ import path from "path";
 import pino from "pino";
 import NodeCache from "node-cache";
 import QRCode from "qrcode";
+import { normalizeJid, extractPhoneFromJid, isValidChatJid, isValidPhoneNumber, normalizePhone } from "./jid-utils";
 
 const SESSION_DIR = "./whatsapp-sessions-baileys";
 const SESSION_STATUS_FILE = "./whatsapp-sessions-baileys/session-status.json";
@@ -327,9 +328,14 @@ class WhatsAppBaileysGateway {
     if (!msg.message) return;
     if (!msg.key) return;
     if (!msg.key.remoteJid) return;
-    if (msg.key.remoteJid.includes("@newsletter")) return;
-    if (msg.key.remoteJid.includes("@broadcast")) return;
-    if (msg.key.remoteJid === "status@broadcast") return;
+    
+    const rawJid = msg.key.remoteJid;
+    
+    // Ignorar status, broadcast, newsletter e grupos
+    if (!isValidChatJid(rawJid)) {
+      console.log(`[Baileys] Ignorando JID inválido: ${rawJid}`);
+      return;
+    }
 
     const messageId = msg.key.id;
     if (!messageId) return;
@@ -348,40 +354,36 @@ class WhatsAppBaileysGateway {
       oldest.forEach((id) => session.processedMessages.delete(id));
     }
 
-    const rawJid = msg.key.remoteJid;
-    const isGroup = rawJid.endsWith("@g.us");
+    // REGRA DE OURO: Usar remoteJid normalizado como chave única
+    // Primeiro, tentar normalizar usando Baileys
+    let chatId = jidNormalizedUser(rawJid);
+    let phoneNumber = extractPhoneFromJid(chatId);
     
-    // Check if this is a LID (Linked Device ID) instead of a real phone number
+    // Check if this is a LID (Linked Device ID)
     const isLid = isLidUser(rawJid);
     
-    // Normalize JID to ensure consistent phone number format
-    let normalizedJid = isGroup ? rawJid : jidNormalizedUser(rawJid);
-    let phoneNumber = isGroup ? rawJid : normalizedJid.replace("@s.whatsapp.net", "").replace("@lid", "");
-    
-    // For LIDs, we need to handle them specially
-    // LIDs are internal WhatsApp IDs that don't correspond to real phone numbers
-    if (isLid && !isGroup) {
-      // First, check if we have a mapping for this LID
+    if (isLid) {
+      // Para LIDs, tentar resolver do cache
       const mappedPhone = this.getPhoneFromLid(rawJid);
       if (mappedPhone) {
-        console.log(`[Baileys] Resolved LID ${rawJid} to phone ${mappedPhone} from cache`);
-        phoneNumber = mappedPhone;
+        console.log(`[Baileys] Resolvido LID ${rawJid} -> ${mappedPhone} do cache`);
+        phoneNumber = normalizePhone(mappedPhone);
+        chatId = normalizeJid(phoneNumber);
       } else {
-        console.log(`[Baileys] Detected unmapped LID: ${rawJid}, pushName: ${msg.pushName}`);
-        // Mark this as a LID-based phone number for special handling
+        console.log(`[Baileys] LID não mapeado: ${rawJid}, pushName: ${msg.pushName}`);
+        // Marcar como LID para tratamento especial no routes.ts
         phoneNumber = `LID_${phoneNumber}`;
       }
+    } else {
+      // Para números normais, normalizar garantindo formato correto
+      phoneNumber = normalizePhone(phoneNumber);
+      chatId = normalizeJid(phoneNumber);
     }
     
-    // Skip invalid phone numbers (like internal WhatsApp IDs that are too long)
-    // Valid phone numbers are typically 10-15 digits
-    // But allow LID-prefixed numbers through
-    if (!isGroup && !phoneNumber.startsWith("LID_")) {
-      const digitsOnly = phoneNumber.replace(/\D/g, "");
-      if (digitsOnly.length > 15 || digitsOnly.length < 8) {
-        console.log(`[Baileys] Skipping invalid phone number: ${phoneNumber} (length: ${digitsOnly.length})`);
-        return;
-      }
+    // Validar número de telefone (ignorar se for LID não mapeado)
+    if (!phoneNumber.startsWith("LID_") && !isValidPhoneNumber(phoneNumber)) {
+      console.log(`[Baileys] Ignorando número inválido: ${phoneNumber}`);
+      return;
     }
 
     const messageType = getContentType(msg.message);
@@ -425,12 +427,12 @@ class WhatsAppBaileysGateway {
     const contactName = msg.pushName || phoneNumber;
 
     console.log(
-      `[Baileys] ${direction === "outgoing" ? "Enviada" : "Recebida"}: ${contactName}: ${content.substring(0, 50)}`
+      `[Baileys] ${direction === "outgoing" ? "Enviada" : "Recebida"} [${chatId}]: ${contactName}: ${content.substring(0, 50)}`
     );
 
     if (this.messageHandler) {
       await this.messageHandler(accountId, {
-        phoneNumber,
+        phoneNumber, // Número normalizado ou LID_xxx
         contactName,
         content,
         timestamp: new Date().toISOString(),
@@ -462,17 +464,17 @@ class WhatsAppBaileysGateway {
     }
 
     try {
-      // Normalize phone number - remove all non-digits and ensure proper JID format
-      const cleanNumber = phoneNumber.replace(/\D/g, "");
-      const jid = jidNormalizedUser(`${cleanNumber}@s.whatsapp.net`);
+      // REGRA: Sempre usar normalizeJid para garantir formato consistente
+      // Isso garante que envio e recebimento usem o mesmo chatId
+      const jid = normalizeJid(phoneNumber);
       const result = await session.socket.sendMessage(jid, { text: content });
 
-      console.log(`[Baileys] Message sent to ${cleanNumber} (jid: ${jid}): ${content.substring(0, 50)}`);
+      console.log(`[Baileys] Mensagem enviada para ${jid}: ${content.substring(0, 50)}`);
 
       return { success: true, messageId: result?.key?.id || undefined };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[Baileys] Error sending message:`, errorMsg);
+      console.error(`[Baileys] Erro ao enviar mensagem:`, errorMsg);
       return { success: false, error: errorMsg };
     }
   }

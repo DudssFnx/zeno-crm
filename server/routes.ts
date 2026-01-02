@@ -7,6 +7,7 @@ import { whatsappGateway } from "./whatsapp-gateway";
 import { whatsappBaileys } from "./whatsapp-baileys";
 import { dispatchWebhook } from "./webhook-dispatcher";
 import { loginSchema, insertTagSchema, insertWebhookConfigSchema } from "@shared/schema";
+import { normalizePhone, normalizeJid, isValidPhoneNumber } from "./jid-utils";
 
 // Seed master user on startup
 async function seedMasterUser() {
@@ -78,7 +79,10 @@ export async function registerRoutes(
       
       // Check if this is a LID (Linked Device ID) - internal WhatsApp ID, not a real phone
       const isLid = message.phoneNumber.startsWith("LID_");
-      let phoneNumber = message.phoneNumber.replace(/\D/g, "");
+      // REGRA: Sempre normalizar o número de telefone para garantir consistência
+      let phoneNumber = isLid 
+        ? message.phoneNumber.replace("LID_", "").replace(/\D/g, "")
+        : normalizePhone(message.phoneNumber);
       
       // For LIDs, we need to find the contact by name instead of phone number
       let contact = null;
@@ -580,11 +584,14 @@ export async function registerRoutes(
   // Start conversation by phone number
   app.post("/api/contacts/start-conversation", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { phoneNumber, whatsappAccountId, name } = req.body;
+      const { phoneNumber: rawPhone, whatsappAccountId, name } = req.body;
       
-      if (!phoneNumber || !whatsappAccountId) {
+      if (!rawPhone || !whatsappAccountId) {
         return res.status(400).json({ message: "Phone number and WhatsApp account are required" });
       }
+
+      // REGRA: Sempre normalizar o número de telefone
+      const phoneNumber = normalizePhone(rawPhone);
 
       // Check if account exists and is connected
       const account = await storage.getWhatsappAccount(whatsappAccountId);
@@ -592,14 +599,14 @@ export async function registerRoutes(
         return res.status(400).json({ message: "WhatsApp account not connected" });
       }
 
-      // Find or create contact
+      // Find or create contact usando número normalizado
       let contact = await storage.getContactByPhone(req.user!.companyId, phoneNumber);
       if (!contact) {
         contact = await storage.createContact({
           companyId: req.user!.companyId,
           whatsappAccountId,
           name: name || phoneNumber,
-          phoneNumber,
+          phoneNumber, // Número já normalizado
         });
       }
 
@@ -1054,11 +1061,14 @@ export async function registerRoutes(
   // Dev endpoint: Simulate incoming message
   app.post("/api/dev/simulate-incoming-message", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { whatsappAccountId, phoneNumber, content } = req.body;
+      const { whatsappAccountId, phoneNumber: rawPhone, content } = req.body;
       
-      if (!whatsappAccountId || !phoneNumber || !content) {
+      if (!whatsappAccountId || !rawPhone || !content) {
         return res.status(400).json({ message: "whatsappAccountId, phoneNumber, and content are required" });
       }
+
+      // REGRA: Sempre normalizar o número de telefone
+      const phoneNumber = normalizePhone(rawPhone);
 
       const account = await storage.getWhatsappAccount(whatsappAccountId);
       if (!account) {
@@ -1071,7 +1081,7 @@ export async function registerRoutes(
           companyId: req.user!.companyId,
           whatsappAccountId,
           name: phoneNumber,
-          phoneNumber,
+          phoneNumber, // Número já normalizado
         });
       }
 

@@ -13,6 +13,7 @@ import {
   type CannedResponse, type InsertCannedResponse,
   type ConversationWithDetails, type ContactWithTags, type MessageWithSender,
 } from "@shared/schema";
+import { normalizePhone } from "./jid-utils";
 
 export interface IStorage {
   // Companies
@@ -181,8 +182,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getContactByPhone(companyId: string, phoneNumber: string): Promise<Contact | undefined> {
-    // Normalize input phone number - keep only digits
-    const normalizedInput = phoneNumber.replace(/\D/g, "");
+    // REGRA: Sempre normalizar o número para garantir formato consistente
+    const normalizedInput = normalizePhone(phoneNumber);
     
     // Get all contacts for this company and find match
     const allContacts = await db
@@ -191,12 +192,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(contacts.companyId, companyId));
     
     // Find contact where normalized phone numbers match
-    // Check if one ends with the other (to handle missing country codes)
     const contact = allContacts.find(c => {
-      const normalizedStored = c.phoneNumber.replace(/\D/g, "");
-      return normalizedStored === normalizedInput || 
-             normalizedStored.endsWith(normalizedInput) || 
-             normalizedInput.endsWith(normalizedStored);
+      const normalizedStored = normalizePhone(c.phoneNumber);
+      // Comparação exata após normalização
+      return normalizedStored === normalizedInput;
     });
     
     return contact;

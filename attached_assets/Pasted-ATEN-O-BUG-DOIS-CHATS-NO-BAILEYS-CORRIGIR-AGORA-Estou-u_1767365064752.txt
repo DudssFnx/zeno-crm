@@ -1,0 +1,74 @@
+ATENÇÃO (BUG DOIS CHATS NO BAILEYS) — CORRIGIR AGORA
+
+Estou usando Baileys (WhatsApp Web). Quando o contato me manda mensagem o sistema cria um chat, e quando eu respondo o sistema cria OUTRO chat. Isso está acontecendo porque o CRM está salvando/identificando conversas com IDs diferentes (ex: número puro “227205...” vs “5511...@s.whatsapp.net”).
+
+QUERO QUE VOCÊ CORRIJA DEFINITIVAMENTE COM ESSAS REGRAS:
+
+1) REGRA DE OURO
+- A chave única de uma conversa deve ser SEMPRE o `remoteJid` do Baileys, normalizado.
+- ChatId = SEMPRE no formato: `5511963232981@s.whatsapp.net`
+- Nunca usar número puro, nunca usar nome, nunca usar “from”, nunca usar variações com/sem +55 sem normalizar.
+
+2) RECEBIMENTO (inbound)
+- Ao receber mensagens no evento do Baileys, capturar:
+  - chatId = msg.key.remoteJid
+  - Se for grupo, ignorar ou tratar separado (remoteJid termina com `@g.us`).
+  - Se for status/broadcast, ignorar: `status@broadcast`.
+- O CRM deve “upsertar” (criar ou atualizar) a conversa usando `chatId` como chave única:
+  - Se existir conversa com chatId -> adicionar mensagem nela
+  - Se não existir -> criar conversa com chatId e depois adicionar mensagem
+
+3) ENVIO (outbound)
+- Ao enviar mensagem, o envio deve usar EXATAMENTE o mesmo chatId salvo na conversa (remoteJid).
+- PROIBIDO gerar chatId manualmente com número puro no envio.
+- Se o usuário digitar um telefone para iniciar conversa nova, normalizar assim:
+  - remover tudo que não é dígito
+  - garantir que começa com “55” (Brasil)
+  - retornar `phone + "@s.whatsapp.net"`
+
+4) FUNÇÃO DE NORMALIZAÇÃO (OBRIGATÓRIA)
+Criar uma função:
+- normalizeJid(phone: string) => string
+Regras:
+- phone = somente dígitos
+- se NÃO começar com "55", prefixar "55"
+- retornar `${phone}@s.whatsapp.net`
+
+5) BANCO DE DADOS / MODELO
+- Conversas devem ter campo `chatId` único e indexado.
+Exemplo:
+{
+  chatId: "5511963232981@s.whatsapp.net",
+  name: "Karla Financeiro",
+  phone: "5511963232981",
+  lastMessageAt: Date,
+  messages: [...]
+}
+- Mensagens devem salvar também `chatId` para vínculo perfeito.
+
+6) ANTI-DUPLICAÇÃO
+- Antes de criar qualquer conversa, verificar se já existe pelo `chatId`.
+- Nunca criar conversa por nome do contato.
+- Nunca criar conversa por número em formato diferente.
+- Se já existirem conversas duplicadas no banco (mesmo contato com ids diferentes), criar uma rotina de merge:
+  - mapear números para chatId normalizado
+  - juntar mensagens na conversa correta
+  - apagar/arquivar duplicadas
+
+7) UI (LISTA DE CONVERSAS)
+- A lista deve agrupar por `chatId` e ordenar por `lastMessageAt` DESC (mais recente no topo).
+- Quando chegar mensagem nova, atualizar a conversa e mover ela para o topo em tempo real.
+
+8) IMPLEMENTAÇÃO (ENTREGÁVEL)
+Quero que você:
+- Encontre todos os lugares onde o sistema usa número puro ou “from” como id
+- Substitua por `msg.key.remoteJid` (inbound) e `chat.chatId` (outbound)
+- Adicione normalizeJid e use quando iniciar chat novo por telefone digitado
+- Garanta que envio e recebimento sempre apontam para a mesma conversa
+- Teste com um contato real: receber mensagem -> responder -> deve continuar no MESMO chat
+
+IMPORTANTE:
+- Ignorar `status@broadcast`
+- Tratar `@g.us` se eu quiser grupos, senão ignorar
+
+Agora faça as alterações no meu projeto do Replit e me entregue os trechos de código atualizados (arquivos e funções) para eu colar/substituir.
