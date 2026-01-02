@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
 import { TagChip } from "@/components/tag-chip";
+import { AttributeChip } from "@/components/attribute-chip";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -294,22 +295,10 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
             )}
             
             {contactWithTags.attributes && contactWithTags.attributes.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-2">
-                {contactWithTags.attributes.map((attr, idx) => {
-                  const attrInfo = getAttributeInfo(attr);
-                  return (
-                    <Badge 
-                      key={`${attr}-${idx}`}
-                      variant="outline" 
-                      className="text-xs border-amber-500/50 text-amber-600 dark:text-amber-400"
-                      style={attrInfo ? { borderColor: `${attrInfo.color}50` } : undefined}
-                      data-testid={`badge-attribute-${idx}`}
-                    >
-                      <Star className="h-3 w-3 mr-1 fill-current" />
-                      {attr}
-                    </Badge>
-                  );
-                })}
+              <div className="flex flex-wrap gap-1 mb-2 justify-center">
+                {contactWithTags.attributes.map((attr, idx) => (
+                  <AttributeChip key={`${attr}-${idx}`} name={attr} size="sm" />
+                ))}
               </div>
             )}
             
