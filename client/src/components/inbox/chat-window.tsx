@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Send, StickyNote, Phone, Check, CheckCheck, Zap, Paperclip, UserPlus, Calendar, X, FileIcon, ImageIcon, Search } from "lucide-react";
+import { Send, StickyNote, Phone, Check, CheckCheck, Zap, Paperclip, UserPlus, Calendar, X, FileIcon, ImageIcon, Search, Download, FileText, Film, Music, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -27,6 +27,154 @@ interface Macro {
 interface ChatWindowProps {
   conversationId: string | null;
   onContactClick: () => void;
+}
+
+interface MediaContentProps {
+  mediaUrl: string;
+  mediaType: string;
+  fileName?: string | null;
+  fileSize?: string | null;
+  isOutgoing: boolean;
+}
+
+function formatFileSize(bytes: string | null | undefined): string {
+  if (!bytes) return "";
+  const size = parseInt(bytes, 10);
+  if (isNaN(size)) return "";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function MediaContent({ mediaUrl, mediaType, fileName, fileSize, isOutgoing }: MediaContentProps) {
+  const [imageError, setImageError] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
+  const [showLightbox, setShowLightbox] = useState(false);
+
+  const textColor = isOutgoing ? "text-white" : "text-foreground";
+  const mutedColor = isOutgoing ? "text-white/70" : "text-muted-foreground";
+
+  if (mediaType === "image") {
+    if (imageError) {
+      return (
+        <div className="flex items-center gap-2 py-2">
+          <AlertCircle className={cn("h-5 w-5", mutedColor)} />
+          <span className={cn("text-sm", mutedColor)}>Erro ao carregar imagem</span>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <div className="relative">
+          {imageLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-lg">
+              <LoadingSpinner size="sm" />
+            </div>
+          )}
+          <img
+            src={mediaUrl}
+            alt={fileName || "Imagem"}
+            className="max-w-[280px] max-h-[300px] rounded-lg cursor-pointer object-cover"
+            onLoad={() => setImageLoading(false)}
+            onError={() => {
+              setImageLoading(false);
+              setImageError(true);
+            }}
+            onClick={() => setShowLightbox(true)}
+            data-testid="media-image"
+          />
+        </div>
+        {showLightbox && (
+          <Dialog open={showLightbox} onOpenChange={setShowLightbox}>
+            <DialogContent className="max-w-4xl max-h-[90vh] p-2">
+              <img
+                src={mediaUrl}
+                alt={fileName || "Imagem"}
+                className="w-full h-full object-contain rounded-lg"
+                data-testid="media-image-lightbox"
+              />
+            </DialogContent>
+          </Dialog>
+        )}
+      </>
+    );
+  }
+
+  if (mediaType === "audio") {
+    return (
+      <div className="py-2">
+        <audio
+          controls
+          className="max-w-[280px] h-10"
+          preload="metadata"
+          data-testid="media-audio"
+        >
+          <source src={mediaUrl} />
+          Seu navegador não suporta reprodução de áudio.
+        </audio>
+        {fileName && (
+          <p className={cn("text-xs mt-1 truncate max-w-[280px]", mutedColor)}>{fileName}</p>
+        )}
+      </div>
+    );
+  }
+
+  if (mediaType === "video") {
+    return (
+      <div className="py-2">
+        <video
+          controls
+          className="max-w-[280px] max-h-[200px] rounded-lg"
+          preload="metadata"
+          data-testid="media-video"
+        >
+          <source src={mediaUrl} />
+          Seu navegador não suporta reprodução de vídeo.
+        </video>
+        {fileName && (
+          <p className={cn("text-xs mt-1 truncate max-w-[280px]", mutedColor)}>{fileName}</p>
+        )}
+      </div>
+    );
+  }
+
+  if (mediaType === "document") {
+    const displayName = fileName || "Documento";
+    const sizeDisplay = formatFileSize(fileSize);
+
+    return (
+      <a
+        href={mediaUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        download={fileName || true}
+        className={cn(
+          "flex items-center gap-3 py-2 px-3 rounded-lg transition-colors",
+          isOutgoing 
+            ? "bg-white/10 hover:bg-white/20" 
+            : "bg-muted hover:bg-muted/80"
+        )}
+        data-testid="media-document"
+      >
+        <div className={cn(
+          "flex items-center justify-center h-10 w-10 rounded-lg shrink-0",
+          isOutgoing ? "bg-white/20" : "bg-primary/10"
+        )}>
+          <FileText className={cn("h-5 w-5", isOutgoing ? "text-white" : "text-primary")} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={cn("text-sm font-medium truncate", textColor)}>{displayName}</p>
+          {sizeDisplay && (
+            <p className={cn("text-xs", mutedColor)}>{sizeDisplay}</p>
+          )}
+        </div>
+        <Download className={cn("h-4 w-4 shrink-0", mutedColor)} />
+      </a>
+    );
+  }
+
+  return null;
 }
 
 export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) {
@@ -516,7 +664,8 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                             "max-w-[65%] rounded-2xl px-4 py-2 shadow-sm",
                             msg.direction === "incoming"
                               ? "rounded-bl-md"
-                              : "rounded-br-md"
+                              : "rounded-br-md",
+                            msg.mediaUrl && msg.mediaType === "image" && "px-2 py-2"
                           )}
                           style={{
                             backgroundColor: msg.direction === "incoming" ? "#c4ffd0" : "#008f3c",
@@ -528,9 +677,26 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                               {msg.senderDisplayName}
                             </p>
                           )}
-                          <p className="text-[15px] whitespace-pre-wrap break-words">{msg.content}</p>
+                          {msg.mediaUrl && msg.mediaType && msg.mediaType !== "text" && (
+                            <MediaContent
+                              mediaUrl={msg.mediaUrl}
+                              mediaType={msg.mediaType}
+                              fileName={msg.fileName}
+                              fileSize={msg.fileSize}
+                              isOutgoing={msg.direction === "outgoing"}
+                            />
+                          )}
+                          {msg.content && (
+                            <p className={cn(
+                              "text-[15px] whitespace-pre-wrap break-words",
+                              msg.mediaUrl && msg.mediaType && msg.mediaType !== "text" && "mt-2 px-2"
+                            )}>{msg.content}</p>
+                          )}
                           <div
-                            className="flex items-center gap-1 mt-1"
+                            className={cn(
+                              "flex items-center gap-1 mt-1",
+                              msg.mediaUrl && msg.mediaType === "image" && "px-2"
+                            )}
                             style={{ opacity: msg.direction === "incoming" ? 0.6 : 0.75 }}
                           >
                             <span className="text-[11px]">{formatTime(msg.createdAt)}</span>

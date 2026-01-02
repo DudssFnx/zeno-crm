@@ -505,7 +505,13 @@ class WhatsAppBaileysGateway {
     accountId: string,
     phoneNumber: string,
     content: string,
-    senderDisplayName?: string
+    senderDisplayName?: string,
+    mediaOptions?: {
+      mediaUrl?: string;
+      mediaType?: "image" | "audio" | "document" | "video";
+      fileName?: string;
+      mimetype?: string;
+    }
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const session = this.sessions.get(accountId);
     if (!session?.socket || session.status !== "connected") {
@@ -513,12 +519,66 @@ class WhatsAppBaileysGateway {
     }
 
     try {
-      // REGRA: Sempre usar normalizeJid para garantir formato consistente
-      // Isso garante que envio e recebimento usem o mesmo chatId
       const jid = normalizeJid(phoneNumber);
-      const result = await session.socket.sendMessage(jid, { text: content });
+      let result;
 
-      console.log(`[Baileys] Mensagem enviada para ${jid}: ${content.substring(0, 50)}`);
+      if (mediaOptions?.mediaUrl && mediaOptions?.mediaType) {
+        const localPath = mediaOptions.mediaUrl.startsWith("/uploads/")
+          ? path.join(".", mediaOptions.mediaUrl)
+          : mediaOptions.mediaUrl;
+
+        if (!fs.existsSync(localPath)) {
+          return { success: false, error: `File not found: ${localPath}` };
+        }
+
+        const buffer = fs.readFileSync(localPath);
+        const mimetype = mediaOptions.mimetype || "application/octet-stream";
+        const fileName = mediaOptions.fileName || path.basename(localPath);
+
+        switch (mediaOptions.mediaType) {
+          case "image":
+            result = await session.socket.sendMessage(jid, {
+              image: buffer,
+              caption: content || undefined,
+              mimetype: mimetype as any,
+            });
+            console.log(`[Baileys] Imagem enviada para ${jid}: ${fileName}`);
+            break;
+
+          case "video":
+            result = await session.socket.sendMessage(jid, {
+              video: buffer,
+              caption: content || undefined,
+              mimetype: mimetype as any,
+            });
+            console.log(`[Baileys] Video enviado para ${jid}: ${fileName}`);
+            break;
+
+          case "audio":
+            result = await session.socket.sendMessage(jid, {
+              audio: buffer,
+              mimetype: mimetype as any,
+              ptt: mimetype.includes("ogg"),
+            });
+            console.log(`[Baileys] Audio enviado para ${jid}: ${fileName}`);
+            break;
+
+          case "document":
+            result = await session.socket.sendMessage(jid, {
+              document: buffer,
+              mimetype: mimetype as any,
+              fileName: fileName,
+            });
+            console.log(`[Baileys] Documento enviado para ${jid}: ${fileName}`);
+            break;
+
+          default:
+            return { success: false, error: `Unsupported media type: ${mediaOptions.mediaType}` };
+        }
+      } else {
+        result = await session.socket.sendMessage(jid, { text: content });
+        console.log(`[Baileys] Mensagem enviada para ${jid}: ${content.substring(0, 50)}`);
+      }
 
       return { success: true, messageId: result?.key?.id || undefined };
     } catch (error) {

@@ -735,9 +735,9 @@ export async function registerRoutes(
 
   app.post("/api/conversations/:id/messages", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { content } = req.body;
-      if (!content) {
-        return res.status(400).json({ message: "Content is required" });
+      const { content, mediaUrl, mediaType, fileName, mimetype } = req.body;
+      if (!content && !mediaUrl) {
+        return res.status(400).json({ message: "Content or media is required" });
       }
 
       const conversation = await storage.getConversation(req.params.id);
@@ -753,13 +753,27 @@ export async function registerRoutes(
       // Get agent display name
       const senderDisplayName = req.user!.displayName || req.user!.name;
 
+      // Determine display content for database
+      let displayContent = content || "";
+      if (mediaUrl && mediaType) {
+        const mediaLabels: Record<string, string> = {
+          image: "[Imagem]",
+          video: "[Video]",
+          audio: "[Audio]",
+          document: fileName ? `[Documento: ${fileName}]` : "[Documento]",
+        };
+        if (!displayContent) {
+          displayContent = mediaLabels[mediaType] || "[Media]";
+        }
+      }
+
       // Save message to database FIRST for instant response
       const message = await storage.createMessage({
         conversationId: req.params.id,
         direction: "outgoing",
         senderUserId: req.user!.id,
         senderDisplayName,
-        content,
+        content: displayContent,
       });
 
       // Update conversation lastMessageAt
@@ -768,16 +782,26 @@ export async function registerRoutes(
       // Respond immediately to the client
       res.json(message);
 
+      // Build media options if provided
+      const mediaOptions = mediaUrl && mediaType ? {
+        mediaUrl,
+        mediaType: mediaType as "image" | "audio" | "document" | "video",
+        fileName,
+        mimetype,
+      } : undefined;
+
       // Send via WhatsApp in background (fire-and-forget)
       whatsappBaileys.sendMessage(
         conversation.whatsappAccountId,
         contact.phoneNumber,
-        content
+        content || "",
+        senderDisplayName,
+        mediaOptions
       ).then(sendResult => {
         if (!sendResult.success) {
           console.error(`[WhatsApp] Background send failed for message ${message.id}:`, sendResult.error);
         } else {
-          console.log(`[WhatsApp] Message ${message.id} sent successfully`);
+          console.log(`[WhatsApp] Message ${message.id} sent successfully${mediaType ? ` (${mediaType})` : ""}`);
         }
       }).catch(error => {
         console.error(`[WhatsApp] Background send error for message ${message.id}:`, error);
