@@ -128,3 +128,24 @@
 2026/01/02-02:31:13.641 ed0 Delete type=2 #844
 2026/01/02-02:31:13.641 ed0 Delete type=2 #845
 2026/01/02-02:31:13.641 ed0 Delete type=2 #847
+2026/01/02-04:34:52.163 ecf Level-0 table #856: started
+2026/01/02-04:34:52.210 ecf Level-0 table #856: 1298007 bytes OK
+2026/01/02-04:34:52.219 ecf Delete type=0 #846
+2026/01/02-04:36:07.256 ed0 Compacting 1@1 + 7@2 files
+2026/01/02-04:36:07.323 ed0 Generated table #857@1: 87003 keys, 2238398 bytes
+2026/01/02-04:36:07.398 ed0 Generated table #858@1: 68929 keys, 2284628 bytes
+2026/01/02-04:36:07.470 ed0 Generated table #859@1: 30826 keys, 2191866 bytes
+2026/01/02-04:36:07.554 ed0 Generated table #860@1: 57558 keys, 2226522 bytes
+2026/01/02-04:36:07.598 ed0 Generated table #861@1: 7406 keys, 2167543 bytes
+2026/01/02-04:36:07.666 ed0 Generated table #862@1: 23252 keys, 2168552 bytes
+2026/01/02-04:36:07.699 ed0 Generated table #863@1: 7688 keys, 1252679 bytes
+2026/01/02-04:36:07.699 ed0 Compacted 1@1 + 7@2 files => 14530188 bytes
+2026/01/02-04:36:07.707 ed0 compacted to: files[ 0 0 7 0 0 0 0 ]
+2026/01/02-04:36:07.707 ed0 Delete type=2 #848
+2026/01/02-04:36:07.707 ed0 Delete type=2 #849
+2026/01/02-04:36:07.707 ed0 Delete type=2 #850
+2026/01/02-04:36:07.707 ed0 Delete type=2 #851
+2026/01/02-04:36:07.707 ed0 Delete type=2 #852
+2026/01/02-04:36:07.707 ed0 Delete type=2 #853
+2026/01/02-04:36:07.708 ed0 Delete type=2 #854
+2026/01/02-04:36:07.708 ed0 Delete type=2 #856

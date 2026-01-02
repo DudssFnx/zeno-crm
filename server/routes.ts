@@ -4,7 +4,7 @@ import { Server as SocketServer } from "socket.io";
 import { storage } from "./storage";
 import { authMiddleware, adminMiddleware, generateToken, hashPassword, comparePassword, type AuthRequest } from "./auth";
 import { whatsappGateway } from "./whatsapp-gateway";
-import { whatsappPuppeteer } from "./whatsapp-puppeteer";
+import { whatsappBaileys } from "./whatsapp-baileys";
 import { dispatchWebhook } from "./webhook-dispatcher";
 import { loginSchema, insertTagSchema, insertWebhookConfigSchema } from "@shared/schema";
 
@@ -42,11 +42,11 @@ export async function registerRoutes(
     },
   });
 
-  // Connect Puppeteer gateway to Socket.IO
-  whatsappPuppeteer.setSocketServer(io);
+  // Connect Baileys gateway to Socket.IO
+  whatsappBaileys.setSocketServer(io);
 
   // Set up status update handler to sync database with WhatsApp connection status
-  whatsappPuppeteer.setStatusUpdateHandler(async (accountId, status) => {
+  whatsappBaileys.setStatusUpdateHandler(async (accountId, status) => {
     try {
       await storage.updateWhatsappAccount(accountId, { status });
       console.log(`[WhatsApp] Updated database status for ${accountId}: ${status}`);
@@ -56,7 +56,7 @@ export async function registerRoutes(
   });
 
   // Set up message handler to save messages to database (both incoming and outgoing from phone)
-  whatsappPuppeteer.setMessageHandler(async (accountId, message) => {
+  whatsappBaileys.setMessageHandler(async (accountId, message) => {
     const correlationId = `msg_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const log = (level: string, msg: string, data?: object) => {
       const entry = { correlationId, level, msg, ...data, timestamp: new Date().toISOString() };
@@ -236,11 +236,11 @@ export async function registerRoutes(
         console.log(`Unauthorized join attempt for account ${accountId} by company ${socket.data.companyId}`);
         return;
       }
-      whatsappPuppeteer.joinRoom(socket.id, accountId);
+      whatsappBaileys.joinRoom(socket.id, accountId);
     });
 
     socket.on("whatsapp:leave", (accountId: string) => {
-      whatsappPuppeteer.leaveRoom(socket.id, accountId);
+      whatsappBaileys.leaveRoom(socket.id, accountId);
     });
 
     socket.on("disconnect", () => {
@@ -254,7 +254,7 @@ export async function registerRoutes(
   // Auto-reconnect WhatsApp sessions that were connected before restart
   setTimeout(async () => {
     try {
-      await whatsappPuppeteer.initializeAndReconnect();
+      await whatsappBaileys.initializeAndReconnect();
     } catch (error) {
       console.error('[WhatsApp] Auto-reconnect error:', error);
     }
@@ -432,9 +432,9 @@ export async function registerRoutes(
       const accountId = req.params.id;
       
       // Start Puppeteer session (async, will emit events via Socket.IO)
-      whatsappPuppeteer.startSession(accountId).then(async (result) => {
+      whatsappBaileys.startSession(accountId).then(async (result) => {
         if (result.success) {
-          const status = whatsappPuppeteer.getStatus(accountId);
+          const status = whatsappBaileys.getStatus(accountId);
           await storage.updateWhatsappAccount(accountId, { 
             status: status === "connected" ? "connected" : "pending_qr" 
           });
@@ -452,8 +452,8 @@ export async function registerRoutes(
   app.get("/api/whatsapp-accounts/:id/qr", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
       const accountId = req.params.id;
-      const qrCode = await whatsappPuppeteer.getQRCode(accountId);
-      const status = whatsappPuppeteer.getStatus(accountId);
+      const qrCode = await whatsappBaileys.getQRCode(accountId);
+      const status = whatsappBaileys.getStatus(accountId);
       
       if (status === "connected") {
         await storage.updateWhatsappAccount(accountId, { 
@@ -476,7 +476,7 @@ export async function registerRoutes(
 
   app.post("/api/whatsapp-accounts/:id/disconnect", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      await whatsappPuppeteer.disconnect(req.params.id);
+      await whatsappBaileys.disconnect(req.params.id);
       await storage.updateWhatsappAccount(req.params.id, { status: "disconnected" });
       res.json({ success: true });
     } catch (error) {
@@ -767,7 +767,7 @@ export async function registerRoutes(
       const senderDisplayName = req.user!.displayName || req.user!.name;
 
       // Send message via real WhatsApp Puppeteer gateway
-      const sendResult = await whatsappPuppeteer.sendMessage(
+      const sendResult = await whatsappBaileys.sendMessage(
         conversation.whatsappAccountId,
         contact.phoneNumber,
         content

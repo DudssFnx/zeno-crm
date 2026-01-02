@@ -383,7 +383,7 @@ class WhatsAppBaileysGateway {
 
       console.log(`[Baileys] Message sent to ${phoneNumber}: ${content.substring(0, 50)}`);
 
-      return { success: true, messageId: result?.key?.id };
+      return { success: true, messageId: result?.key?.id || undefined };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[Baileys] Error sending message:`, errorMsg);
