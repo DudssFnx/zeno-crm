@@ -353,10 +353,10 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                     <div className="flex items-center gap-1 mt-1.5 flex-wrap">
                       <StatusBadge status={conv.status as "open" | "pending" | "resolved" | "closed"} />
                       {conv.contact.attributes && conv.contact.attributes.slice(0, 2).map((attr, idx) => (
-                        <AttributeChip key={`${conv.id}-attr-${idx}`} name={attr} size="sm" />
+                        <AttributeChip key={`${conv.id}-attr-${idx}`} name={attr} size="xs" />
                       ))}
                       {conv.contact.attributes && conv.contact.attributes.length > 2 && (
-                        <span className="text-[10px] text-muted-foreground" title={conv.contact.attributes.slice(2).join(", ")}>
+                        <span className="text-[9px] text-muted-foreground" title={conv.contact.attributes.slice(2).join(", ")}>
                           +{conv.contact.attributes.length - 2}
                         </span>
                       )}
