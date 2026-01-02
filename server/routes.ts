@@ -881,6 +881,272 @@ export async function registerRoutes(
     }
   });
 
+  // ================== MACROS ==================
+  
+  // Template engine para variáveis nas mensagens
+  function renderTemplate(template: string, context: {
+    nome?: string;
+    telefone?: string;
+    primeiro_nome?: string;
+    empresa?: string;
+    tags?: string;
+    atendente?: string;
+  }): string {
+    return template
+      .replace(/\{\{nome\}\}/g, context.nome || "")
+      .replace(/\{\{telefone\}\}/g, context.telefone || "")
+      .replace(/\{\{primeiro_nome\}\}/g, context.primeiro_nome || context.nome?.split(" ")[0] || "")
+      .replace(/\{\{empresa\}\}/g, context.empresa || "")
+      .replace(/\{\{tags\}\}/g, context.tags || "")
+      .replace(/\{\{atendente\}\}/g, context.atendente || "");
+  }
+
+  // GET /api/macros - Listar macros (todos podem ver)
+  app.get("/api/macros", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const macrosList = await storage.getMacros(req.user!.companyId);
+      res.json(macrosList);
+    } catch (error) {
+      console.error("Get macros error:", error);
+      res.status(500).json({ message: "Failed to get macros" });
+    }
+  });
+
+  // GET /api/macros/:id - Obter macro específica
+  app.get("/api/macros/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const macro = await storage.getMacro(req.params.id);
+      if (!macro || macro.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Macro not found" });
+      }
+      res.json(macro);
+    } catch (error) {
+      console.error("Get macro error:", error);
+      res.status(500).json({ message: "Failed to get macro" });
+    }
+  });
+
+  // POST /api/macros - Criar macro (admin/master only)
+  app.post("/api/macros", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name, description, messageTemplate, actions } = req.body;
+      if (!name) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+
+      const macro = await storage.createMacro({
+        companyId: req.user!.companyId,
+        name,
+        description: description || null,
+        messageTemplate: messageTemplate || null,
+        actions: actions || [],
+        isGlobal: true,
+        createdBy: req.user!.id,
+      });
+
+      res.json(macro);
+    } catch (error) {
+      console.error("Create macro error:", error);
+      res.status(500).json({ message: "Failed to create macro" });
+    }
+  });
+
+  // PUT /api/macros/:id - Atualizar macro (admin/master only)
+  app.put("/api/macros/:id", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name, description, messageTemplate, actions } = req.body;
+      const existingMacro = await storage.getMacro(req.params.id);
+      
+      if (!existingMacro || existingMacro.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Macro not found" });
+      }
+
+      const updateData: Record<string, any> = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (messageTemplate !== undefined) updateData.messageTemplate = messageTemplate;
+      if (actions !== undefined) updateData.actions = actions;
+
+      const macro = await storage.updateMacro(req.params.id, updateData);
+      res.json(macro);
+    } catch (error) {
+      console.error("Update macro error:", error);
+      res.status(500).json({ message: "Failed to update macro" });
+    }
+  });
+
+  // DELETE /api/macros/:id - Deletar macro (admin/master only)
+  app.delete("/api/macros/:id", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const existingMacro = await storage.getMacro(req.params.id);
+      if (!existingMacro || existingMacro.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Macro not found" });
+      }
+
+      await storage.deleteMacro(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete macro error:", error);
+      res.status(500).json({ message: "Failed to delete macro" });
+    }
+  });
+
+  // POST /api/macros/execute - Executar macro (todos podem executar)
+  app.post("/api/macros/execute", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { macroId, conversationId } = req.body;
+      
+      if (!macroId || !conversationId) {
+        return res.status(400).json({ message: "macroId and conversationId are required" });
+      }
+
+      // Buscar macro
+      const macro = await storage.getMacro(macroId);
+      if (!macro || macro.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Macro not found" });
+      }
+
+      // Buscar conversa com detalhes
+      const conversation = await storage.getConversationWithDetails(conversationId);
+      if (!conversation || conversation.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+
+      const contact = conversation.contact;
+      const contactTags = await storage.getContactTags(contact.id);
+      const actionsApplied: any[] = [];
+      const actions = (macro.actions as any[]) || [];
+
+      // Executar ações
+      for (const action of actions) {
+        try {
+          switch (action.type) {
+            case "ADD_TAG":
+              if (action.tagId) {
+                const existingTag = contactTags.find(t => t.id === action.tagId);
+                if (!existingTag) {
+                  await storage.addContactTag(contact.id, action.tagId);
+                  actionsApplied.push({ type: "ADD_TAG", tagId: action.tagId, success: true });
+                  
+                  // Emitir evento de atualização de tag
+                  io.to(`company:${req.user!.companyId}`).emit("contact:tags_updated", {
+                    contactId: contact.id,
+                    action: "added",
+                    tagId: action.tagId,
+                  });
+                }
+              }
+              break;
+              
+            case "REMOVE_TAG":
+              if (action.tagId) {
+                await storage.removeContactTag(contact.id, action.tagId);
+                actionsApplied.push({ type: "REMOVE_TAG", tagId: action.tagId, success: true });
+                
+                io.to(`company:${req.user!.companyId}`).emit("contact:tags_updated", {
+                  contactId: contact.id,
+                  action: "removed",
+                  tagId: action.tagId,
+                });
+              }
+              break;
+              
+            case "SET_STATUS":
+              if (action.status) {
+                await storage.updateConversation(conversationId, { status: action.status });
+                actionsApplied.push({ type: "SET_STATUS", status: action.status, success: true });
+                
+                io.to(`company:${req.user!.companyId}`).emit("conversation:updated", {
+                  companyId: req.user!.companyId,
+                  conversationId,
+                  status: action.status,
+                });
+              }
+              break;
+              
+            case "ASSIGN_AGENT":
+              if (action.agentId) {
+                await storage.updateConversation(conversationId, { assignedToUserId: action.agentId });
+                actionsApplied.push({ type: "ASSIGN_AGENT", agentId: action.agentId, success: true });
+              }
+              break;
+          }
+        } catch (actionError) {
+          console.error(`Error executing action ${action.type}:`, actionError);
+          actionsApplied.push({ ...action, success: false, error: String(actionError) });
+        }
+      }
+
+      // Enviar mensagem se template existir
+      let renderedMessage: string | null = null;
+      let sentMessage = null;
+      
+      if (macro.messageTemplate) {
+        const updatedTags = await storage.getContactTags(contact.id);
+        const tagNames = updatedTags.map(t => t.name).join(", ");
+        
+        const context = {
+          nome: contact.name,
+          telefone: contact.phoneNumber,
+          primeiro_nome: contact.name.split(" ")[0],
+          empresa: "",
+          tags: tagNames,
+          atendente: req.user!.displayName || req.user!.name,
+        };
+        
+        renderedMessage = renderTemplate(macro.messageTemplate, context);
+        
+        // Enviar mensagem via WhatsApp
+        const chatId = normalizeJid(contact.phoneNumber);
+        const sent = await whatsappBaileys.sendMessage(
+          conversation.whatsappAccountId,
+          chatId,
+          renderedMessage
+        );
+        
+        if (sent) {
+          // Salvar mensagem no banco
+          sentMessage = await storage.createMessage({
+            conversationId,
+            direction: "outgoing",
+            content: renderedMessage,
+            senderId: req.user!.id,
+            senderDisplayName: req.user!.displayName || req.user!.name,
+          });
+          
+          // Emitir evento de nova mensagem
+          io.to(`company:${req.user!.companyId}`).emit("message:created", {
+            companyId: req.user!.companyId,
+            conversationId,
+            contactId: contact.id,
+            message: sentMessage,
+          });
+        }
+      }
+
+      // Registrar execução
+      const execution = await storage.createMacroExecution({
+        macroId,
+        chatId: normalizeJid(contact.phoneNumber),
+        contactId: contact.id,
+        conversationId,
+        userId: req.user!.id,
+        renderedMessage,
+        actionsApplied,
+      });
+
+      res.json({
+        success: true,
+        execution,
+        actionsApplied,
+        message: sentMessage,
+      });
+    } catch (error) {
+      console.error("Execute macro error:", error);
+      res.status(500).json({ message: "Failed to execute macro" });
+    }
+  });
+
   // Dev endpoint: Simulate incoming message
   app.post("/api/dev/simulate-incoming-message", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {

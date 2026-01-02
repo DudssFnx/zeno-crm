@@ -3,6 +3,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import {
   companies, users, whatsappAccounts, contacts, tags, contactTags,
   conversations, messages, webhookConfigs, automationLogs, cannedResponses,
+  macros, macroExecutions,
   type Company, type InsertCompany, type User, type InsertUser,
   type WhatsappAccount, type InsertWhatsappAccount,
   type Contact, type InsertContact, type Tag, type InsertTag,
@@ -11,6 +12,8 @@ import {
   type Message, type InsertMessage,
   type WebhookConfig, type InsertWebhookConfig,
   type CannedResponse, type InsertCannedResponse,
+  type Macro, type InsertMacro,
+  type MacroExecution, type InsertMacroExecution,
   type ConversationWithDetails, type ContactWithTags, type MessageWithSender,
 } from "@shared/schema";
 import { normalizePhone } from "./jid-utils";
@@ -88,6 +91,17 @@ export interface IStorage {
   getCannedResponses(companyId: string): Promise<CannedResponse[]>;
   updateCannedResponse(id: string, data: Partial<InsertCannedResponse>): Promise<CannedResponse | undefined>;
   deleteCannedResponse(id: string): Promise<void>;
+
+  // Macros
+  createMacro(data: InsertMacro): Promise<Macro>;
+  getMacro(id: string): Promise<Macro | undefined>;
+  getMacros(companyId: string): Promise<Macro[]>;
+  updateMacro(id: string, data: Partial<InsertMacro>): Promise<Macro | undefined>;
+  deleteMacro(id: string): Promise<void>;
+  
+  // Macro Executions
+  createMacroExecution(data: InsertMacroExecution): Promise<MacroExecution>;
+  getMacroExecutions(macroId: string): Promise<MacroExecution[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -490,6 +504,44 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCannedResponse(id: string): Promise<void> {
     await db.delete(cannedResponses).where(eq(cannedResponses.id, id));
+  }
+
+  // Macros
+  async createMacro(data: InsertMacro): Promise<Macro> {
+    const [macro] = await db.insert(macros).values(data).returning();
+    return macro;
+  }
+
+  async getMacro(id: string): Promise<Macro | undefined> {
+    const [macro] = await db.select().from(macros).where(eq(macros.id, id));
+    return macro;
+  }
+
+  async getMacros(companyId: string): Promise<Macro[]> {
+    return db.select().from(macros).where(eq(macros.companyId, companyId)).orderBy(desc(macros.createdAt));
+  }
+
+  async updateMacro(id: string, data: Partial<InsertMacro>): Promise<Macro | undefined> {
+    const [macro] = await db
+      .update(macros)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(macros.id, id))
+      .returning();
+    return macro;
+  }
+
+  async deleteMacro(id: string): Promise<void> {
+    await db.delete(macros).where(eq(macros.id, id));
+  }
+
+  // Macro Executions
+  async createMacroExecution(data: InsertMacroExecution): Promise<MacroExecution> {
+    const [execution] = await db.insert(macroExecutions).values(data).returning();
+    return execution;
+  }
+
+  async getMacroExecutions(macroId: string): Promise<MacroExecution[]> {
+    return db.select().from(macroExecutions).where(eq(macroExecutions.macroId, macroId)).orderBy(desc(macroExecutions.executedAt));
   }
 }
 

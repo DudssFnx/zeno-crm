@@ -65,6 +65,7 @@ export const contacts = pgTable("contacts", {
   name: text("name").notNull(),
   phoneNumber: text("phone_number").notNull(),
   avatarUrl: text("avatar_url"),
+  avatarUpdatedAt: timestamp("avatar_updated_at"),
   notes: text("notes"),
   source: text("source").default("whatsapp"), // whatsapp | instagram | site | google | manual
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -175,6 +176,46 @@ export const automationLogs = pgTable("automation_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Macros (atalhos com ações automáticas)
+export const macros = pgTable("macros", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  messageTemplate: text("message_template"),
+  actions: jsonb("actions").notNull().default([]), // [{type: "ADD_TAG", tagId}, {type: "REMOVE_TAG", tagId}, {type: "SET_STATUS", status}]
+  isGlobal: boolean("is_global").notNull().default(true),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const macrosRelations = relations(macros, ({ one, many }) => ({
+  company: one(companies, { fields: [macros.companyId], references: [companies.id] }),
+  creator: one(users, { fields: [macros.createdBy], references: [users.id] }),
+  executions: many(macroExecutions),
+}));
+
+// Macro Executions (log de execuções)
+export const macroExecutions = pgTable("macro_executions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  macroId: varchar("macro_id").notNull().references(() => macros.id, { onDelete: "cascade" }),
+  chatId: varchar("chat_id").notNull(),
+  contactId: varchar("contact_id").references(() => contacts.id),
+  conversationId: varchar("conversation_id").references(() => conversations.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  renderedMessage: text("rendered_message"),
+  actionsApplied: jsonb("actions_applied").notNull().default([]),
+  executedAt: timestamp("executed_at").defaultNow().notNull(),
+});
+
+export const macroExecutionsRelations = relations(macroExecutions, ({ one }) => ({
+  macro: one(macros, { fields: [macroExecutions.macroId], references: [macros.id] }),
+  contact: one(contacts, { fields: [macroExecutions.contactId], references: [contacts.id] }),
+  conversation: one(conversations, { fields: [macroExecutions.conversationId], references: [conversations.id] }),
+  user: one(users, { fields: [macroExecutions.userId], references: [users.id] }),
+}));
+
 // Canned Responses (Respostas Rápidas)
 export const cannedResponses = pgTable("canned_responses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -200,6 +241,18 @@ export const insertMessageSchema = createInsertSchema(messages).omit({ id: true,
 export const insertWebhookConfigSchema = createInsertSchema(webhookConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAutomationLogSchema = createInsertSchema(automationLogs).omit({ id: true, createdAt: true });
 export const insertCannedResponseSchema = createInsertSchema(cannedResponses).omit({ id: true, createdAt: true });
+export const insertMacroSchema = createInsertSchema(macros).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertMacroExecutionSchema = createInsertSchema(macroExecutions).omit({ id: true, executedAt: true });
+
+// Macro action types
+export const macroActionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("ADD_TAG"), tagId: z.string() }),
+  z.object({ type: z.literal("REMOVE_TAG"), tagId: z.string() }),
+  z.object({ type: z.literal("SET_STATUS"), status: z.enum(["open", "pending", "resolved", "closed"]) }),
+  z.object({ type: z.literal("ASSIGN_AGENT"), agentId: z.string().optional() }),
+]);
+
+export type MacroAction = z.infer<typeof macroActionSchema>;
 
 // Types
 export type Company = typeof companies.$inferSelect;
@@ -234,6 +287,12 @@ export type InsertAutomationLog = z.infer<typeof insertAutomationLogSchema>;
 
 export type CannedResponse = typeof cannedResponses.$inferSelect;
 export type InsertCannedResponse = z.infer<typeof insertCannedResponseSchema>;
+
+export type Macro = typeof macros.$inferSelect;
+export type InsertMacro = z.infer<typeof insertMacroSchema>;
+
+export type MacroExecution = typeof macroExecutions.$inferSelect;
+export type InsertMacroExecution = z.infer<typeof insertMacroExecutionSchema>;
 
 // Auth schemas
 export const loginSchema = z.object({
