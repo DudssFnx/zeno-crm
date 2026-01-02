@@ -635,7 +635,26 @@ class WhatsAppBaileysGateway {
     }
 
     try {
-      const jid = normalizeJid(phoneNumber);
+      let jid: string;
+      
+      // Check if this is a LID (Linked Device ID) - format: LID_123456789
+      if (phoneNumber.startsWith("LID_")) {
+        const lidToken = phoneNumber.replace("LID_", "");
+        
+        // First, try to get the real phone number from mapping
+        const mappedPhone = this.getPhoneFromLid(lidToken);
+        if (mappedPhone) {
+          // Use the mapped phone number
+          jid = normalizeJid(mappedPhone);
+          console.log(`[Baileys] LID ${lidToken} mapeado para telefone ${mappedPhone}, JID: ${jid}`);
+        } else {
+          // No mapping found - use the LID format directly with @lid suffix
+          jid = `${lidToken}@lid`;
+          console.log(`[Baileys] Usando LID diretamente: ${jid}`);
+        }
+      } else {
+        jid = normalizeJid(phoneNumber);
+      }
       let result;
 
       if (mediaOptions?.mediaUrl && mediaOptions?.mediaType) {
