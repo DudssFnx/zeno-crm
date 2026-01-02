@@ -12,6 +12,7 @@ import fs from "fs";
 import path from "path";
 import pino from "pino";
 import NodeCache from "node-cache";
+import QRCode from "qrcode";
 
 const SESSION_DIR = "./whatsapp-sessions-baileys";
 const SESSION_STATUS_FILE = "./whatsapp-sessions-baileys/session-status.json";
@@ -206,9 +207,8 @@ class WhatsAppBaileysGateway {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        session.qrCode = qr;
         session.status = "pending_qr";
-        this.emitQRCode(accountId, qr);
+        await this.emitQRCode(accountId, qr);
         this.emitStatus(accountId, "pending_qr");
         console.log(`[Baileys] QR Code generated for ${accountId}`);
       }
@@ -423,9 +423,23 @@ class WhatsAppBaileysGateway {
     }
   }
 
-  private emitQRCode(accountId: string, qrCode: string) {
+  private async emitQRCode(accountId: string, qrCode: string) {
     if (this.io) {
-      this.io.to(`whatsapp:${accountId}`).emit("whatsapp:qr", { qrCode });
+      try {
+        const qrDataUrl = await QRCode.toDataURL(qrCode, {
+          errorCorrectionLevel: 'M',
+          width: 256,
+          margin: 2,
+        });
+        const session = this.sessions.get(accountId);
+        if (session) {
+          session.qrCode = qrDataUrl;
+        }
+        this.io.to(`whatsapp:${accountId}`).emit("whatsapp:qr", { qrCode: qrDataUrl });
+      } catch (error) {
+        console.error(`[Baileys] Error generating QR code image:`, error);
+        this.io.to(`whatsapp:${accountId}`).emit("whatsapp:qr", { qrCode });
+      }
     }
   }
 
