@@ -191,6 +191,7 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const cannedDropdownRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -334,11 +335,13 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
     },
   });
 
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
   useEffect(() => {
     setSelectedCannedIndex(0);
@@ -725,6 +728,7 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                 </div>
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </ScrollArea>
