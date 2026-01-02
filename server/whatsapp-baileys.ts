@@ -671,7 +671,7 @@ class WhatsAppBaileysGateway {
     const contactName = direction === "incoming" ? (msg.pushName || phoneNumber) : phoneNumber;
 
     console.log(
-      `[Baileys] ${direction === "outgoing" ? "Enviada" : "Recebida"} [${chatId}] fromMe=${msg.key.fromMe}: ${contactName}: ${content.substring(0, 50)}${mediaInfo ? ` [${mediaInfo.mediaType}]` : ""}`
+      `[Baileys] ${direction === "outgoing" ? "Enviada" : "Recebida"} [${phoneNumber}] fromMe=${msg.key.fromMe}: ${contactName}: ${content.substring(0, 50)}${mediaInfo ? ` [${mediaInfo.mediaType}]` : ""}`
     );
 
     if (this.messageHandler) {
