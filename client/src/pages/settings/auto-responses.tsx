@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Bot, Power, GripVertical, Clock, Calendar, MessageCircle, Image, Video, Mic, FileText, Tag as TagIcon, UserCircle, CircleDot } from "lucide-react";
+import { Plus, Pencil, Trash2, Bot, Power, GripVertical, Clock, Calendar, MessageCircle, Image, Video, Mic, FileText, Tag as TagIcon, UserCircle, CircleDot, Upload, Square, Loader2 } from "lucide-react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -93,8 +93,100 @@ export default function AutoResponsesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAutoResponse, setEditingAutoResponse] = useState<AutoResponse | null>(null);
   const [keywordInput, setKeywordInput] = useState("");
+  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+  const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
 
   const isAdmin = user?.role === "admin" || user?.role === "master";
+
+  // Handle file upload for media actions
+  const handleFileUpload = async (file: File, index: number) => {
+    setUploadingIndex(index);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("Upload falhou");
+
+      const data = await res.json();
+      form.setValue(`actions.${index}.mediaUrl`, data.url);
+      toast({ title: "Arquivo enviado com sucesso" });
+    } catch (error) {
+      toast({ title: "Erro ao enviar arquivo", variant: "destructive" });
+    } finally {
+      setUploadingIndex(null);
+    }
+  };
+
+  // Start audio recording
+  const startRecording = async (index: number) => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4",
+      });
+      
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(track => track.stop());
+        
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType });
+        const extension = mediaRecorder.mimeType.includes("webm") ? "webm" : "m4a";
+        const file = new File([audioBlob], `audio_${Date.now()}.${extension}`, { type: mediaRecorder.mimeType });
+        
+        await handleFileUpload(file, index);
+      };
+      
+      mediaRecorder.start();
+      setRecordingIndex(index);
+      setRecordingTime(0);
+      
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+      
+    } catch (error) {
+      toast({ title: "Erro ao acessar microfone", variant: "destructive" });
+    }
+  };
+
+  // Stop audio recording
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    setRecordingIndex(null);
+    setRecordingTime(0);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
 
   const form = useForm<AutoResponseFormData>({
     resolver: zodResolver(autoResponseFormSchema),
@@ -633,16 +725,123 @@ export default function AutoResponsesPage() {
                                 />
                               )}
 
-                              {["send_image", "send_video", "send_audio", "send_document"].includes(actionType) && (
+                              {["send_image", "send_video", "send_document"].includes(actionType) && (
                                 <FormField
                                   control={form.control}
                                   name={`actions.${index}.mediaUrl`}
                                   render={({ field }) => (
                                     <FormItem>
-                                      <FormLabel>URL da mídia</FormLabel>
-                                      <FormControl>
-                                        <Input {...field} placeholder="https://..." data-testid={`input-action-media-${index}`} />
-                                      </FormControl>
+                                      <FormLabel>Arquivo</FormLabel>
+                                      <div className="space-y-2">
+                                        <input
+                                          type="file"
+                                          ref={(el) => (fileInputRefs.current[index] = el)}
+                                          className="hidden"
+                                          accept={
+                                            actionType === "send_image" ? "image/*" :
+                                            actionType === "send_video" ? "video/*" :
+                                            "*/*"
+                                          }
+                                          onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) handleFileUpload(file, index);
+                                          }}
+                                          data-testid={`input-action-file-${index}`}
+                                        />
+                                        <div className="flex items-center gap-2">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => fileInputRefs.current[index]?.click()}
+                                            disabled={uploadingIndex === index}
+                                            data-testid={`button-upload-${index}`}
+                                          >
+                                            {uploadingIndex === index ? (
+                                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            ) : (
+                                              <Upload className="w-4 h-4 mr-2" />
+                                            )}
+                                            Escolher arquivo
+                                          </Button>
+                                          {field.value && (
+                                            <span className="text-sm text-muted-foreground truncate max-w-[200px]">
+                                              {field.value.split("/").pop()}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <FormControl>
+                                          <Input
+                                            {...field}
+                                            placeholder="Ou cole uma URL..."
+                                            className="text-sm"
+                                            data-testid={`input-action-media-${index}`}
+                                          />
+                                        </FormControl>
+                                      </div>
+                                    </FormItem>
+                                  )}
+                                />
+                              )}
+
+                              {actionType === "send_audio" && (
+                                <FormField
+                                  control={form.control}
+                                  name={`actions.${index}.mediaUrl`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Áudio</FormLabel>
+                                      <div className="space-y-2">
+                                        {recordingIndex === index ? (
+                                          <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 rounded-md">
+                                              <div className="w-2 h-2 bg-destructive rounded-full animate-pulse" />
+                                              <span className="text-sm font-mono">{formatTime(recordingTime)}</span>
+                                            </div>
+                                            <Button
+                                              type="button"
+                                              variant="destructive"
+                                              size="sm"
+                                              onClick={stopRecording}
+                                              data-testid={`button-stop-recording-${index}`}
+                                            >
+                                              <Square className="w-4 h-4 mr-2" />
+                                              Parar
+                                            </Button>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center gap-2">
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => startRecording(index)}
+                                              disabled={uploadingIndex === index || recordingIndex !== null}
+                                              data-testid={`button-record-${index}`}
+                                            >
+                                              {uploadingIndex === index ? (
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                              ) : (
+                                                <Mic className="w-4 h-4 mr-2" />
+                                              )}
+                                              Gravar áudio
+                                            </Button>
+                                            {field.value && (
+                                              <span className="text-sm text-muted-foreground truncate max-w-[200px]">
+                                                {field.value.split("/").pop()}
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                        <FormControl>
+                                          <Input
+                                            {...field}
+                                            placeholder="Ou cole uma URL..."
+                                            className="text-sm"
+                                            data-testid={`input-action-media-${index}`}
+                                          />
+                                        </FormControl>
+                                      </div>
                                     </FormItem>
                                   )}
                                 />
