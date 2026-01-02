@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { LayoutGrid, Phone, MessageSquare, Settings, Plus } from "lucide-react";
+import { LayoutGrid, Phone, MessageSquare, Settings, Plus, Tag as TagIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,14 +29,15 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useState } from "react";
-import type { Stage, ConversationWithDetails } from "@shared/schema";
+import type { Tag, ConversationWithDetails } from "@shared/schema";
 
 interface SortableConversationCardProps {
   conversation: ConversationWithDetails;
   onClick: () => void;
+  uniqueId: string;
 }
 
-function SortableConversationCard({ conversation, onClick }: SortableConversationCardProps) {
+function SortableConversationCard({ conversation, onClick, uniqueId }: SortableConversationCardProps) {
   const {
     attributes,
     listeners,
@@ -44,7 +45,7 @@ function SortableConversationCard({ conversation, onClick }: SortableConversatio
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: conversation.id });
+  } = useSortable({ id: uniqueId });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -89,7 +90,7 @@ function SortableConversationCard({ conversation, onClick }: SortableConversatio
   );
 }
 
-function ConversationCard({ conversation, onClick }: SortableConversationCardProps) {
+function ConversationCard({ conversation }: { conversation: ConversationWithDetails }) {
   return (
     <Card className="cursor-grab active:cursor-grabbing hover-elevate">
       <CardContent className="p-3">
@@ -126,11 +127,11 @@ export default function KanbanPage() {
     })
   );
 
-  const { data: stages = [], isLoading: stagesLoading } = useQuery<Stage[]>({
-    queryKey: ["/api/stages"],
+  const { data: tags = [], isLoading: tagsLoading } = useQuery<Tag[]>({
+    queryKey: ["/api/tags"],
     queryFn: async () => {
-      const res = await authFetch("/api/stages");
-      if (!res.ok) throw new Error("Falha ao buscar estágios");
+      const res = await authFetch("/api/tags");
+      if (!res.ok) throw new Error("Falha ao buscar etiquetas");
       return res.json();
     },
   });
@@ -144,34 +145,40 @@ export default function KanbanPage() {
     },
   });
 
-  const updateConversationStage = useMutation({
-    mutationFn: async ({ conversationId, stageId }: { conversationId: string; stageId: string | null }) => {
-      const res = await apiRequest("PATCH", `/api/conversations/${conversationId}/stage`, { stageId });
+  const addTagMutation = useMutation({
+    mutationFn: async ({ contactId, tagId }: { contactId: string; tagId: string }) => {
+      const res = await apiRequest("POST", `/api/contacts/${contactId}/tags`, { tagId });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-      toast({ title: "Conversa movida com sucesso" });
+      toast({ title: "Etiqueta adicionada com sucesso" });
     },
     onError: () => {
-      toast({ title: "Falha ao mover conversa", variant: "destructive" });
+      toast({ title: "Falha ao adicionar etiqueta", variant: "destructive" });
     },
   });
 
-  const isLoading = stagesLoading || conversationsLoading;
+  const isLoading = tagsLoading || conversationsLoading;
 
-  const getConversationsForStage = (stageId: string | null): ConversationWithDetails[] => {
-    return conversations.filter(c => c.stageId === stageId);
+  const getConversationsForTag = (tagId: string): ConversationWithDetails[] => {
+    return conversations.filter(c => c.tags?.some(t => t.id === tagId));
   };
 
-  const unstaged = getConversationsForStage(null);
+  const getConversationsWithoutTags = (): ConversationWithDetails[] => {
+    return conversations.filter(c => !c.tags || c.tags.length === 0);
+  };
+
+  const noTagConversations = getConversationsWithoutTags();
 
   const handleConversationClick = (conversation: ConversationWithDetails) => {
     setLocation(`/?conversation=${conversation.id}`);
   };
 
   const handleDragStart = (event: DragStartEvent) => {
-    const conv = conversations.find(c => c.id === event.active.id);
+    const dragId = event.active.id as string;
+    const conversationId = dragId.includes("_") ? dragId.split("_")[0] : dragId;
+    const conv = conversations.find(c => c.id === conversationId);
     setActiveConversation(conv || null);
   };
 
@@ -181,24 +188,36 @@ export default function KanbanPage() {
 
     if (!over) return;
 
-    const conversationId = active.id as string;
+    const dragId = active.id as string;
+    const conversationId = dragId.includes("_") ? dragId.split("_")[0] : dragId;
     const overId = over.id as string;
 
-    let newStageId: string | null = null;
-    if (overId === "unstaged") {
-      newStageId = null;
-    } else if (stages.some(s => s.id === overId)) {
-      newStageId = overId;
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (!conversation) return;
+
+    let targetTagId: string | null = null;
+    
+    if (overId === "no-tag" || overId === "no-tag-drop") {
+      return;
+    } else if (tags.some(t => t.id === overId)) {
+      targetTagId = overId;
+    } else if (overId.includes("_")) {
+      const tagIdFromOverId = overId.split("_")[1];
+      if (tags.some(t => t.id === tagIdFromOverId)) {
+        targetTagId = tagIdFromOverId;
+      }
     } else {
       const targetConv = conversations.find(c => c.id === overId);
-      if (targetConv) {
-        newStageId = targetConv.stageId;
+      if (targetConv && targetConv.tags && targetConv.tags.length > 0) {
+        targetTagId = targetConv.tags[0].id;
       }
     }
 
-    const currentConv = conversations.find(c => c.id === conversationId);
-    if (currentConv && currentConv.stageId !== newStageId) {
-      updateConversationStage.mutate({ conversationId, stageId: newStageId });
+    if (targetTagId) {
+      const alreadyHasTag = conversation.tags?.some(t => t.id === targetTagId);
+      if (!alreadyHasTag) {
+        addTagMutation.mutate({ contactId: conversation.contactId, tagId: targetTagId });
+      }
     }
   };
 
@@ -209,33 +228,33 @@ export default function KanbanPage() {
           <div>
             <h1 className="text-2xl font-semibold">Pipeline de Conversas</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Arraste as conversas entre os estágios para atualizar o status
+              Arraste as conversas entre as etiquetas para organizar seu atendimento
             </p>
           </div>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setLocation("/settings/stages")}
-            data-testid="button-manage-stages"
+            onClick={() => setLocation("/settings/tags")}
+            data-testid="button-manage-tags"
           >
             <Settings className="h-4 w-4 mr-2" />
-            Gerenciar Estágios
+            Gerenciar Etiquetas
           </Button>
         </div>
 
         {isLoading ? (
           <LoadingCard />
-        ) : stages.length === 0 ? (
+        ) : tags.length === 0 ? (
           <Card>
             <CardContent className="p-0">
               <EmptyState
-                icon={LayoutGrid}
-                title="Nenhum estágio configurado"
-                description="Crie estágios em Configurações > Estágios para configurar seu pipeline"
+                icon={TagIcon}
+                title="Nenhuma etiqueta configurada"
+                description="Crie etiquetas em Configurações > Etiquetas para configurar seu pipeline"
                 action={
-                  <Button onClick={() => setLocation("/settings/stages")} data-testid="button-create-stages">
+                  <Button onClick={() => setLocation("/settings/tags")} data-testid="button-create-tags">
                     <Plus className="h-4 w-4 mr-2" />
-                    Criar Estágios
+                    Criar Etiquetas
                   </Button>
                 }
               />
@@ -249,43 +268,79 @@ export default function KanbanPage() {
             onDragEnd={handleDragEnd}
           >
             <div className="flex gap-4 h-[calc(100vh-180px)] overflow-x-auto pb-4">
-              {stages.map((stage) => {
-                const stageConversations = getConversationsForStage(stage.id);
+              {noTagConversations.length > 0 && (
+                <div className="w-72 shrink-0 flex flex-col bg-muted/30 rounded-lg">
+                  <div className="p-3 border-b flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                      <span className="font-medium text-sm text-muted-foreground">Sem Etiqueta</span>
+                    </div>
+                    <Badge variant="outline" className="text-xs shrink-0">
+                      {noTagConversations.length}
+                    </Badge>
+                  </div>
+                  <ScrollArea className="flex-1 p-2">
+                    <SortableContext
+                      id="no-tag"
+                      items={noTagConversations.map(c => `${c.id}_no-tag`)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2 min-h-[100px]" data-tag-id="no-tag">
+                        {noTagConversations.map((conv) => (
+                          <SortableConversationCard
+                            key={`${conv.id}_no-tag`}
+                            uniqueId={`${conv.id}_no-tag`}
+                            conversation={conv}
+                            onClick={() => handleConversationClick(conv)}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </ScrollArea>
+                </div>
+              )}
+
+              {tags.map((tag) => {
+                const tagConversations = getConversationsForTag(tag.id);
                 return (
                   <div
-                    key={stage.id}
+                    key={tag.id}
                     className="w-72 shrink-0 flex flex-col bg-muted/50 rounded-lg"
                   >
-                    <div className="p-3 border-b flex items-center justify-between gap-2">
+                    <div 
+                      className="p-3 border-b flex items-center justify-between gap-2"
+                      style={{ borderBottomColor: tag.color, borderBottomWidth: '2px' }}
+                    >
                       <div className="flex items-center gap-2">
                         <div
                           className="w-3 h-3 rounded-full shrink-0"
-                          style={{ backgroundColor: stage.color }}
+                          style={{ backgroundColor: tag.color }}
                         />
-                        <span className="font-medium text-sm truncate">{stage.name}</span>
+                        <span className="font-medium text-sm truncate">{tag.name}</span>
                       </div>
                       <Badge variant="secondary" className="text-xs shrink-0">
-                        {stageConversations.length}
+                        {tagConversations.length}
                       </Badge>
                     </div>
                     <ScrollArea className="flex-1 p-2">
                       <SortableContext
-                        id={stage.id}
-                        items={stageConversations.map(c => c.id)}
+                        id={tag.id}
+                        items={tagConversations.map(c => `${c.id}_${tag.id}`)}
                         strategy={verticalListSortingStrategy}
                       >
-                        <div className="space-y-2 min-h-[100px]" data-stage-id={stage.id}>
-                          {stageConversations.map((conv) => (
+                        <div className="space-y-2 min-h-[100px]" data-tag-id={tag.id}>
+                          {tagConversations.map((conv) => (
                             <SortableConversationCard
-                              key={conv.id}
+                              key={`${conv.id}_${tag.id}`}
+                              uniqueId={`${conv.id}_${tag.id}`}
                               conversation={conv}
                               onClick={() => handleConversationClick(conv)}
                             />
                           ))}
-                          {stageConversations.length === 0 && (
+                          {tagConversations.length === 0 && (
                             <div 
                               className="text-center py-8 text-muted-foreground text-sm border-2 border-dashed rounded-lg"
-                              data-testid={`stage-drop-${stage.id}`}
+                              data-testid={`tag-drop-${tag.id}`}
                             >
                               Arraste conversas aqui
                             </div>
@@ -296,45 +351,11 @@ export default function KanbanPage() {
                   </div>
                 );
               })}
-
-              {unstaged.length > 0 && (
-                <div className="w-72 shrink-0 flex flex-col bg-muted/30 rounded-lg opacity-75">
-                  <div className="p-3 border-b flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                      <span className="font-medium text-sm text-muted-foreground">Sem Estágio</span>
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      {unstaged.length}
-                    </Badge>
-                  </div>
-                  <ScrollArea className="flex-1 p-2">
-                    <SortableContext
-                      id="unstaged"
-                      items={unstaged.map(c => c.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <div className="space-y-2">
-                        {unstaged.map((conv) => (
-                          <SortableConversationCard
-                            key={conv.id}
-                            conversation={conv}
-                            onClick={() => handleConversationClick(conv)}
-                          />
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </ScrollArea>
-                </div>
-              )}
             </div>
 
             <DragOverlay>
               {activeConversation ? (
-                <ConversationCard
-                  conversation={activeConversation}
-                  onClick={() => {}}
-                />
+                <ConversationCard conversation={activeConversation} />
               ) : null}
             </DragOverlay>
           </DndContext>
