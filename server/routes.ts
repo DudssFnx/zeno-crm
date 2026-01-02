@@ -1077,13 +1077,14 @@ export async function registerRoutes(
                 const currentTags = await storage.getContactTags(contact.id);
                 const currentTagNames = currentTags.map(t => t.name).join(", ");
                 
+                const contactName = contact.name || "";
                 const messageContext = {
-                  nome: contact.name,
-                  telefone: contact.phoneNumber,
-                  primeiro_nome: contact.name.split(" ")[0],
+                  nome: contactName,
+                  telefone: contact.phoneNumber || "",
+                  primeiro_nome: contactName ? contactName.split(" ")[0] : "",
                   empresa: "",
                   tags: currentTagNames,
-                  atendente: req.user!.displayName || req.user!.name,
+                  atendente: req.user!.displayName || req.user!.name || "",
                 };
                 
                 const messageToSend = renderTemplate(action.message, messageContext);
@@ -1135,13 +1136,14 @@ export async function registerRoutes(
         const updatedTags = await storage.getContactTags(contact.id);
         const tagNames = updatedTags.map(t => t.name).join(", ");
         
+        const templateContactName = contact.name || "";
         const context = {
-          nome: contact.name,
-          telefone: contact.phoneNumber,
-          primeiro_nome: contact.name.split(" ")[0],
+          nome: templateContactName,
+          telefone: contact.phoneNumber || "",
+          primeiro_nome: templateContactName ? templateContactName.split(" ")[0] : "",
           empresa: "",
           tags: tagNames,
-          atendente: req.user!.displayName || req.user!.name,
+          atendente: req.user!.displayName || req.user!.name || "",
         };
         
         renderedMessage = renderTemplate(macro.messageTemplate, context);

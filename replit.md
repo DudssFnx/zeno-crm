@@ -76,6 +76,19 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 - Color-coded labels for funnel stages
 - Apply multiple tags to contacts
 
+### Macros
+- Automated actions system (CWRMKT-style)
+- Admin/Master can create/edit, all users can execute
+- Action types:
+  - **ADD_TAG** - Add tag to contact
+  - **REMOVE_TAG** - Remove tag from contact
+  - **SET_STATUS** - Change conversation status (open/pending/resolved)
+  - **ASSIGN_AGENT** - Assign conversation to agent
+  - **SEND_MESSAGE** - Send automated message with template variables
+- Template variables: `{{nome}}`, `{{telefone}}`, `{{primeiro_nome}}`, `{{empresa}}`, `{{tags}}`, `{{atendente}}`
+- Settings page at `/settings/macros`
+- Execute via macro button in chat window
+
 ### Webhooks
 - Event notifications for:
   - message.incoming
@@ -120,6 +133,13 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 ### Webhooks
 - `GET/POST /api/webhooks` - CRUD
 - `PUT/DELETE /api/webhooks/:id` - Update/Delete
+
+### Macros
+- `GET /api/macros` - List macros
+- `POST /api/macros` - Create macro (admin only)
+- `PUT /api/macros/:id` - Update macro (admin only)
+- `DELETE /api/macros/:id` - Delete macro (admin only)
+- `POST /api/macros/execute` - Execute macro (all users)
 
 ### Dev Tools
 - `POST /api/dev/simulate-incoming-message` - Simulate incoming message
