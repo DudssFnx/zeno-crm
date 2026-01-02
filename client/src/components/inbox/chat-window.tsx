@@ -198,6 +198,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [pendingAttributes, setPendingAttributes] = useState<string[]>([]);
+  const pendingAttributesRef = useRef<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -305,12 +306,15 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
       setIsTyping(false);
       clearSelectedFile();
       
-      // Aplicar atributos se houver pendentes da resposta rápida
-      if (pendingAttributes.length > 0 && conversation?.contact?.id) {
+      // Aplicar atributos se houver pendentes da resposta rápida (usando ref para evitar stale closure)
+      const attrsToApply = pendingAttributesRef.current;
+      console.log("[ChatWindow] onSuccess - pendingAttributesRef:", attrsToApply, "contactId:", conversation?.contact?.id);
+      if (attrsToApply.length > 0 && conversation?.contact?.id) {
         try {
           // Combinar atributos existentes com novos (máximo 3)
           const currentAttrs = conversation.contact.attributes || [];
-          const newAttrs = [...new Set([...currentAttrs, ...pendingAttributes])].slice(0, 3);
+          const newAttrs = [...new Set([...currentAttrs, ...attrsToApply])].slice(0, 3);
+          console.log("[ChatWindow] Aplicando atributos - currentAttrs:", currentAttrs, "newAttrs:", newAttrs);
           
           if (newAttrs.length > 3) {
             toast({ 
@@ -319,16 +323,19 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
               variant: "destructive" 
             });
           } else {
-            await authFetch(`/api/contacts/${conversation.contact.id}`, {
+            const res = await authFetch(`/api/contacts/${conversation.contact.id}`, {
               method: "PUT",
               body: JSON.stringify({ attributes: newAttrs }),
             });
+            console.log("[ChatWindow] Resultado da atualização de atributos:", res.ok);
             queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
             queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
           }
         } catch (e) {
           console.error("[ChatWindow] Falha ao aplicar atributos:", e);
         }
+        // Limpar o ref e state
+        pendingAttributesRef.current = [];
         setPendingAttributes([]);
       }
       
@@ -337,6 +344,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     },
     onError: (error: Error) => {
       toast({ title: error.message || "Falha ao enviar mensagem", variant: "destructive" });
+      pendingAttributesRef.current = [];
       setPendingAttributes([]);
     },
   });
@@ -449,11 +457,14 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   };
 
   const selectCannedResponse = (response: CannedResponse) => {
+    console.log("[ChatWindow] Selecionada resposta rápida:", response.shortcut, "atributos:", response.attributes);
     setMessage(response.content);
     setShowCannedResponses(false);
     setCannedSearchTerm("");
     if (response.attributes && response.attributes.length > 0) {
+      console.log("[ChatWindow] Definindo pendingAttributes (ref):", response.attributes);
       setPendingAttributes(response.attributes);
+      pendingAttributesRef.current = response.attributes;
     }
     textareaRef.current?.focus();
   };
