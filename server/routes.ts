@@ -1558,6 +1558,56 @@ export async function registerRoutes(
     }
   });
 
+  // Contact Attributes routes
+  app.get("/api/contact-attributes", authMiddleware(storage), async (req: AuthRequest, res) => {
+    const attributes = await storage.getContactAttributes(req.user!.companyId);
+    res.json(attributes);
+  });
+
+  app.post("/api/contact-attributes", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name, color } = req.body;
+      if (!name) {
+        return res.status(400).json({ message: "Nome é obrigatório" });
+      }
+
+      const attr = await storage.createContactAttribute({
+        companyId: req.user!.companyId,
+        name,
+        color: color || "#6B7280",
+      });
+
+      res.json(attr);
+    } catch (error) {
+      console.error("Create contact attribute error:", error);
+      res.status(500).json({ message: "Falha ao criar atributo" });
+    }
+  });
+
+  app.put("/api/contact-attributes/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name, color } = req.body;
+      const attr = await storage.updateContactAttribute(req.params.id, { name, color });
+      if (!attr) {
+        return res.status(404).json({ message: "Atributo não encontrado" });
+      }
+      res.json(attr);
+    } catch (error) {
+      console.error("Update contact attribute error:", error);
+      res.status(500).json({ message: "Falha ao atualizar atributo" });
+    }
+  });
+
+  app.delete("/api/contact-attributes/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteContactAttribute(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete contact attribute error:", error);
+      res.status(500).json({ message: "Falha ao excluir atributo" });
+    }
+  });
+
   // Dev endpoint: Simulate incoming message
   app.post("/api/dev/simulate-incoming-message", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
