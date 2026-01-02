@@ -1,8 +1,9 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { LayoutGrid, User, Phone } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LayoutGrid, Phone, MessageSquare, Settings, Plus } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DashboardLayout } from "./dashboard";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
@@ -10,247 +11,333 @@ import { LoadingCard } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
-import type { Tag, Contact, ContactWithTags } from "@shared/schema";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import {
+  DndContext,
+  DragOverlay,
+  useSensor,
+  useSensors,
+  PointerSensor,
+  closestCorners,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useState } from "react";
+import type { Stage, ConversationWithDetails } from "@shared/schema";
 
-interface KanbanContact extends Contact {
-  tags: Tag[];
+interface SortableConversationCardProps {
+  conversation: ConversationWithDetails;
+  onClick: () => void;
+}
+
+function SortableConversationCard({ conversation, onClick }: SortableConversationCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: conversation.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="cursor-grab active:cursor-grabbing hover-elevate"
+      onClick={onClick}
+      data-testid={`kanban-card-${conversation.id}`}
+    >
+      <CardContent className="p-3">
+        <div className="flex items-center gap-2">
+          <AvatarWithFallback 
+            name={conversation.contact.name} 
+            src={conversation.contact.avatarUrl} 
+            size="sm" 
+          />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-sm truncate">{conversation.contact.name}</p>
+            <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+              <Phone className="h-3 w-3" />
+              {conversation.contact.phoneNumber}
+            </p>
+            {conversation.lastMessage && (
+              <p className="text-xs text-muted-foreground truncate mt-1">
+                <MessageSquare className="h-3 w-3 inline mr-1" />
+                {conversation.lastMessage.content.substring(0, 50)}
+                {conversation.lastMessage.content.length > 50 ? "..." : ""}
+              </p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ConversationCard({ conversation, onClick }: SortableConversationCardProps) {
+  return (
+    <Card className="cursor-grab active:cursor-grabbing hover-elevate">
+      <CardContent className="p-3">
+        <div className="flex items-center gap-2">
+          <AvatarWithFallback 
+            name={conversation.contact.name} 
+            src={conversation.contact.avatarUrl} 
+            size="sm" 
+          />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-sm truncate">{conversation.contact.name}</p>
+            <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+              <Phone className="h-3 w-3" />
+              {conversation.contact.phoneNumber}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function KanbanPage() {
   const authFetch = useAuthFetch();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [activeConversation, setActiveConversation] = useState<ConversationWithDetails | null>(null);
 
-  const { data: tags = [], isLoading: tagsLoading } = useQuery<Tag[]>({
-    queryKey: ["/api/tags"],
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  const { data: stages = [], isLoading: stagesLoading } = useQuery<Stage[]>({
+    queryKey: ["/api/stages"],
     queryFn: async () => {
-      const res = await authFetch("/api/tags");
-      if (!res.ok) throw new Error("Failed to fetch tags");
+      const res = await authFetch("/api/stages");
+      if (!res.ok) throw new Error("Falha ao buscar estágios");
       return res.json();
     },
   });
 
-  const { data: contacts = [], isLoading: contactsLoading } = useQuery<Contact[]>({
-    queryKey: ["/api/contacts"],
+  const { data: conversations = [], isLoading: conversationsLoading } = useQuery<ConversationWithDetails[]>({
+    queryKey: ["/api/conversations"],
     queryFn: async () => {
-      const res = await authFetch("/api/contacts");
-      if (!res.ok) throw new Error("Failed to fetch contacts");
+      const res = await authFetch("/api/conversations");
+      if (!res.ok) throw new Error("Falha ao buscar conversas");
       return res.json();
     },
   });
 
-  const { data: contactTagsMap = {}, isLoading: tagsMapLoading } = useQuery({
-    queryKey: ["/api/contact-tags-map"],
-    queryFn: async () => {
-      const map: Record<string, Tag[]> = {};
-      for (const contact of contacts) {
-        try {
-          const res = await authFetch(`/api/contacts/${contact.id}`);
-          if (res.ok) {
-            const data: ContactWithTags = await res.json();
-            map[contact.id] = data.tags || [];
-          }
-        } catch {
-          map[contact.id] = [];
-        }
-      }
-      return map;
-    },
-    enabled: contacts.length > 0,
-  });
-
-  const updateContactTag = useMutation({
-    mutationFn: async ({ contactId, newTagId, oldTagId }: { contactId: string; newTagId: string; oldTagId?: string }) => {
-      if (oldTagId) {
-        await authFetch(`/api/contacts/${contactId}/tags/${oldTagId}`, { method: "DELETE" });
-      }
-      const res = await authFetch(`/api/contacts/${contactId}/tags`, {
-        method: "POST",
-        body: JSON.stringify({ tagId: newTagId }),
-      });
-      if (!res.ok) throw new Error("Failed to update tag");
+  const updateConversationStage = useMutation({
+    mutationFn: async ({ conversationId, stageId }: { conversationId: string; stageId: string | null }) => {
+      const res = await apiRequest("PATCH", `/api/conversations/${conversationId}/stage`, { stageId });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contact-tags-map"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      toast({ title: "Contato movido" });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      toast({ title: "Conversa movida com sucesso" });
     },
     onError: () => {
-      toast({ title: "Falha ao mover contato", variant: "destructive" });
+      toast({ title: "Falha ao mover conversa", variant: "destructive" });
     },
   });
 
-  const isLoading = tagsLoading || contactsLoading;
+  const isLoading = stagesLoading || conversationsLoading;
 
-  // Sort tags by stageOrder
-  const sortedTags = [...tags].sort((a, b) => {
-    const orderA = a.stageOrder ? parseInt(a.stageOrder) : 999;
-    const orderB = b.stageOrder ? parseInt(b.stageOrder) : 999;
-    return orderA - orderB;
-  });
-
-  // Filter only tags that have stageOrder (Kanban columns)
-  const kanbanTags = sortedTags.filter(t => t.stageOrder);
-  
-  // Get contacts for each tag
-  const getContactsForTag = (tagId: string): Contact[] => {
-    return contacts.filter(contact => {
-      const contactTags = contactTagsMap[contact.id] || [];
-      return contactTags.some(t => t.id === tagId);
-    });
+  const getConversationsForStage = (stageId: string | null): ConversationWithDetails[] => {
+    return conversations.filter(c => c.stageId === stageId);
   };
 
-  // Get contacts without any kanban tags
-  const untaggedContacts = contacts.filter(contact => {
-    const contactTags = contactTagsMap[contact.id] || [];
-    return !contactTags.some(t => t.stageOrder);
-  });
+  const unstaged = getConversationsForStage(null);
 
-  const handleContactClick = (contact: Contact) => {
-    setLocation(`/?contact=${contact.id}`);
+  const handleConversationClick = (conversation: ConversationWithDetails) => {
+    setLocation(`/?conversation=${conversation.id}`);
   };
 
-  const handleDragStart = (e: React.DragEvent, contactId: string, currentTagId?: string) => {
-    e.dataTransfer.setData("contactId", contactId);
-    if (currentTagId) {
-      e.dataTransfer.setData("currentTagId", currentTagId);
+  const handleDragStart = (event: DragStartEvent) => {
+    const conv = conversations.find(c => c.id === event.active.id);
+    setActiveConversation(conv || null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveConversation(null);
+
+    if (!over) return;
+
+    const conversationId = active.id as string;
+    const overId = over.id as string;
+
+    let newStageId: string | null = null;
+    if (overId === "unstaged") {
+      newStageId = null;
+    } else if (stages.some(s => s.id === overId)) {
+      newStageId = overId;
+    } else {
+      const targetConv = conversations.find(c => c.id === overId);
+      if (targetConv) {
+        newStageId = targetConv.stageId;
+      }
     }
-  };
 
-  const handleDrop = (e: React.DragEvent, newTagId: string) => {
-    e.preventDefault();
-    const contactId = e.dataTransfer.getData("contactId");
-    const oldTagId = e.dataTransfer.getData("currentTagId");
-    
-    if (contactId && newTagId !== oldTagId) {
-      updateContactTag.mutate({ contactId, newTagId, oldTagId: oldTagId || undefined });
+    const currentConv = conversations.find(c => c.id === conversationId);
+    if (currentConv && currentConv.stageId !== newStageId) {
+      updateConversationStage.mutate({ conversationId, stageId: newStageId });
     }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
   };
 
   return (
     <DashboardLayout>
       <div className="flex-1 p-6 overflow-hidden">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold">Pipeline de Pedidos</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Arraste os contatos entre os estágios para atualizar o status
-          </p>
+        <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-semibold">Pipeline de Conversas</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Arraste as conversas entre os estágios para atualizar o status
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLocation("/settings/stages")}
+            data-testid="button-manage-stages"
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            Gerenciar Estágios
+          </Button>
         </div>
 
         {isLoading ? (
           <LoadingCard />
-        ) : kanbanTags.length === 0 ? (
+        ) : stages.length === 0 ? (
           <Card>
             <CardContent className="p-0">
               <EmptyState
                 icon={LayoutGrid}
-                title="Nenhum estágio do pipeline"
-                description="Crie etiquetas com números de ordem em Configurações > Etiquetas para configurar seu pipeline"
+                title="Nenhum estágio configurado"
+                description="Crie estágios em Configurações > Estágios para configurar seu pipeline"
+                action={
+                  <Button onClick={() => setLocation("/settings/stages")} data-testid="button-create-stages">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Criar Estágios
+                  </Button>
+                }
               />
             </CardContent>
           </Card>
         ) : (
-          <div className="flex gap-4 h-[calc(100vh-180px)] overflow-x-auto pb-4">
-            {kanbanTags.map((tag) => {
-              const tagContacts = getContactsForTag(tag.id);
-              return (
-                <div
-                  key={tag.id}
-                  className="w-72 shrink-0 flex flex-col bg-muted/50 rounded-lg"
-                  onDrop={(e) => handleDrop(e, tag.id)}
-                  onDragOver={handleDragOver}
-                >
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex gap-4 h-[calc(100vh-180px)] overflow-x-auto pb-4">
+              {stages.map((stage) => {
+                const stageConversations = getConversationsForStage(stage.id);
+                return (
+                  <div
+                    key={stage.id}
+                    className="w-72 shrink-0 flex flex-col bg-muted/50 rounded-lg"
+                  >
+                    <div className="p-3 border-b flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: stage.color }}
+                        />
+                        <span className="font-medium text-sm truncate">{stage.name}</span>
+                      </div>
+                      <Badge variant="secondary" className="text-xs shrink-0">
+                        {stageConversations.length}
+                      </Badge>
+                    </div>
+                    <ScrollArea className="flex-1 p-2">
+                      <SortableContext
+                        id={stage.id}
+                        items={stageConversations.map(c => c.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="space-y-2 min-h-[100px]" data-stage-id={stage.id}>
+                          {stageConversations.map((conv) => (
+                            <SortableConversationCard
+                              key={conv.id}
+                              conversation={conv}
+                              onClick={() => handleConversationClick(conv)}
+                            />
+                          ))}
+                          {stageConversations.length === 0 && (
+                            <div 
+                              className="text-center py-8 text-muted-foreground text-sm border-2 border-dashed rounded-lg"
+                              data-testid={`stage-drop-${stage.id}`}
+                            >
+                              Arraste conversas aqui
+                            </div>
+                          )}
+                        </div>
+                      </SortableContext>
+                    </ScrollArea>
+                  </div>
+                );
+              })}
+
+              {unstaged.length > 0 && (
+                <div className="w-72 shrink-0 flex flex-col bg-muted/30 rounded-lg opacity-75">
                   <div className="p-3 border-b flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: tag.color }}
-                      />
-                      <span className="font-medium text-sm">{tag.name}</span>
+                      <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                      <span className="font-medium text-sm text-muted-foreground">Sem Estágio</span>
                     </div>
-                    <Badge variant="secondary" className="text-xs">
-                      {tagContacts.length}
+                    <Badge variant="outline" className="text-xs">
+                      {unstaged.length}
                     </Badge>
                   </div>
                   <ScrollArea className="flex-1 p-2">
-                    <div className="space-y-2">
-                      {tagContacts.map((contact) => (
-                        <Card
-                          key={contact.id}
-                          className="cursor-grab active:cursor-grabbing hover-elevate"
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, contact.id, tag.id)}
-                          onClick={() => handleContactClick(contact)}
-                          data-testid={`kanban-card-${contact.id}`}
-                        >
-                          <CardContent className="p-3">
-                            <div className="flex items-center gap-2">
-                              <AvatarWithFallback name={contact.name} src={contact.avatarUrl} size="sm" />
-                              <div className="min-w-0 flex-1">
-                                <p className="font-medium text-sm truncate">{contact.name}</p>
-                                <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
-                                  <Phone className="h-3 w-3" />
-                                  {contact.phoneNumber}
-                                </p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                      {tagContacts.length === 0 && (
-                        <div className="text-center py-8 text-muted-foreground text-sm">
-                          Nenhum contato
-                        </div>
-                      )}
-                    </div>
+                    <SortableContext
+                      id="unstaged"
+                      items={unstaged.map(c => c.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2">
+                        {unstaged.map((conv) => (
+                          <SortableConversationCard
+                            key={conv.id}
+                            conversation={conv}
+                            onClick={() => handleConversationClick(conv)}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
                   </ScrollArea>
                 </div>
-              );
-            })}
-            
-            {untaggedContacts.length > 0 && (
-              <div className="w-72 shrink-0 flex flex-col bg-muted/30 rounded-lg opacity-60">
-                <div className="p-3 border-b flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-medium text-sm text-muted-foreground">Não Atribuído</span>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    {untaggedContacts.length}
-                  </Badge>
-                </div>
-                <ScrollArea className="flex-1 p-2">
-                  <div className="space-y-2">
-                    {untaggedContacts.map((contact) => (
-                      <Card
-                        key={contact.id}
-                        className="cursor-grab active:cursor-grabbing hover-elevate"
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, contact.id)}
-                        onClick={() => handleContactClick(contact)}
-                      >
-                        <CardContent className="p-3">
-                          <div className="flex items-center gap-2">
-                            <AvatarWithFallback name={contact.name} src={contact.avatarUrl} size="sm" />
-                            <div className="min-w-0 flex-1">
-                              <p className="font-medium text-sm truncate">{contact.name}</p>
-                              <p className="text-xs text-muted-foreground truncate">{contact.phoneNumber}</p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+
+            <DragOverlay>
+              {activeConversation ? (
+                <ConversationCard
+                  conversation={activeConversation}
+                  onClick={() => {}}
+                />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         )}
       </div>
     </DashboardLayout>

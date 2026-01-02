@@ -17,6 +17,8 @@ import CannedResponsesPage from "@/pages/settings/canned-responses";
 import ContactsPage from "@/pages/settings/contacts";
 import KanbanPage from "@/pages/kanban";
 import MacrosPage from "@/pages/settings/macros";
+import ProfilePage from "@/pages/settings/profile";
+import StagesPage from "@/pages/settings/stages";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -91,11 +93,17 @@ function Router() {
       <Route path="/settings/macros">
         <ProtectedRoute component={MacrosPage} />
       </Route>
+      <Route path="/settings/profile">
+        <ProtectedRoute component={ProfilePage} />
+      </Route>
       <Route path="/contacts">
         <ProtectedRoute component={ContactsPage} />
       </Route>
       <Route path="/kanban">
         <ProtectedRoute component={KanbanPage} />
+      </Route>
+      <Route path="/settings/stages">
+        <ProtectedRoute component={StagesPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>

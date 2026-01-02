@@ -1,9 +1,9 @@
 import { db } from "./db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, asc } from "drizzle-orm";
 import {
   companies, users, whatsappAccounts, contacts, tags, contactTags,
   conversations, messages, webhookConfigs, automationLogs, cannedResponses,
-  macros, macroExecutions,
+  macros, macroExecutions, stages,
   type Company, type InsertCompany, type User, type InsertUser,
   type WhatsappAccount, type InsertWhatsappAccount,
   type Contact, type InsertContact, type Tag, type InsertTag,
@@ -14,6 +14,7 @@ import {
   type CannedResponse, type InsertCannedResponse,
   type Macro, type InsertMacro,
   type MacroExecution, type InsertMacroExecution,
+  type Stage, type InsertStage,
   type ConversationWithDetails, type ContactWithTags, type MessageWithSender,
 } from "@shared/schema";
 import { normalizePhone } from "./jid-utils";
@@ -103,6 +104,15 @@ export interface IStorage {
   // Macro Executions
   createMacroExecution(data: InsertMacroExecution): Promise<MacroExecution>;
   getMacroExecutions(macroId: string): Promise<MacroExecution[]>;
+
+  // Stages
+  createStage(data: InsertStage): Promise<Stage>;
+  getStage(id: string): Promise<Stage | undefined>;
+  getStages(companyId: string): Promise<Stage[]>;
+  updateStage(id: string, data: Partial<InsertStage>): Promise<Stage | undefined>;
+  deleteStage(id: string): Promise<void>;
+  reorderStages(companyId: string, stageIds: string[]): Promise<Stage[]>;
+  updateConversationStage(conversationId: string, stageId: string | null): Promise<Conversation | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -552,6 +562,68 @@ export class DatabaseStorage implements IStorage {
 
   async getMacroExecutions(macroId: string): Promise<MacroExecution[]> {
     return db.select().from(macroExecutions).where(eq(macroExecutions.macroId, macroId)).orderBy(desc(macroExecutions.executedAt));
+  }
+
+  // Stages
+  async createStage(data: InsertStage): Promise<Stage> {
+    const existingStages = await this.getStages(data.companyId);
+    const maxOrder = existingStages.length > 0 
+      ? Math.max(...existingStages.map(s => parseInt(s.order || "0"))) 
+      : -1;
+    const [stage] = await db.insert(stages).values({
+      ...data,
+      order: String(maxOrder + 1),
+    }).returning();
+    return stage;
+  }
+
+  async getStage(id: string): Promise<Stage | undefined> {
+    const [stage] = await db.select().from(stages).where(eq(stages.id, id));
+    return stage;
+  }
+
+  async getStages(companyId: string): Promise<Stage[]> {
+    return db.select().from(stages)
+      .where(eq(stages.companyId, companyId))
+      .orderBy(asc(stages.order));
+  }
+
+  async updateStage(id: string, data: Partial<InsertStage>): Promise<Stage | undefined> {
+    const [stage] = await db
+      .update(stages)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(stages.id, id))
+      .returning();
+    return stage;
+  }
+
+  async deleteStage(id: string): Promise<void> {
+    await db.update(conversations)
+      .set({ stageId: null })
+      .where(eq(conversations.stageId, id));
+    await db.delete(stages).where(eq(stages.id, id));
+  }
+
+  async reorderStages(companyId: string, stageIds: string[]): Promise<Stage[]> {
+    const result: Stage[] = [];
+    for (let i = 0; i < stageIds.length; i++) {
+      const [stage] = await db
+        .update(stages)
+        .set({ order: String(i), updatedAt: new Date() })
+        .where(and(eq(stages.id, stageIds[i]), eq(stages.companyId, companyId)))
+        .returning();
+      if (stage) result.push(stage);
+    }
+    return result;
+  }
+
+  async updateConversationStage(conversationId: string, stageId: string | null): Promise<Conversation | undefined> {
+    const [conversation] = await db
+      .update(conversations)
+      .set({ stageId, updatedAt: new Date() })
+      .where(eq(conversations.id, conversationId))
+      .returning();
+    return conversation;
   }
 }
 

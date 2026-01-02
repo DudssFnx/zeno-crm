@@ -319,6 +319,44 @@ export async function registerRoutes(
     }
   });
 
+  // User settings routes (users can update their own settings)
+  app.get("/api/users/me/settings", authMiddleware(storage), async (req: AuthRequest, res) => {
+    res.json({
+      id: req.user!.id,
+      displayName: req.user!.displayName,
+      prefixMode: req.user!.prefixMode || "prefix",
+    });
+  });
+
+  app.put("/api/users/me/settings", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { displayName, prefixMode } = req.body;
+      const updateData: Record<string, any> = {};
+      
+      if (displayName !== undefined) updateData.displayName = displayName;
+      if (prefixMode !== undefined) {
+        const validModes = ["prefix", "firstLine", "none"];
+        if (validModes.includes(prefixMode)) {
+          updateData.prefixMode = prefixMode;
+        }
+      }
+
+      const user = await storage.updateUser(req.user!.id, updateData);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({ 
+        id: user.id,
+        displayName: user.displayName,
+        prefixMode: user.prefixMode,
+      });
+    } catch (error) {
+      console.error("Update user settings error:", error);
+      res.status(500).json({ message: "Failed to update settings" });
+    }
+  });
+
   // WhatsApp Accounts routes
   app.get("/api/whatsapp-accounts", authMiddleware(storage), async (req: AuthRequest, res) => {
     const accounts = await storage.getWhatsappAccounts(req.user!.companyId);
@@ -750,10 +788,24 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Contact not found" });
       }
 
-      // Get agent display name
+      // Get agent display name and prefix mode
       const senderDisplayName = req.user!.displayName || req.user!.name;
+      const prefixMode = req.user!.prefixMode || "prefix";
 
-      // Determine display content for database
+      // Format message content based on prefixMode
+      function formatMessageWithOperator(msg: string, operatorName: string, mode: string): string {
+        if (!msg || mode === "none") return msg;
+        switch (mode) {
+          case "prefix":
+            return `[${operatorName}]: ${msg}`;
+          case "firstLine":
+            return `${operatorName}:\n${msg}`;
+          default:
+            return msg;
+        }
+      }
+
+      // Determine display content for database (without operator prefix for clean storage)
       let displayContent = content || "";
       if (mediaUrl && mediaType) {
         const mediaLabels: Record<string, string> = {
@@ -790,11 +842,14 @@ export async function registerRoutes(
         mimetype,
       } : undefined;
 
+      // Format message content for WhatsApp with operator identification
+      const formattedContent = formatMessageWithOperator(content || "", senderDisplayName, prefixMode);
+
       // Send via WhatsApp in background (fire-and-forget)
       whatsappBaileys.sendMessage(
         conversation.whatsappAccountId,
         contact.phoneNumber,
-        content || "",
+        formattedContent,
         senderDisplayName,
         mediaOptions
       ).then(sendResult => {
@@ -1269,6 +1324,86 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Execute macro error:", error);
       res.status(500).json({ message: "Failed to execute macro" });
+    }
+  });
+
+  // Stages routes
+  app.get("/api/stages", authMiddleware(storage), async (req: AuthRequest, res) => {
+    const stages = await storage.getStages(req.user!.companyId);
+    res.json(stages);
+  });
+
+  app.post("/api/stages", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { name, color } = req.body;
+      if (!name) {
+        return res.status(400).json({ message: "Nome é obrigatório" });
+      }
+
+      const stage = await storage.createStage({
+        companyId: req.user!.companyId,
+        name,
+        color: color || "#6B7280",
+      });
+
+      res.json(stage);
+    } catch (error) {
+      console.error("Create stage error:", error);
+      res.status(500).json({ message: "Falha ao criar estágio" });
+    }
+  });
+
+  app.put("/api/stages/reorder", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { stageIds } = req.body;
+      if (!stageIds || !Array.isArray(stageIds)) {
+        return res.status(400).json({ message: "stageIds é obrigatório" });
+      }
+
+      const stages = await storage.reorderStages(req.user!.companyId, stageIds);
+      res.json(stages);
+    } catch (error) {
+      console.error("Reorder stages error:", error);
+      res.status(500).json({ message: "Falha ao reordenar estágios" });
+    }
+  });
+
+  app.put("/api/stages/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { name, color } = req.body;
+      const stage = await storage.updateStage(req.params.id, { name, color });
+      if (!stage) {
+        return res.status(404).json({ message: "Estágio não encontrado" });
+      }
+      res.json(stage);
+    } catch (error) {
+      console.error("Update stage error:", error);
+      res.status(500).json({ message: "Falha ao atualizar estágio" });
+    }
+  });
+
+  app.delete("/api/stages/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteStage(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete stage error:", error);
+      res.status(500).json({ message: "Falha ao excluir estágio" });
+    }
+  });
+
+  // Update conversation stage
+  app.patch("/api/conversations/:id/stage", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { stageId } = req.body;
+      const conversation = await storage.updateConversationStage(req.params.id, stageId || null);
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversa não encontrada" });
+      }
+      res.json(conversation);
+    } catch (error) {
+      console.error("Update conversation stage error:", error);
+      res.status(500).json({ message: "Falha ao atualizar estágio da conversa" });
     }
   });
 
