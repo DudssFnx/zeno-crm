@@ -766,18 +766,7 @@ export async function registerRoutes(
       // Get agent display name
       const senderDisplayName = req.user!.displayName || req.user!.name;
 
-      // Send message via real WhatsApp Puppeteer gateway
-      const sendResult = await whatsappBaileys.sendMessage(
-        conversation.whatsappAccountId,
-        contact.phoneNumber,
-        content
-      );
-
-      if (!sendResult.success) {
-        console.error("WhatsApp send failed:", sendResult.message);
-        return res.status(400).json({ message: `Falha ao enviar: ${sendResult.message}` });
-      }
-
+      // Save message to database FIRST for instant response
       const message = await storage.createMessage({
         conversationId: req.params.id,
         direction: "outgoing",
@@ -789,7 +778,24 @@ export async function registerRoutes(
       // Update conversation lastMessageAt
       await storage.updateConversation(req.params.id, {});
 
+      // Respond immediately to the client
       res.json(message);
+
+      // Send via WhatsApp in background (fire-and-forget)
+      whatsappBaileys.sendMessage(
+        conversation.whatsappAccountId,
+        contact.phoneNumber,
+        content
+      ).then(sendResult => {
+        if (!sendResult.success) {
+          console.error(`[WhatsApp] Background send failed for message ${message.id}:`, sendResult.error);
+        } else {
+          console.log(`[WhatsApp] Message ${message.id} sent successfully`);
+        }
+      }).catch(error => {
+        console.error(`[WhatsApp] Background send error for message ${message.id}:`, error);
+      });
+
     } catch (error) {
       console.error("Send message error:", error);
       res.status(500).json({ message: "Falha ao enviar mensagem" });
