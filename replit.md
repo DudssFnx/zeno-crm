@@ -119,9 +119,33 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 - Reorderable stages
 
 ### Emoji Picker
-- Built-in emoji picker in message input
+- Built-in emoji picker in message input (emoji-picker-react)
 - Click smile icon to open picker
 - Insert emoji at cursor position
+- Dark/light theme auto-detection
+- Portuguese search placeholder ("Buscar emoji...")
+
+### Audio Recording
+- Built-in audio recording in chat composer
+- Uses browser's MediaRecorder API (webm/mp4 support)
+- Visual recording indicator with pulsing red dot
+- Timer display in MM:SS format
+- Automatic upload to /api/upload on stop
+- Graceful error handling for permissions/hardware
+
+### Responsive Design
+- Mobile (≤768px): Single-column view with navigation
+- Tablet (769-1024px): Dual-column with overlay contact details
+- Desktop (>1024px): Full 3-column layout
+- Touch-friendly controls (44px minimum targets)
+- Custom hooks: useIsMobile, useIsTablet, useBreakpoint
+
+### Operator Role Permissions
+Operators have LIMITED permissions:
+- **CAN**: View conversations, send messages, use macros, create contacts, edit contact notes, self-assign
+- **CANNOT**: Delete conversations/contacts/messages, edit contact names, manage tags, access user/webhook/WhatsApp settings
+- Backend guards via notOperatorMiddleware (returns 403)
+- UI restrictions hide unavailable controls
 
 ### Webhooks
 - Event notifications for:
