@@ -97,6 +97,7 @@ export async function registerRoutes(
         });
         
         // Strategy 2: If not found by name, find by most recent open conversation for this account
+        // Optimized: just use the first conversation with valid phone number (no extra DB queries)
         if (!contact) {
           log("info", "Contact not found by name, searching by recent conversation");
           const recentConversations = await storage.getConversations(companyId, {
@@ -104,11 +105,9 @@ export async function registerRoutes(
             status: "open"
           });
           
-          // Find conversations with outgoing messages (we initiated)
+          // Find first conversation with a valid phone number (conversations are already sorted by lastMessageAt)
           for (const conv of recentConversations) {
-            const messages = await storage.getMessages(conv.id);
-            const hasOutgoing = messages.some(m => m.direction === "outgoing");
-            if (hasOutgoing && conv.contact) {
+            if (conv.contact) {
               const phoneDigits = conv.contact.phoneNumber.replace(/\D/g, "");
               if (phoneDigits.length >= 10 && phoneDigits.length <= 13) {
                 contact = conv.contact;
