@@ -1,3 +1,3 @@
-2026/01/01-22:31:05.753 ad4 Reusing MANIFEST /home/runner/workspace/whatsapp-sessions/6b95167a-2f97-46c6-8bb7-2e6200189bbc/Default/Sync Data/LevelDB/MANIFEST-000001
-2026/01/01-22:31:05.809 ad4 Recovering log #3
-2026/01/01-22:31:05.809 ad4 Reusing old log /home/runner/workspace/whatsapp-sessions/6b95167a-2f97-46c6-8bb7-2e6200189bbc/Default/Sync Data/LevelDB/000003.log 
+2026/01/01-23:21:08.966 ecf Reusing MANIFEST /home/runner/workspace/whatsapp-sessions/6b95167a-2f97-46c6-8bb7-2e6200189bbc/Default/Sync Data/LevelDB/MANIFEST-000001
+2026/01/01-23:21:08.968 ecf Recovering log #3
+2026/01/01-23:21:08.968 ecf Reusing old log /home/runner/workspace/whatsapp-sessions/6b95167a-2f97-46c6-8bb7-2e6200189bbc/Default/Sync Data/LevelDB/000003.log 

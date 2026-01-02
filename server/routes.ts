@@ -94,8 +94,8 @@ export async function registerRoutes(
         contact = await storage.updateContact(contact.id, { avatarUrl: message.avatarUrl }) || contact;
         log("info", "Updated avatar", { contactId: contact.id, changed: !!oldAvatar });
         
-        // Emit contact update event
-        io.emit("contact:updated", {
+        // Emit contact update event (company-scoped)
+        io.to(`company:${companyId}`).emit("contact:updated", {
           companyId,
           contactId: contact.id,
           avatarUrl: message.avatarUrl,
@@ -168,15 +168,16 @@ export async function registerRoutes(
         preview: message.content.substring(0, 30)
       });
 
-      // Emit Socket.IO events for real-time updates
-      io.emit("message:created", {
+      // Emit Socket.IO events for real-time updates (company-scoped)
+      const companyRoom = `company:${companyId}`;
+      io.to(companyRoom).emit("message:created", {
         companyId,
         conversationId: conversation.id,
         contactId: contact.id,
         message: savedMessage,
       });
       
-      io.emit("conversation:updated", {
+      io.to(companyRoom).emit("conversation:updated", {
         companyId,
         conversationId: conversation.id,
         lastMessage: message.content,
@@ -223,6 +224,11 @@ export async function registerRoutes(
 
   io.on("connection", (socket) => {
     console.log("Client connected:", socket.id, "Company:", socket.data.companyId);
+    
+    // Join company-specific room for multi-tenant isolation
+    const companyRoom = `company:${socket.data.companyId}`;
+    socket.join(companyRoom);
+    console.log(`Socket ${socket.id} joined room ${companyRoom}`);
 
     socket.on("whatsapp:join", async (accountId: string) => {
       const account = await storage.getWhatsappAccount(accountId);

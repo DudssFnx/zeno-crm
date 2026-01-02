@@ -156,3 +156,70 @@
 2026/01/01-22:31:44.319 b74 Delete type=2 #458
 2026/01/01-22:31:44.319 b74 Delete type=2 #459
 2026/01/01-22:31:44.319 b74 Delete type=2 #461
+2026/01/01-22:31:47.869 b74 Moved #469 to level-1 1040400 bytes OK: files[ 0 1 7 0 0 0 0 ]
+2026/01/01-22:31:57.603 b7c Compacting 1@1 + 4@2 files
+2026/01/01-22:31:57.945 b7c Generated table #471@1: 52318 keys, 2197470 bytes
+2026/01/01-22:31:58.031 b7c Generated table #472@1: 81884 keys, 2276392 bytes
+2026/01/01-22:31:58.100 b7c Generated table #473@1: 27262 keys, 2186854 bytes
+2026/01/01-22:31:58.188 b7c Generated table #474@1: 59824 keys, 2229300 bytes
+2026/01/01-22:31:58.209 b7c Generated table #475@1: 4184 keys, 525461 bytes
+2026/01/01-22:31:58.209 b7c Compacted 1@1 + 4@2 files => 9415477 bytes
+2026/01/01-22:31:58.217 b7c compacted to: files[ 0 0 8 0 0 0 0 ]
+2026/01/01-22:31:58.218 b7c Delete type=2 #464
+2026/01/01-22:31:58.218 b7c Delete type=2 #465
+2026/01/01-22:31:58.218 b7c Delete type=2 #466
+2026/01/01-22:31:58.218 b7c Delete type=2 #467
+2026/01/01-22:31:58.218 b7c Delete type=2 #469
+2026/01/01-22:32:06.123 b75 Level-0 table #477: started
+2026/01/01-22:32:06.162 b75 Level-0 table #477: 938293 bytes OK
+2026/01/01-22:32:06.168 b75 Delete type=0 #468
+2026/01/01-22:32:26.167 b75 Compacting 1@1 + 7@2 files
+2026/01/01-22:32:26.317 b75 Generated table #478@1: 80660 keys, 2228257 bytes
+2026/01/01-22:32:26.402 b75 Generated table #479@1: 39424 keys, 2237081 bytes
+2026/01/01-22:32:26.505 b75 Generated table #480@1: 50866 keys, 2213864 bytes
+2026/01/01-22:32:26.564 b75 Generated table #481@1: 22070 keys, 2182001 bytes
+2026/01/01-22:32:26.641 b75 Generated table #482@1: 23601 keys, 1921293 bytes
+2026/01/01-22:32:26.641 b75 Compacted 1@1 + 7@2 files => 10782496 bytes
+2026/01/01-22:32:26.653 b75 compacted to: files[ 0 0 6 0 0 0 0 ]
+2026/01/01-22:32:26.654 b75 Delete type=2 #462
+2026/01/01-22:32:26.654 b75 Delete type=2 #470
+2026/01/01-22:32:26.654 b75 Delete type=2 #471
+2026/01/01-22:32:26.654 b75 Delete type=2 #472
+2026/01/01-22:32:26.654 b75 Delete type=2 #473
+2026/01/01-22:32:26.654 b75 Delete type=2 #474
+2026/01/01-22:32:26.654 b75 Delete type=2 #475
+2026/01/01-22:32:26.654 b75 Delete type=2 #477
+2026/01/01-22:32:28.033 b75 Level-0 table #484: started
+2026/01/01-22:32:28.080 b75 Level-0 table #484: 1039906 bytes OK
+2026/01/01-22:32:28.088 b75 Delete type=0 #476
+2026/01/01-22:32:37.604 b75 Compacting 1@1 + 5@2 files
+2026/01/01-22:32:37.700 b75 Generated table #485@1: 80493 keys, 2230073 bytes
+2026/01/01-22:32:37.794 b75 Generated table #486@1: 39737 keys, 2237832 bytes
+2026/01/01-22:32:37.890 b75 Generated table #487@1: 50669 keys, 2212748 bytes
+2026/01/01-22:32:37.955 b75 Generated table #488@1: 22327 keys, 2178928 bytes
+2026/01/01-22:32:38.023 b75 Generated table #489@1: 23783 keys, 1947714 bytes
+2026/01/01-22:32:38.023 b75 Compacted 1@1 + 5@2 files => 10807295 bytes
+2026/01/01-22:32:38.028 b75 compacted to: files[ 0 0 6 0 0 0 0 ]
+2026/01/01-22:32:38.028 b75 Delete type=2 #478
+2026/01/01-22:32:38.028 b75 Delete type=2 #479
+2026/01/01-22:32:38.028 b75 Delete type=2 #480
+2026/01/01-22:32:38.028 b75 Delete type=2 #481
+2026/01/01-22:32:38.028 b75 Delete type=2 #482
+2026/01/01-22:32:38.028 b75 Delete type=2 #484
+2026/01/01-22:32:49.841 b75 Level-0 table #491: started
+2026/01/01-22:32:49.893 b75 Level-0 table #491: 1055608 bytes OK
+2026/01/01-22:32:49.899 b75 Delete type=0 #483
+2026/01/01-22:32:57.774 b75 Compacting 1@1 + 5@2 files
+2026/01/01-22:32:57.866 b75 Generated table #492@1: 80298 keys, 2228919 bytes
+2026/01/01-22:32:57.950 b75 Generated table #493@1: 40097 keys, 2238975 bytes
+2026/01/01-22:32:58.048 b75 Generated table #494@1: 50301 keys, 2212408 bytes
+2026/01/01-22:32:58.121 b75 Generated table #495@1: 22822 keys, 2183518 bytes
+2026/01/01-22:32:58.198 b75 Generated table #496@1: 23959 keys, 1974226 bytes
+2026/01/01-22:32:58.198 b75 Compacted 1@1 + 5@2 files => 10838046 bytes
+2026/01/01-22:32:58.203 b75 compacted to: files[ 0 0 6 0 0 0 0 ]
+2026/01/01-22:32:58.203 b75 Delete type=2 #485
+2026/01/01-22:32:58.204 b75 Delete type=2 #486
+2026/01/01-22:32:58.204 b75 Delete type=2 #487
+2026/01/01-22:32:58.205 b75 Delete type=2 #488
+2026/01/01-22:32:58.205 b75 Delete type=2 #489
+2026/01/01-22:32:58.205 b75 Delete type=2 #491
