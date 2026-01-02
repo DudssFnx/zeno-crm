@@ -8,8 +8,12 @@ export function cn(...inputs: ClassValue[]) {
 export function formatPhoneNumber(phoneNumber: string | null | undefined): string {
   if (!phoneNumber) return "";
   
+  // For LID numbers, show just the ID portion (WhatsApp Business linked device)
+  // The contact name should be displayed separately, not replaced here
   if (phoneNumber.startsWith("LID_")) {
-    return "Dispositivo vinculado";
+    const lidId = phoneNumber.replace("LID_", "");
+    // Return a shorter format - just show as ID
+    return `ID: ${lidId.slice(-6)}`;
   }
   
   const digits = phoneNumber.replace(/\D/g, "");

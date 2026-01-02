@@ -587,16 +587,20 @@ class WhatsAppBaileysGateway {
     if (!content) return;
 
     const direction = msg.key.fromMe ? "outgoing" : "incoming";
-    const contactName = msg.pushName || phoneNumber;
+    
+    // CRITICAL: Never use pushName for outgoing messages (fromMe === true)
+    // pushName is only valid for incoming messages from the contact
+    // For outgoing messages sent from other linked devices, pushName is undefined or incorrect
+    const contactName = direction === "incoming" ? (msg.pushName || phoneNumber) : phoneNumber;
 
     console.log(
-      `[Baileys] ${direction === "outgoing" ? "Enviada" : "Recebida"} [${chatId}]: ${contactName}: ${content.substring(0, 50)}${mediaInfo ? ` [${mediaInfo.mediaType}]` : ""}`
+      `[Baileys] ${direction === "outgoing" ? "Enviada" : "Recebida"} [${chatId}] fromMe=${msg.key.fromMe}: ${contactName}: ${content.substring(0, 50)}${mediaInfo ? ` [${mediaInfo.mediaType}]` : ""}`
     );
 
     if (this.messageHandler) {
       await this.messageHandler(accountId, {
         phoneNumber,
-        contactName,
+        contactName: direction === "incoming" ? contactName : phoneNumber,
         content,
         timestamp: new Date().toISOString(),
         direction,

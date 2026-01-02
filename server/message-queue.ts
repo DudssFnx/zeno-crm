@@ -420,11 +420,12 @@ async function processMessageInBackground(msg: QueuedMessage) {
     }
     
     // Criar mensagem no banco (include mediaType if media is present, but not mediaUrl yet)
+    // Note: At this point, direction is always "incoming" since outgoing messages are skipped earlier
     const savedMessage = await storage.createMessage({
       conversationId: conversation.id,
       direction,
       content,
-      senderDisplayName: senderDisplayName || (direction === "outgoing" ? "Celular" : undefined),
+      senderDisplayName: senderDisplayName,
       mediaType: mediaInfo?.mediaType,
       fileName: mediaInfo?.fileName,
       mimetype: mediaInfo?.mimetype,
