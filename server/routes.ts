@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { Server as SocketServer } from "socket.io";
 import { storage } from "./storage";
-import { authMiddleware, adminMiddleware, generateToken, hashPassword, comparePassword, type AuthRequest } from "./auth";
+import { authMiddleware, adminMiddleware, notOperatorMiddleware, generateToken, hashPassword, comparePassword, type AuthRequest } from "./auth";
 import { whatsappGateway } from "./whatsapp-gateway";
 import { whatsappBaileys } from "./whatsapp-baileys";
 import { dispatchWebhook } from "./webhook-dispatcher";
@@ -365,7 +365,7 @@ export async function registerRoutes(
     res.json(accounts);
   });
 
-  app.post("/api/whatsapp-accounts", authMiddleware(storage), async (req: AuthRequest, res) => {
+  app.post("/api/whatsapp-accounts", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const { name, phoneNumber } = req.body;
       if (!name || !phoneNumber) {
@@ -386,7 +386,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/whatsapp-accounts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+  app.put("/api/whatsapp-accounts/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const { name, phoneNumber } = req.body;
       const account = await storage.updateWhatsappAccount(req.params.id, { name, phoneNumber });
@@ -400,7 +400,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/whatsapp-accounts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+  app.delete("/api/whatsapp-accounts/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       await storage.deleteWhatsappAccount(req.params.id);
       res.json({ success: true });
@@ -545,6 +545,19 @@ export async function registerRoutes(
   app.put("/api/contacts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
       const { name, notes, avatarUrl } = req.body;
+      
+      // Operators can only update notes
+      if (req.user!.role === "operator") {
+        if (name !== undefined || avatarUrl !== undefined) {
+          return res.status(403).json({ message: "Operadores só podem editar observações do contato" });
+        }
+        const contact = await storage.updateContact(req.params.id, { notes });
+        if (!contact) {
+          return res.status(404).json({ message: "Contact not found" });
+        }
+        return res.json(contact);
+      }
+      
       const contact = await storage.updateContact(req.params.id, { name, notes, avatarUrl });
       if (!contact) {
         return res.status(404).json({ message: "Contact not found" });
@@ -556,8 +569,8 @@ export async function registerRoutes(
     }
   });
 
-  // Delete single contact
-  app.delete("/api/contacts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+  // Delete single contact (admin/master only)
+  app.delete("/api/contacts/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const contactId = req.params.id;
       const contact = await storage.getContact(contactId);
@@ -586,8 +599,8 @@ export async function registerRoutes(
     }
   });
 
-  // Delete multiple contacts
-  app.delete("/api/contacts", authMiddleware(storage), async (req: AuthRequest, res) => {
+  // Delete multiple contacts (admin/master only)
+  app.delete("/api/contacts", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const { ids } = req.body;
       if (!ids || !Array.isArray(ids) || ids.length === 0) {
@@ -617,7 +630,7 @@ export async function registerRoutes(
     res.json(tags);
   });
 
-  app.post("/api/tags", authMiddleware(storage), async (req: AuthRequest, res) => {
+  app.post("/api/tags", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const { name, color } = req.body;
       if (!name) {
@@ -637,7 +650,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/tags/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+  app.put("/api/tags/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const { name, color } = req.body;
       const tag = await storage.updateTag(req.params.id, { name, color });
@@ -651,7 +664,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/tags/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+  app.delete("/api/tags/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       await storage.deleteTag(req.params.id);
       res.json({ success: true });
@@ -721,8 +734,8 @@ export async function registerRoutes(
 
   // Conversations routes
   
-  // Delete single conversation
-  app.delete("/api/conversations/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+  // Delete single conversation (admin/master only)
+  app.delete("/api/conversations/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const conversationId = req.params.id;
       const conversation = await storage.getConversation(conversationId);
@@ -751,8 +764,8 @@ export async function registerRoutes(
     }
   });
   
-  // Delete multiple conversations (bulk)
-  app.delete("/api/conversations/bulk", authMiddleware(storage), async (req: AuthRequest, res) => {
+  // Delete multiple conversations (bulk) (admin/master only)
+  app.delete("/api/conversations/bulk", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const { ids } = req.body;
       if (!ids || !Array.isArray(ids) || ids.length === 0) {
@@ -797,6 +810,23 @@ export async function registerRoutes(
   app.post("/api/conversations/:id/assign", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
       const { userId } = req.body;
+      
+      // Operators can only self-assign or unassign from themselves
+      if (req.user!.role === "operator") {
+        const conversation = await storage.getConversation(req.params.id);
+        if (!conversation) {
+          return res.status(404).json({ message: "Conversation not found" });
+        }
+        
+        // Operator can only assign to themselves or unassign (if currently assigned to them)
+        const isSelfAssigning = userId === req.user!.id;
+        const isUnassigningFromSelf = !userId && conversation.assignedToUserId === req.user!.id;
+        
+        if (!isSelfAssigning && !isUnassigningFromSelf && userId !== null) {
+          return res.status(403).json({ message: "Operadores só podem atribuir conversas a si mesmos" });
+        }
+      }
+      
       const conversation = await storage.updateConversation(req.params.id, {
         assignedToUserId: userId || null,
       });
@@ -970,13 +1000,13 @@ export async function registerRoutes(
     }
   });
 
-  // Webhooks routes
-  app.get("/api/webhooks", authMiddleware(storage), async (req: AuthRequest, res) => {
+  // Webhooks routes (admin/master only)
+  app.get("/api/webhooks", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     const webhooks = await storage.getWebhookConfigs(req.user!.companyId);
     res.json(webhooks);
   });
 
-  app.post("/api/webhooks", authMiddleware(storage), async (req: AuthRequest, res) => {
+  app.post("/api/webhooks", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const { url, secret, events, isActive } = req.body;
       if (!url || !events || events.length === 0) {
@@ -998,7 +1028,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/webhooks/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+  app.put("/api/webhooks/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const { url, secret, events, isActive } = req.body;
       const updateData: Record<string, any> = {};
@@ -1020,7 +1050,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/webhooks/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+  app.delete("/api/webhooks/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       await storage.deleteWebhookConfig(req.params.id);
       res.json({ success: true });

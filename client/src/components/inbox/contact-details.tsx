@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote, Globe, UserPlus } from "lucide-react";
+import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote, Globe, UserPlus, ArrowLeft } from "lucide-react";
 import { SiWhatsapp, SiInstagram, SiGoogle } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
 import { TagChip } from "@/components/tag-chip";
 import { LoadingSpinner } from "@/components/loading-spinner";
-import { useAuthFetch } from "@/lib/auth";
+import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
@@ -19,10 +19,13 @@ import type { ConversationWithDetails, ContactWithTags, Tag } from "@shared/sche
 interface ContactDetailsProps {
   conversationId: string;
   onClose: () => void;
+  isMobile?: boolean;
 }
 
-export function ContactDetails({ conversationId, onClose }: ContactDetailsProps) {
+export function ContactDetails({ conversationId, onClose, isMobile }: ContactDetailsProps) {
   const authFetch = useAuthFetch();
+  const { user } = useAuth();
+  const isOperator = user?.role === "operator";
   const { toast } = useToast();
   const [notes, setNotes] = useState("");
   const [notesTimeout, setNotesTimeout] = useState<NodeJS.Timeout | null>(null);
@@ -140,19 +143,40 @@ export function ContactDetails({ conversationId, onClose }: ContactDetailsProps)
 
   if (contactLoading || !contactWithTags || !conversation) {
     return (
-      <div className="w-80 border-l flex items-center justify-center">
+      <div className={cn(
+        "border-l flex items-center justify-center bg-background",
+        isMobile ? "w-full h-full" : "w-80"
+      )}>
         <LoadingSpinner />
       </div>
     );
   }
 
   return (
-    <div className="w-80 border-l flex flex-col bg-background">
-      <header className="h-14 border-b flex items-center justify-between px-4 shrink-0">
-        <h2 className="font-medium">Detalhes do Contato</h2>
-        <Button variant="ghost" size="icon" onClick={onClose} data-testid="button-close-details">
-          <X className="h-4 w-4" />
-        </Button>
+    <div className={cn(
+      "border-l flex flex-col bg-background",
+      isMobile ? "w-full h-full" : "w-80"
+    )}>
+      <header className="h-14 border-b flex items-center justify-between gap-2 px-3 md:px-4 shrink-0">
+        <div className="flex items-center gap-2">
+          {isMobile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="shrink-0 min-h-[44px] min-w-[44px]"
+              data-testid="button-back-from-details"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          )}
+          <h2 className="font-medium">Detalhes do Contato</h2>
+        </div>
+        {!isMobile && (
+          <Button variant="ghost" size="icon" onClick={onClose} data-testid="button-close-details">
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </header>
 
       <ScrollArea className="flex-1">
@@ -220,13 +244,13 @@ export function ContactDetails({ conversationId, onClose }: ContactDetailsProps)
                       key={tag.id}
                       tag={tag}
                       size="md"
-                      onRemove={() => removeTag.mutate(tag.id)}
+                      onRemove={isOperator ? undefined : () => removeTag.mutate(tag.id)}
                     />
                   ))}
                 </div>
               )}
 
-              {availableTags.length > 0 && (
+              {!isOperator && availableTags.length > 0 && (
                 <Select onValueChange={(tagId) => addTag.mutate(tagId)}>
                   <SelectTrigger data-testid="select-add-tag">
                     <div className="flex items-center gap-2">

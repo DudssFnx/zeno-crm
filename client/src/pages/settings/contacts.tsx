@@ -16,7 +16,7 @@ import { DashboardLayout } from "../dashboard";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
 import { LoadingCard } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
-import { useAuthFetch } from "@/lib/auth";
+import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import type { Contact, WhatsappAccount } from "@shared/schema";
@@ -31,6 +31,8 @@ type StartConversationData = z.infer<typeof startConversationSchema>;
 
 export default function ContactsPage() {
   const authFetch = useAuthFetch();
+  const { user } = useAuth();
+  const isOperator = user?.role === "operator";
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
@@ -179,7 +181,7 @@ export default function ContactsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {selectedContacts.size > 0 && (
+              {!isOperator && selectedContacts.size > 0 && (
                 <Button 
                   variant="destructive" 
                   onClick={() => setIsDeleteDialogOpen(true)}
@@ -319,7 +321,7 @@ export default function ContactsPage() {
           ) : (
             <Card>
               <CardContent className="p-0">
-                {contacts.length > 0 && (
+                {!isOperator && contacts.length > 0 && (
                   <div className="flex items-center gap-3 p-3 border-b">
                     <Checkbox
                       checked={selectedContacts.size === contacts.length}
@@ -341,12 +343,14 @@ export default function ContactsPage() {
                       onClick={() => handleContactClick(contact)}
                       data-testid={`contact-row-${contact.id}`}
                     >
-                      <Checkbox
-                        checked={selectedContacts.has(contact.id)}
-                        onCheckedChange={() => {}}
-                        onClick={(e) => toggleContactSelection(contact.id, e)}
-                        data-testid={`checkbox-contact-${contact.id}`}
-                      />
+                      {!isOperator && (
+                        <Checkbox
+                          checked={selectedContacts.has(contact.id)}
+                          onCheckedChange={() => {}}
+                          onClick={(e) => toggleContactSelection(contact.id, e)}
+                          data-testid={`checkbox-contact-${contact.id}`}
+                        />
+                      )}
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <AvatarWithFallback name={contact.name} src={contact.avatarUrl} size="md" />
                         <div className="min-w-0 flex-1">

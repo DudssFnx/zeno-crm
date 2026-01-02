@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Send, StickyNote, Phone, Check, CheckCheck, Zap, Paperclip, UserPlus, Calendar, X, FileIcon, ImageIcon, Search, Download, FileText, Film, Music, AlertCircle } from "lucide-react";
+import { Send, StickyNote, Phone, Check, CheckCheck, Zap, Paperclip, UserPlus, Calendar, X, FileIcon, ImageIcon, Search, Download, FileText, Film, Music, AlertCircle, Smile, Mic, Square, ArrowLeft, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
+import EmojiPicker, { EmojiClickData, Theme } from "emoji-picker-react";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
@@ -27,6 +29,8 @@ interface Macro {
 interface ChatWindowProps {
   conversationId: string | null;
   onContactClick: () => void;
+  onBack?: () => void;
+  isMobile?: boolean;
 }
 
 interface MediaContentProps {
@@ -177,7 +181,7 @@ function MediaContent({ mediaUrl, mediaType, fileName, fileSize, isOutgoing }: M
   return null;
 }
 
-export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) {
+export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }: ChatWindowProps) {
   const authFetch = useAuthFetch();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -190,12 +194,18 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const cannedDropdownRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const { data: conversation, isLoading: convLoading } = useQuery<ConversationWithDetails>({
     queryKey: ["/api/conversations", conversationId],
@@ -257,13 +267,31 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
   }, [cannedResponses, cannedSearchTerm]);
 
   const sendMessage = useMutation({
-    mutationFn: async (data: { content: string; isInternalNote: boolean }) => {
+    mutationFn: async (data: { 
+      content: string; 
+      isInternalNote: boolean;
+      mediaUrl?: string;
+      mediaType?: string;
+      fileName?: string;
+      mimetype?: string;
+    }) => {
       const endpoint = data.isInternalNote
         ? `/api/conversations/${conversationId}/internal-notes`
         : `/api/conversations/${conversationId}/messages`;
+      
+      const payload: Record<string, string | undefined> = { content: data.content };
+      
+      if (data.mediaUrl && data.mediaType) {
+        payload.mediaUrl = data.mediaUrl;
+        payload.mediaType = data.mediaType;
+        payload.fileName = data.fileName;
+        payload.mimetype = data.mimetype;
+        console.log("[ChatWindow] Sending media message:", { mediaUrl: data.mediaUrl, mediaType: data.mediaType, fileName: data.fileName, mimetype: data.mimetype });
+      }
+      
       const res = await authFetch(endpoint, {
         method: "POST",
-        body: JSON.stringify({ content: data.content }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({ message: "Falha ao enviar mensagem" }));
@@ -274,6 +302,7 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
     onSuccess: () => {
       setMessage("");
       setIsTyping(false);
+      clearSelectedFile();
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     },
@@ -396,9 +425,66 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
     textareaRef.current?.focus();
   };
 
-  const handleSend = () => {
-    if (!message.trim()) return;
-    sendMessage.mutate({ content: message.trim(), isInternalNote });
+  const getMediaTypeFromMimetype = (mimetype: string): string => {
+    if (mimetype.startsWith("image/")) return "image";
+    if (mimetype.startsWith("audio/")) return "audio";
+    if (mimetype.startsWith("video/")) return "video";
+    return "document";
+  };
+
+  const handleSend = async () => {
+    const hasMessage = message.trim();
+    const hasFile = selectedFile !== null;
+    
+    if (!hasMessage && !hasFile) return;
+    
+    try {
+      let mediaData: { mediaUrl: string; mediaType: string; fileName: string; mimetype: string } | null = null;
+      
+      if (hasFile && selectedFile) {
+        console.log("[ChatWindow] Uploading file:", selectedFile.name, selectedFile.type, selectedFile.size);
+        
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        
+        const uploadRes = await authFetch("/api/upload", {
+          method: "POST",
+          body: formData,
+          headers: {},
+        });
+        
+        if (!uploadRes.ok) {
+          const error = await uploadRes.json().catch(() => ({ message: "Falha ao fazer upload do arquivo" }));
+          throw new Error(error.message || "Falha ao fazer upload do arquivo");
+        }
+        
+        const uploadData = await uploadRes.json();
+        console.log("[ChatWindow] Upload response:", uploadData);
+        
+        const mediaType = getMediaTypeFromMimetype(uploadData.mimetype || selectedFile.type);
+        
+        mediaData = {
+          mediaUrl: uploadData.url,
+          mediaType,
+          fileName: uploadData.fileName || selectedFile.name,
+          mimetype: uploadData.mimetype || selectedFile.type,
+        };
+        
+        console.log("[ChatWindow] Media data prepared:", mediaData);
+      }
+      
+      sendMessage.mutate({
+        content: hasMessage ? message.trim() : "",
+        isInternalNote,
+        ...(mediaData || {}),
+      });
+    } catch (error) {
+      console.error("[ChatWindow] Error in handleSend:", error);
+      toast({ 
+        title: error instanceof Error ? error.message : "Falha ao enviar mensagem", 
+        variant: "destructive" 
+      });
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -485,6 +571,138 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handleEmojiSelect = (emojiData: EmojiClickData) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setMessage((prev) => prev + emojiData.emoji);
+      setShowEmojiPicker(false);
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newMessage = message.substring(0, start) + emojiData.emoji + message.substring(end);
+    setMessage(newMessage);
+    setShowEmojiPicker(false);
+
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + emojiData.emoji.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
+
+  const formatRecordingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4",
+      });
+      
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        
+        if (audioChunksRef.current.length === 0) {
+          toast({ title: "Nenhum áudio gravado", variant: "destructive" });
+          return;
+        }
+
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: mediaRecorder.mimeType || "audio/webm",
+        });
+
+        try {
+          const formData = new FormData();
+          const extension = mediaRecorder.mimeType?.includes("webm") ? "webm" : "mp4";
+          formData.append("file", audioBlob, `audio-${Date.now()}.${extension}`);
+
+          const uploadRes = await authFetch("/api/upload", {
+            method: "POST",
+            body: formData,
+            headers: {},
+          });
+
+          if (!uploadRes.ok) {
+            const error = await uploadRes.json().catch(() => ({ message: "Falha ao fazer upload do áudio" }));
+            throw new Error(error.message || "Falha ao fazer upload do áudio");
+          }
+
+          const uploadData = await uploadRes.json();
+
+          sendMessage.mutate({
+            content: "",
+            isInternalNote: false,
+            mediaUrl: uploadData.url,
+            mediaType: "audio",
+            fileName: uploadData.fileName,
+            mimetype: uploadData.mimetype || mediaRecorder.mimeType,
+          });
+        } catch (error) {
+          console.error("[ChatWindow] Error uploading audio:", error);
+          toast({
+            title: error instanceof Error ? error.message : "Falha ao enviar áudio",
+            variant: "destructive",
+          });
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+    } catch (error) {
+      console.error("[ChatWindow] Error starting recording:", error);
+      if (error instanceof Error && error.name === "NotAllowedError") {
+        toast({ title: "Permissão de microfone negada", variant: "destructive" });
+      } else if (error instanceof Error && error.name === "NotFoundError") {
+        toast({ title: "Microfone não encontrado", variant: "destructive" });
+      } else {
+        toast({ title: "Erro ao iniciar gravação", variant: "destructive" });
+      }
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    setIsRecording(false);
+    setRecordingTime(0);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, []);
+
   const formatDate = (date: Date | string) => {
     return new Date(date).toLocaleDateString("pt-BR", {
       weekday: "long",
@@ -560,55 +778,82 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
           </div>
         </div>
       )}
-      <header className="h-14 border-b flex items-center justify-between gap-4 px-4 shrink-0">
-        <button
-          onClick={onContactClick}
-          className="flex items-center gap-3 hover-elevate rounded-lg p-1 -ml-1"
-          data-testid="button-contact-details"
-        >
-          <AvatarWithFallback
-            name={conversation.contact.name}
-            src={conversation.contact.avatarUrl}
-            size="md"
-          />
-          <div className="text-left">
-            <div className="font-medium text-[15px]">{conversation.contact.name}</div>
-            <div className="text-xs text-muted-foreground">{conversation.contact.phoneNumber}</div>
-          </div>
-        </button>
-
-        <div className="flex items-center gap-2">
-          <Select
-            value={conversation.status}
-            onValueChange={(status) => updateStatus.mutate(status)}
+      <header className="h-14 border-b flex items-center justify-between gap-2 px-3 md:px-4 shrink-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {isMobile && onBack && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onBack}
+              className="shrink-0 min-h-[44px] min-w-[44px]"
+              data-testid="button-back-to-list"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          )}
+          <button
+            onClick={onContactClick}
+            className="flex items-center gap-3 hover-elevate rounded-lg p-1 min-w-0 flex-1"
+            data-testid="button-contact-details"
           >
-            <SelectTrigger className="w-[130px]" data-testid="select-conversation-status">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="open">Aberto</SelectItem>
-              <SelectItem value="pending">Pendente</SelectItem>
-              <SelectItem value="resolved">Resolvido</SelectItem>
-              <SelectItem value="closed">Fechado</SelectItem>
-            </SelectContent>
-          </Select>
+            <AvatarWithFallback
+              name={conversation.contact.name}
+              src={conversation.contact.avatarUrl}
+              size="md"
+            />
+            <div className="text-left min-w-0 flex-1">
+              <div className="font-medium text-[15px] truncate">{conversation.contact.name}</div>
+              <div className="text-xs text-muted-foreground truncate">{conversation.contact.phoneNumber}</div>
+            </div>
+          </button>
+        </div>
 
-          <Select
-            value={conversation.assignedToUserId || "unassigned"}
-            onValueChange={(v) => assignAgent.mutate(v === "unassigned" ? null : v)}
-          >
-            <SelectTrigger className="w-[150px]" data-testid="select-assign-agent">
-              <SelectValue placeholder="Atribuir para..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="unassigned">Não atribuído</SelectItem>
-              {agents.map((agent) => (
-                <SelectItem key={agent.id} value={agent.id}>
-                  {agent.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-2 shrink-0">
+          {isMobile ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onContactClick}
+              className="min-h-[44px] min-w-[44px]"
+              data-testid="button-contact-details-mobile"
+            >
+              <UserCircle className="h-5 w-5" />
+            </Button>
+          ) : (
+            <>
+              <Select
+                value={conversation.status}
+                onValueChange={(status) => updateStatus.mutate(status)}
+              >
+                <SelectTrigger className="w-[130px]" data-testid="select-conversation-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Aberto</SelectItem>
+                  <SelectItem value="pending">Pendente</SelectItem>
+                  <SelectItem value="resolved">Resolvido</SelectItem>
+                  <SelectItem value="closed">Fechado</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={conversation.assignedToUserId || "unassigned"}
+                onValueChange={(v) => assignAgent.mutate(v === "unassigned" ? null : v)}
+              >
+                <SelectTrigger className="w-[150px]" data-testid="select-assign-agent">
+                  <SelectValue placeholder="Atribuir para..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Não atribuído</SelectItem>
+                  {agents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
         </div>
       </header>
 
@@ -772,6 +1017,33 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
             >
               <Paperclip className="h-4 w-4" />
             </Button>
+            <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  data-testid="button-emoji-picker"
+                  title="Inserir emoji"
+                >
+                  <Smile className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent 
+                className="w-auto p-0 border-0" 
+                side="top" 
+                align="start"
+                sideOffset={8}
+              >
+                <EmojiPicker
+                  onEmojiClick={handleEmojiSelect}
+                  theme={document.documentElement.classList.contains("dark") ? Theme.DARK : Theme.LIGHT}
+                  width={320}
+                  height={400}
+                  searchPlaceholder="Buscar emoji..."
+                  previewConfig={{ showPreview: false }}
+                />
+              </PopoverContent>
+            </Popover>
             <Button
               variant="ghost"
               size="icon"
@@ -904,17 +1176,49 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
               data-testid="textarea-message"
             />
           </div>
-          <Button
-            onClick={handleSend}
-            disabled={!message.trim() || sendMessage.isPending}
-            data-testid="button-send-message"
-          >
-            {sendMessage.isPending ? (
-              <LoadingSpinner size="sm" className="text-primary-foreground" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
+          {isRecording ? (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 rounded-lg">
+                <span className="h-2 w-2 rounded-full bg-destructive animate-pulse" />
+                <span className="text-sm font-medium text-destructive">
+                  {formatRecordingTime(recordingTime)}
+                </span>
+              </div>
+              <Button
+                variant="destructive"
+                size="icon"
+                onClick={stopRecording}
+                data-testid="button-stop-recording"
+                title="Parar gravação"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={startRecording}
+                disabled={isInternalNote}
+                data-testid="button-start-recording"
+                title="Gravar áudio"
+              >
+                <Mic className="h-4 w-4" />
+              </Button>
+              <Button
+                onClick={handleSend}
+                disabled={(!message.trim() && !selectedFile) || sendMessage.isPending}
+                data-testid="button-send-message"
+              >
+                {sendMessage.isPending ? (
+                  <LoadingSpinner size="sm" className="text-primary-foreground" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </>
+          )}
         </div>
       </footer>
     </div>

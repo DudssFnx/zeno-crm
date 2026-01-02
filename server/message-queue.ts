@@ -342,6 +342,13 @@ async function processMediaDownload(task: MediaDownloadTask) {
 async function processMessageInBackground(msg: QueuedMessage) {
   const { accountId, companyId, phoneNumber, contactName, content, direction, senderDisplayName, avatarUrl, mediaInfo } = msg;
   
+  // CRITICAL: Skip outgoing messages in background processing as well
+  // Outgoing messages from CRM are saved directly in routes.ts
+  if (direction === "outgoing") {
+    console.log(`[Queue] Skipping outgoing message echo for ${accountId}`);
+    return;
+  }
+
   try {
     // Buscar ou criar contato (usar cache)
     let contact = getContactFromCache(companyId, phoneNumber) as any;

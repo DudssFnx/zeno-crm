@@ -70,3 +70,10 @@ export function masterMiddleware(req: AuthRequest, res: Response, next: NextFunc
   }
   next();
 }
+
+export function notOperatorMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+  if (req.user?.role === "operator") {
+    return res.status(403).json({ message: "Operadores não têm permissão para esta ação" });
+  }
+  next();
+}

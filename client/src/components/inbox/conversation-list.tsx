@@ -26,6 +26,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { ConversationWithDetails, WhatsappAccount, User, Tag } from "@shared/schema";
+import { useAuth } from "@/lib/auth";
 
 interface ConversationListProps {
   selectedId: string | null;
@@ -35,6 +36,8 @@ interface ConversationListProps {
 
 export function ConversationList({ selectedId, onSelect, currentUserId }: ConversationListProps) {
   const authFetch = useAuthFetch();
+  const { user } = useAuth();
+  const isOperator = user?.role === "operator";
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -163,7 +166,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
             placeholder="Buscar conversas..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 bg-background"
+            className="pl-10 bg-background min-h-[44px]"
             data-testid="input-search-conversations"
           />
         </div>
@@ -228,15 +231,18 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
             </SelectContent>
           </Select>
 
-          <Button 
-            variant={selectionMode ? "secondary" : "ghost"} 
-            size="icon"
-            onClick={() => selectionMode ? cancelSelection() : setSelectionMode(true)}
-            disabled={conversations.length === 0}
-            data-testid="button-toggle-selection-mode"
-          >
-            {selectionMode ? <X className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
-          </Button>
+          {!isOperator && (
+            <Button 
+              variant={selectionMode ? "secondary" : "ghost"} 
+              size="icon"
+              onClick={() => selectionMode ? cancelSelection() : setSelectionMode(true)}
+              disabled={conversations.length === 0}
+              className="min-h-[44px] min-w-[44px]"
+              data-testid="button-toggle-selection-mode"
+            >
+              {selectionMode ? <X className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+            </Button>
+          )}
         </div>
 
         {selectionMode && (
@@ -298,7 +304,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
               <div
                 key={conv.id}
                 className={cn(
-                  "w-full text-left p-3 hover-elevate transition-colors cursor-pointer",
+                  "w-full text-left p-3 hover-elevate transition-colors cursor-pointer min-h-[72px] active:bg-sidebar-accent/50",
                   selectedId === conv.id && "bg-sidebar-accent border-l-2 border-l-primary"
                 )}
                 onClick={() => selectionMode ? toggleSelection(conv.id) : onSelect(conv.id)}
