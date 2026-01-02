@@ -691,6 +691,35 @@ class WhatsAppBaileysGateway {
   getSocketIO(): SocketServer | null {
     return this.io;
   }
+  
+  // Buscar foto de perfil de um contato
+  async getProfilePicture(accountId: string, phoneNumber: string): Promise<string | null> {
+    const session = this.sessions.get(accountId);
+    if (!session?.socket || session.status !== "connected") {
+      console.log(`[Baileys] Cannot fetch profile picture: session not connected`);
+      return null;
+    }
+    
+    try {
+      // Normalizar o JID
+      const jid = phoneNumber.includes("@") 
+        ? phoneNumber 
+        : `${phoneNumber.replace(/\D/g, "")}@s.whatsapp.net`;
+      
+      const url = await session.socket.profilePictureUrl(jid, "image");
+      console.log(`[Baileys] Profile picture for ${phoneNumber}: ${url ? url.substring(0, 50) + "..." : "null"}`);
+      return url || null;
+    } catch (error) {
+      // Erro comum: perfil sem foto ou bloqueado
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.includes("not-authorized") || errorMsg.includes("item-not-found")) {
+        console.log(`[Baileys] No profile picture for ${phoneNumber}: ${errorMsg}`);
+      } else {
+        console.error(`[Baileys] Error fetching profile picture for ${phoneNumber}:`, error);
+      }
+      return null;
+    }
+  }
 }
 
 export const whatsappBaileys = new WhatsAppBaileysGateway();

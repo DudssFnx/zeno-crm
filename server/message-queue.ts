@@ -43,6 +43,7 @@ interface AvatarTask {
   accountId: string;
   phoneNumber: string;
   companyId: string;
+  contactId: string;
 }
 
 interface MediaDownloadTask {
@@ -181,10 +182,32 @@ async function processAvatarQueue() {
     if (!task) continue;
     
     try {
-      // Avatar fetch será implementado via Baileys
-      console.log(`[Avatar] Would fetch avatar for ${task.phoneNumber}`);
+      // Buscar avatar via Baileys
+      const avatarUrl = await whatsappBaileys.getProfilePicture(task.accountId, task.phoneNumber);
+      
+      if (avatarUrl) {
+        // Atualizar contato no banco
+        await storage.updateContact(task.contactId, {
+          avatarUrl,
+          avatarUpdatedAt: new Date(),
+        });
+        
+        console.log(`[Avatar] Updated avatar for contact ${task.contactId}: ${avatarUrl.substring(0, 50)}...`);
+        
+        // Emitir evento de atualização de contato
+        if (io) {
+          const companyRoom = `company:${task.companyId}`;
+          io.to(companyRoom).emit("contact:updated", {
+            companyId: task.companyId,
+            contactId: task.contactId,
+            avatarUrl,
+          });
+        }
+      } else {
+        console.log(`[Avatar] No avatar available for ${task.phoneNumber}`);
+      }
     } catch (error) {
-      console.error("[Queue] Error fetching avatar:", error);
+      console.error(`[Avatar] Error fetching avatar for ${task.phoneNumber}:`, error);
     }
   }
   
@@ -199,6 +222,9 @@ export function queueMediaDownload(task: MediaDownloadTask) {
 
 // Obter extensão de arquivo a partir do mimetype
 function getExtensionFromMimetype(mimetype: string): string {
+  // Extrair o mimetype base (sem parâmetros como "; codecs=opus")
+  const baseMimetype = mimetype.split(";")[0].trim();
+  
   const mimeToExt: Record<string, string> = {
     "image/jpeg": "jpg",
     "image/png": "png",
@@ -218,7 +244,7 @@ function getExtensionFromMimetype(mimetype: string): string {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
     "text/plain": "txt",
   };
-  return mimeToExt[mimetype] || "bin";
+  return mimeToExt[baseMimetype] || "bin";
 }
 
 // Processar fila de media em background
@@ -319,6 +345,7 @@ async function processMessageInBackground(msg: QueuedMessage) {
   try {
     // Buscar ou criar contato (usar cache)
     let contact = getContactFromCache(companyId, phoneNumber) as any;
+    let contactCreated = false;
     
     if (!contact) {
       contact = await storage.getContactByPhone(companyId, phoneNumber);
@@ -328,18 +355,31 @@ async function processMessageInBackground(msg: QueuedMessage) {
     }
     
     if (!contact) {
+      console.log(`[INBOUND] phone=${phoneNumber} contact=NOT_FOUND → CREATING CONTACT`);
       contact = await storage.createContact({
         companyId,
         whatsappAccountId: accountId,
         name: contactName || phoneNumber,
         phoneNumber: normalizePhone(phoneNumber),
         avatarUrl,
+        source: "whatsapp",
       });
       setContactInCache(companyId, phoneNumber, contact);
+      contactCreated = true;
+      console.log(`[INBOUND] Created contact: ${contact.id} name="${contact.name}"`);
+      
+      // Enfileirar busca de avatar em background
+      queueAvatarFetch({
+        accountId,
+        companyId,
+        contactId: contact.id,
+        phoneNumber,
+      });
     }
     
     // Buscar ou criar conversa (usar cache)
     let conversation = getConversationFromCache(contact.id) as any;
+    let conversationCreated = false;
     
     if (!conversation) {
       conversation = await storage.getOpenConversationByContact(contact.id);
@@ -349,6 +389,7 @@ async function processMessageInBackground(msg: QueuedMessage) {
     }
     
     if (!conversation) {
+      console.log(`[INBOUND] phone=${phoneNumber} conversation=NOT_FOUND → CREATING CHAT`);
       conversation = await storage.createConversation({
         companyId,
         whatsappAccountId: accountId,
@@ -357,6 +398,8 @@ async function processMessageInBackground(msg: QueuedMessage) {
         inbox: "whatsapp",
       });
       setConversationInCache(contact.id, conversation);
+      conversationCreated = true;
+      console.log(`[INBOUND] Created conversation: ${conversation.id} for contact=${contact.id}`);
     }
     
     // Criar mensagem no banco (include mediaType if media is present, but not mediaUrl yet)
