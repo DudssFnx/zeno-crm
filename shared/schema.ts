@@ -68,7 +68,7 @@ export const contacts = pgTable("contacts", {
   avatarUrl: text("avatar_url"),
   avatarUpdatedAt: timestamp("avatar_updated_at"),
   notes: text("notes"),
-  attribute: text("attribute"), // CLIENTE | FORNECEDOR | etc. - shown as badge
+  attributes: text("attributes").array(), // Array de atributos (máximo 3)
   source: text("source").default("whatsapp"), // whatsapp | instagram | site | google | manual
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -253,7 +253,7 @@ export const cannedResponses = pgTable("canned_responses", {
   companyId: varchar("company_id").notNull().references(() => companies.id),
   shortcut: text("shortcut").notNull(),
   content: text("content").notNull(),
-  attribute: text("attribute"),
+  attributes: text("attributes").array(), // Array de atributos (máximo 3)
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Zap, MessageSquareText, Star } from "lucide-react";
+import { Plus, Pencil, Trash2, Zap, MessageSquareText, Star, X } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -21,10 +21,11 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import type { CannedResponse, ContactAttribute } from "@shared/schema";
 
+const MAX_ATTRIBUTES = 3;
+
 const cannedResponseFormSchema = z.object({
   shortcut: z.string().min(1, "O atalho é obrigatório").max(50, "Máximo 50 caracteres"),
   content: z.string().min(1, "O conteúdo é obrigatório"),
-  attribute: z.string().optional(),
 });
 
 type CannedResponseFormData = z.infer<typeof cannedResponseFormSchema>;
@@ -34,10 +35,11 @@ export default function CannedResponsesPage() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingResponse, setEditingResponse] = useState<CannedResponse | null>(null);
+  const [selectedAttributes, setSelectedAttributes] = useState<string[]>([]);
 
   const form = useForm<CannedResponseFormData>({
     resolver: zodResolver(cannedResponseFormSchema),
-    defaultValues: { shortcut: "", content: "", attribute: "" },
+    defaultValues: { shortcut: "", content: "" },
   });
 
   const { data: contactAttributes = [] } = useQuery<ContactAttribute[]>({
@@ -64,7 +66,7 @@ export default function CannedResponsesPage() {
         method: "POST",
         body: JSON.stringify({
           ...data,
-          attribute: data.attribute === "NONE" ? null : data.attribute,
+          attributes: selectedAttributes.length > 0 ? selectedAttributes : null,
         }),
       });
       if (!res.ok) {
@@ -77,6 +79,7 @@ export default function CannedResponsesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/canned-responses"] });
       setIsDialogOpen(false);
       form.reset();
+      setSelectedAttributes([]);
       toast({ title: "Resposta rápida criada com sucesso" });
     },
     onError: (error: Error) => {
@@ -91,7 +94,7 @@ export default function CannedResponsesPage() {
         body: JSON.stringify({
           shortcut: data.shortcut,
           content: data.content,
-          attribute: data.attribute === "NONE" ? null : data.attribute,
+          attributes: selectedAttributes.length > 0 ? selectedAttributes : null,
         }),
       });
       if (!res.ok) {
@@ -105,6 +108,7 @@ export default function CannedResponsesPage() {
       setIsDialogOpen(false);
       setEditingResponse(null);
       form.reset();
+      setSelectedAttributes([]);
       toast({ title: "Resposta rápida atualizada com sucesso" });
     },
     onError: (error: Error) => {
@@ -133,11 +137,12 @@ export default function CannedResponsesPage() {
       form.reset({
         shortcut: response.shortcut,
         content: response.content,
-        attribute: response.attribute || "",
       });
+      setSelectedAttributes(response.attributes || []);
     } else {
       setEditingResponse(null);
-      form.reset({ shortcut: "", content: "", attribute: "" });
+      form.reset({ shortcut: "", content: "" });
+      setSelectedAttributes([]);
     }
     setIsDialogOpen(true);
   };
@@ -148,6 +153,29 @@ export default function CannedResponsesPage() {
     } else {
       createResponse.mutate(data);
     }
+  };
+
+  const addAttribute = (attrName: string) => {
+    if (attrName === "NONE") return;
+    if (selectedAttributes.length >= MAX_ATTRIBUTES) {
+      toast({ 
+        title: `Máximo de ${MAX_ATTRIBUTES} atributos`, 
+        description: "Remova um atributo para adicionar outro.",
+        variant: "destructive" 
+      });
+      return;
+    }
+    if (!selectedAttributes.includes(attrName)) {
+      setSelectedAttributes([...selectedAttributes, attrName]);
+    }
+  };
+
+  const removeAttribute = (attrName: string) => {
+    setSelectedAttributes(selectedAttributes.filter(a => a !== attrName));
+  };
+
+  const getAttributeColor = (attrName: string) => {
+    return contactAttributes.find(a => a.name === attrName)?.color || "#6B7280";
   };
 
   return (
@@ -224,43 +252,70 @@ export default function CannedResponsesPage() {
                         </FormItem>
                       )}
                     />
-                    <FormField
-                      control={form.control}
-                      name="attribute"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Atributo (opcional)</FormLabel>
-                          <Select
-                            value={field.value || ""}
-                            onValueChange={field.onChange}
-                          >
-                            <FormControl>
-                              <SelectTrigger data-testid="select-canned-response-attribute">
-                                <SelectValue placeholder="Selecione um atributo" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="NONE">Nenhum</SelectItem>
-                              {contactAttributes.map((attr) => (
-                                <SelectItem key={attr.id} value={attr.name}>
-                                  <span className="flex items-center gap-2">
-                                    <span
-                                      className="w-3 h-3 rounded-full"
-                                      style={{ backgroundColor: attr.color }}
-                                    />
-                                    {attr.name}
-                                  </span>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormDescription>
-                            Se selecionado, o atributo será aplicado ao contato ao enviar
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
+                    
+                    <div className="space-y-2">
+                      <FormLabel>Atributos (máximo {MAX_ATTRIBUTES})</FormLabel>
+                      
+                      {selectedAttributes.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {selectedAttributes.map((attr) => (
+                            <Badge 
+                              key={attr}
+                              variant="outline"
+                              className="text-xs border-amber-500/50 text-amber-600 dark:text-amber-400 pr-1"
+                            >
+                              <span 
+                                className="w-2 h-2 rounded-full mr-1" 
+                                style={{ backgroundColor: getAttributeColor(attr) }}
+                              />
+                              {attr}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-4 w-4 ml-1 p-0"
+                                onClick={() => removeAttribute(attr)}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </Badge>
+                          ))}
+                        </div>
                       )}
-                    />
+                      
+                      <Select
+                        value=""
+                        onValueChange={addAttribute}
+                        disabled={selectedAttributes.length >= MAX_ATTRIBUTES}
+                      >
+                        <SelectTrigger data-testid="select-canned-response-attribute">
+                          <SelectValue placeholder={
+                            selectedAttributes.length >= MAX_ATTRIBUTES 
+                              ? "Máximo de atributos atingido"
+                              : "Adicionar atributo"
+                          } />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {contactAttributes
+                            .filter(attr => !selectedAttributes.includes(attr.name))
+                            .map((attr) => (
+                              <SelectItem key={attr.id} value={attr.name}>
+                                <span className="flex items-center gap-2">
+                                  <span
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: attr.color }}
+                                  />
+                                  {attr.name}
+                                </span>
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Os atributos serão aplicados ao contato ao enviar a resposta
+                      </p>
+                    </div>
+                    
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                         Cancelar
@@ -314,15 +369,16 @@ export default function CannedResponsesPage() {
                           <Badge variant="secondary" className="font-mono">
                             /{response.shortcut}
                           </Badge>
-                          {response.attribute && (
+                          {response.attributes && response.attributes.map((attr) => (
                             <Badge 
+                              key={attr}
                               variant="outline" 
                               className="text-xs border-amber-500/50 text-amber-600 dark:text-amber-400"
                             >
                               <Star className="h-3 w-3 mr-1 fill-current" />
-                              {response.attribute}
+                              {attr}
                             </Badge>
-                          )}
+                          ))}
                         </div>
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap line-clamp-3">
                           {response.content}

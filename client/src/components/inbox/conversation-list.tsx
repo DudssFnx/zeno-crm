@@ -352,16 +352,17 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                     )}
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <StatusBadge status={conv.status as "open" | "pending" | "resolved" | "closed"} />
-                      {conv.contact.attribute && (
+                      {conv.contact.attributes && conv.contact.attributes.slice(0, 2).map((attr, idx) => (
                         <Badge 
+                          key={`${conv.id}-attr-${idx}`}
                           variant="outline" 
                           className="text-[10px] px-1.5 py-0 h-5 border-amber-500/50 text-amber-600 dark:text-amber-400 bg-transparent"
-                          data-testid={`badge-attribute-${conv.id}`}
+                          data-testid={`badge-attribute-${conv.id}-${idx}`}
                         >
                           <Star className="h-3 w-3 mr-0.5 fill-current" />
-                          {conv.contact.attribute}
+                          {attr}
                         </Badge>
-                      )}
+                      ))}
                       {conv.tags && conv.tags.slice(0, 2).map((tag) => (
                         <TagChip key={tag.id} tag={tag} size="sm" />
                       ))}

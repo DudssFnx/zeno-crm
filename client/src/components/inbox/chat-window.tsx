@@ -197,7 +197,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [pendingAttribute, setPendingAttribute] = useState<string | null>(null);
+  const [pendingAttributes, setPendingAttributes] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -305,18 +305,31 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
       setIsTyping(false);
       clearSelectedFile();
       
-      // Aplicar atributo se houver um pendente da resposta rápida
-      if (pendingAttribute && conversation?.contact?.id) {
+      // Aplicar atributos se houver pendentes da resposta rápida
+      if (pendingAttributes.length > 0 && conversation?.contact?.id) {
         try {
-          await authFetch(`/api/contacts/${conversation.contact.id}`, {
-            method: "PUT",
-            body: JSON.stringify({ attribute: pendingAttribute }),
-          });
-          queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+          // Combinar atributos existentes com novos (máximo 3)
+          const currentAttrs = conversation.contact.attributes || [];
+          const newAttrs = [...new Set([...currentAttrs, ...pendingAttributes])].slice(0, 3);
+          
+          if (newAttrs.length > 3) {
+            toast({ 
+              title: "Limite de atributos atingido", 
+              description: "O contato já possui 3 atributos. Remova um nos detalhes do contato para adicionar novos.",
+              variant: "destructive" 
+            });
+          } else {
+            await authFetch(`/api/contacts/${conversation.contact.id}`, {
+              method: "PUT",
+              body: JSON.stringify({ attributes: newAttrs }),
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+          }
         } catch (e) {
-          console.error("[ChatWindow] Falha ao aplicar atributo:", e);
+          console.error("[ChatWindow] Falha ao aplicar atributos:", e);
         }
-        setPendingAttribute(null);
+        setPendingAttributes([]);
       }
       
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
@@ -324,7 +337,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     },
     onError: (error: Error) => {
       toast({ title: error.message || "Falha ao enviar mensagem", variant: "destructive" });
-      setPendingAttribute(null);
+      setPendingAttributes([]);
     },
   });
 
@@ -439,8 +452,8 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     setMessage(response.content);
     setShowCannedResponses(false);
     setCannedSearchTerm("");
-    if (response.attribute) {
-      setPendingAttribute(response.attribute);
+    if (response.attributes && response.attributes.length > 0) {
+      setPendingAttributes(response.attributes);
     }
     textareaRef.current?.focus();
   };

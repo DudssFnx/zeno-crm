@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote, Globe, UserPlus, ArrowLeft, Pencil, Check, User } from "lucide-react";
+import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote, Globe, UserPlus, ArrowLeft, Pencil, Check, User, Star } from "lucide-react";
 import { SiWhatsapp, SiInstagram, SiGoogle } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,12 +90,15 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
   }, [contactWithTags?.name]);
 
   const updateContact = useMutation({
-    mutationFn: async (data: { name?: string; attribute?: string | null }) => {
+    mutationFn: async (data: { name?: string; attributes?: string[] | null }) => {
       const res = await authFetch(`/api/contacts/${contactWithTags?.id}`, {
         method: "PUT",
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error("Failed to update contact");
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to update contact");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -104,8 +107,8 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
       toast({ title: "Contato atualizado" });
     },
-    onError: () => {
-      toast({ title: "Erro ao atualizar contato", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: error.message || "Erro ao atualizar contato", variant: "destructive" });
     },
   });
 
@@ -116,8 +119,22 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
     setIsEditingName(false);
   };
 
-  const handleAttributeChange = (value: string) => {
-    updateContact.mutate({ attribute: value === "NONE" ? null : value });
+  const handleAddAttribute = (attrName: string) => {
+    if (attrName === "NONE" || !contactWithTags) return;
+    const currentAttrs = contactWithTags.attributes || [];
+    if (currentAttrs.length >= 3) {
+      toast({ title: "Máximo de 3 atributos", description: "Remova um atributo para adicionar outro.", variant: "destructive" });
+      return;
+    }
+    if (!currentAttrs.includes(attrName)) {
+      updateContact.mutate({ attributes: [...currentAttrs, attrName] });
+    }
+  };
+
+  const handleRemoveAttribute = (attrName: string) => {
+    if (!contactWithTags) return;
+    const currentAttrs = contactWithTags.attributes || [];
+    updateContact.mutate({ attributes: currentAttrs.filter(a => a !== attrName) });
   };
 
   const updateNotes = useMutation({
@@ -276,22 +293,25 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
               </div>
             )}
             
-            {contactWithTags.attribute && (() => {
-              const attrInfo = getAttributeInfo(contactWithTags.attribute);
-              return (
-                <Badge 
-                  variant="secondary" 
-                  className="mb-2" 
-                  style={attrInfo ? { 
-                    backgroundColor: `${attrInfo.color}20`, 
-                    color: attrInfo.color,
-                  } : undefined}
-                  data-testid="badge-attribute"
-                >
-                  {contactWithTags.attribute}
-                </Badge>
-              );
-            })()}
+            {contactWithTags.attributes && contactWithTags.attributes.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-2">
+                {contactWithTags.attributes.map((attr, idx) => {
+                  const attrInfo = getAttributeInfo(attr);
+                  return (
+                    <Badge 
+                      key={`${attr}-${idx}`}
+                      variant="outline" 
+                      className="text-xs border-amber-500/50 text-amber-600 dark:text-amber-400"
+                      style={attrInfo ? { borderColor: `${attrInfo.color}50` } : undefined}
+                      data-testid={`badge-attribute-${idx}`}
+                    >
+                      <Star className="h-3 w-3 mr-1 fill-current" />
+                      {attr}
+                    </Badge>
+                  );
+                })}
+              </div>
+            )}
             
             <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
               <Phone className="h-3 w-3" />
@@ -338,29 +358,68 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
             {!isOperator && (
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <h4 className="text-sm font-medium">Atributo</h4>
+                  <Star className="h-4 w-4 text-amber-500" />
+                  <h4 className="text-sm font-medium">Atributos (máx. 3)</h4>
                 </div>
+                
+                {contactWithTags.attributes && contactWithTags.attributes.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {contactWithTags.attributes.map((attr, idx) => {
+                      const attrInfo = getAttributeInfo(attr);
+                      return (
+                        <Badge 
+                          key={`edit-${attr}-${idx}`}
+                          variant="outline" 
+                          className="text-xs border-amber-500/50 text-amber-600 dark:text-amber-400 pr-1"
+                          style={attrInfo ? { borderColor: `${attrInfo.color}50` } : undefined}
+                        >
+                          <span 
+                            className="w-2 h-2 rounded-full mr-1" 
+                            style={{ backgroundColor: attrInfo?.color || "#6B7280" }}
+                          />
+                          {attr}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-4 w-4 ml-1 p-0"
+                            onClick={() => handleRemoveAttribute(attr)}
+                            data-testid={`button-remove-attribute-${idx}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+                
                 <Select 
-                  value={contactWithTags.attribute || "NONE"} 
-                  onValueChange={handleAttributeChange}
+                  value=""
+                  onValueChange={handleAddAttribute}
+                  disabled={(contactWithTags.attributes?.length || 0) >= 3}
                 >
                   <SelectTrigger data-testid="select-attribute">
-                    <SelectValue placeholder="Selecione um atributo" />
+                    <SelectValue placeholder={
+                      (contactWithTags.attributes?.length || 0) >= 3 
+                        ? "Máximo de atributos atingido" 
+                        : "Adicionar atributo"
+                    } />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NONE">Nenhum</SelectItem>
-                    {contactAttributes.map((attr) => (
-                      <SelectItem key={attr.id} value={attr.name}>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: attr.color }}
-                          />
-                          {attr.name}
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {contactAttributes
+                      .filter(attr => !(contactWithTags.attributes || []).includes(attr.name))
+                      .map((attr) => (
+                        <SelectItem key={attr.id} value={attr.name}>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: attr.color }}
+                            />
+                            {attr.name}
+                          </div>
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
                 {updateContact.isPending && (

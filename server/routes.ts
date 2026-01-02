@@ -575,11 +575,11 @@ export async function registerRoutes(
 
   app.put("/api/contacts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { name, notes, avatarUrl, attribute } = req.body;
+      const { name, notes, avatarUrl, attributes } = req.body;
       
       // Operators can only update notes
       if (req.user!.role === "operator") {
-        if (name !== undefined || avatarUrl !== undefined || attribute !== undefined) {
+        if (name !== undefined || avatarUrl !== undefined || attributes !== undefined) {
           return res.status(403).json({ message: "Operadores só podem editar observações do contato" });
         }
         const contact = await storage.updateContact(req.params.id, { notes });
@@ -589,7 +589,12 @@ export async function registerRoutes(
         return res.json(contact);
       }
       
-      const contact = await storage.updateContact(req.params.id, { name, notes, avatarUrl, attribute });
+      // Validar máximo de 3 atributos
+      if (attributes && Array.isArray(attributes) && attributes.length > 3) {
+        return res.status(400).json({ message: "Máximo de 3 atributos por contato" });
+      }
+      
+      const contact = await storage.updateContact(req.params.id, { name, notes, avatarUrl, attributes });
       if (!contact) {
         return res.status(404).json({ message: "Contact not found" });
       }
@@ -1339,13 +1344,24 @@ export async function registerRoutes(
               
             case "SET_ATTRIBUTE":
               if (action.attribute !== undefined) {
-                await storage.updateContact(contact.id, { attribute: action.attribute });
+                // Converter para array e combinar com existentes (máx 3)
+                const currentAttrs = contact.attributes || [];
+                const newAttr = action.attribute;
+                let updatedAttrs = [...currentAttrs];
+                
+                if (newAttr && !currentAttrs.includes(newAttr)) {
+                  if (updatedAttrs.length < 3) {
+                    updatedAttrs.push(newAttr);
+                  }
+                }
+                
+                await storage.updateContact(contact.id, { attributes: updatedAttrs });
                 actionsApplied.push({ type: "SET_ATTRIBUTE", attribute: action.attribute, success: true });
                 
                 io.to(`company:${req.user!.companyId}`).emit("contact:updated", {
                   companyId: req.user!.companyId,
                   contactId: contact.id,
-                  attribute: action.attribute,
+                  attributes: updatedAttrs,
                 });
               }
               break;
