@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote, Globe, UserPlus, ArrowLeft } from "lucide-react";
+import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote, Globe, UserPlus, ArrowLeft, Pencil, Check, User } from "lucide-react";
 import { SiWhatsapp, SiInstagram, SiGoogle } from "react-icons/si";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
 import { TagChip } from "@/components/tag-chip";
 import { LoadingSpinner } from "@/components/loading-spinner";
@@ -15,6 +17,15 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import type { ConversationWithDetails, ContactWithTags, Tag } from "@shared/schema";
+
+const ATTRIBUTE_OPTIONS = [
+  { value: "", label: "Nenhum" },
+  { value: "CLIENTE", label: "Cliente" },
+  { value: "FORNECEDOR", label: "Fornecedor" },
+  { value: "PARCEIRO", label: "Parceiro" },
+  { value: "LEAD", label: "Lead" },
+  { value: "VIP", label: "VIP" },
+];
 
 interface ContactDetailsProps {
   conversationId: string;
@@ -29,6 +40,8 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
   const { toast } = useToast();
   const [notes, setNotes] = useState("");
   const [notesTimeout, setNotesTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState("");
 
   const { data: conversation } = useQuery<ConversationWithDetails>({
     queryKey: ["/api/conversations", conversationId],
@@ -63,6 +76,43 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
       setNotes(contactWithTags.notes || "");
     }
   }, [contactWithTags?.notes]);
+
+  useEffect(() => {
+    if (contactWithTags?.name) {
+      setEditedName(contactWithTags.name);
+    }
+  }, [contactWithTags?.name]);
+
+  const updateContact = useMutation({
+    mutationFn: async (data: { name?: string; attribute?: string | null }) => {
+      const res = await authFetch(`/api/contacts/${contactWithTags?.id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to update contact");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", conversation?.contactId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      toast({ title: "Contato atualizado" });
+    },
+    onError: () => {
+      toast({ title: "Erro ao atualizar contato", variant: "destructive" });
+    },
+  });
+
+  const handleSaveName = () => {
+    if (editedName.trim() && editedName !== contactWithTags?.name) {
+      updateContact.mutate({ name: editedName.trim() });
+    }
+    setIsEditingName(false);
+  };
+
+  const handleAttributeChange = (value: string) => {
+    updateContact.mutate({ attribute: value || null });
+  };
 
   const updateNotes = useMutation({
     mutationFn: async (newNotes: string) => {
@@ -188,7 +238,44 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
               size="xl"
               className="mb-4"
             />
-            <h3 className="text-lg font-medium">{contactWithTags.name}</h3>
+            
+            {!isOperator && isEditingName ? (
+              <div className="flex items-center gap-2 mb-2">
+                <Input
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
+                  className="text-center text-lg font-medium"
+                  autoFocus
+                  onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
+                  data-testid="input-edit-name"
+                />
+                <Button size="icon" variant="ghost" onClick={handleSaveName} data-testid="button-save-name">
+                  <Check className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-lg font-medium">{contactWithTags.name}</h3>
+                {!isOperator && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setIsEditingName(true)}
+                    className="h-6 w-6"
+                    data-testid="button-edit-name"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            )}
+            
+            {contactWithTags.attribute && (
+              <Badge variant="secondary" className="mb-2 bg-orange-500/20 text-orange-600 dark:text-orange-400" data-testid="badge-attribute">
+                {contactWithTags.attribute}
+              </Badge>
+            )}
+            
             <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
               <Phone className="h-3 w-3" />
               {contactWithTags.phoneNumber}
@@ -228,6 +315,35 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
                 <p className="text-xs text-muted-foreground mt-1">Salvando...</p>
               )}
             </div>
+
+            <Separator />
+
+            {!isOperator && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <h4 className="text-sm font-medium">Atributo</h4>
+                </div>
+                <Select 
+                  value={contactWithTags.attribute || ""} 
+                  onValueChange={handleAttributeChange}
+                >
+                  <SelectTrigger data-testid="select-attribute">
+                    <SelectValue placeholder="Selecione um atributo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ATTRIBUTE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value || "none"} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {updateContact.isPending && (
+                  <p className="text-xs text-muted-foreground mt-1">Salvando...</p>
+                )}
+              </div>
+            )}
 
             <Separator />
 

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Search, MessageSquare, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -351,6 +352,15 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                     )}
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <StatusBadge status={conv.status as "open" | "pending" | "resolved" | "closed"} />
+                      {conv.contact.attribute && (
+                        <Badge 
+                          variant="secondary" 
+                          className="text-[10px] px-1.5 py-0 h-5 bg-orange-500/20 text-orange-600 dark:text-orange-400"
+                          data-testid={`badge-attribute-${conv.id}`}
+                        >
+                          {conv.contact.attribute}
+                        </Badge>
+                      )}
                       {conv.tags && conv.tags.slice(0, 2).map((tag) => (
                         <TagChip key={tag.id} tag={tag} size="sm" />
                       ))}
