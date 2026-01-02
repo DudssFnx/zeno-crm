@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Send, StickyNote, Phone, Check, CheckCheck, Zap, Paperclip, UserPlus, Calendar, X, FileIcon, ImageIcon } from "lucide-react";
+import { Send, StickyNote, Phone, Check, CheckCheck, Zap, Paperclip, UserPlus, Calendar, X, FileIcon, ImageIcon, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
@@ -13,6 +15,14 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import type { ConversationWithDetails, MessageWithSender, User, CannedResponse } from "@shared/schema";
+
+interface Macro {
+  id: string;
+  name: string;
+  description: string | null;
+  messageTemplate: string | null;
+  actions: Array<{ type: string; tagId?: string; status?: string; agentId?: string }>;
+}
 
 interface ChatWindowProps {
   conversationId: string | null;
@@ -74,6 +84,15 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
     queryFn: async () => {
       const res = await authFetch("/api/canned-responses");
       if (!res.ok) throw new Error("Failed to fetch canned responses");
+      return res.json();
+    },
+  });
+
+  const { data: macros = [] } = useQuery<Macro[]>({
+    queryKey: ["/api/macros"],
+    queryFn: async () => {
+      const res = await authFetch("/api/macros");
+      if (!res.ok) throw new Error("Failed to fetch macros");
       return res.json();
     },
   });
@@ -141,6 +160,29 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+  });
+
+  const executeMacro = useMutation({
+    mutationFn: async (macroId: string) => {
+      const res = await authFetch("/api/macros/execute", {
+        method: "POST",
+        body: JSON.stringify({ macroId, conversationId }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: "Falha ao executar macro" }));
+        throw new Error(error.message || "Falha ao executar macro");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Macro executada com sucesso" });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: "destructive" });
     },
   });
 
@@ -581,6 +623,58 @@ export function ChatWindow({ conversationId, onContactClick }: ChatWindowProps) 
                 <StickyNote className="h-4 w-4 mr-1" />
                 Nota Interna
               </Button>
+
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    data-testid="button-macros"
+                  >
+                    <Zap className="h-4 w-4 text-amber-500" />
+                    Macros
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[425px]">
+                  <DialogHeader>
+                    <DialogTitle>Executar Macro</DialogTitle>
+                  </DialogHeader>
+                  <div className="py-4">
+                    <div className="space-y-2">
+                      {macros.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                          Nenhuma macro disponível.
+                        </p>
+                      ) : (
+                        macros.map((macro) => (
+                          <Button
+                            key={macro.id}
+                            variant="ghost"
+                            className="w-full justify-start text-left h-auto p-3 flex flex-col items-start gap-1"
+                            onClick={() => executeMacro.mutate(macro.id)}
+                            disabled={executeMacro.isPending}
+                            data-testid={`button-macro-${macro.id}`}
+                          >
+                            <div className="flex items-center gap-2 w-full">
+                              <span className="font-medium text-sm">{macro.name}</span>
+                              {executeMacro.isPending && executeMacro.variables === macro.id && (
+                                <LoadingSpinner size="sm" className="ml-auto" />
+                              )}
+                            </div>
+                            {macro.description && (
+                              <span className="text-xs text-muted-foreground line-clamp-2">
+                                {macro.description}
+                              </span>
+                            )}
+                          </Button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               {isInternalNote && (
                 <span className="text-xs text-muted-foreground">
                   Esta nota é visível apenas para sua equipe
