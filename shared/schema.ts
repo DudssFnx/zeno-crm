@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, jsonb, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -347,80 +347,90 @@ export type InsertMacroExecution = z.infer<typeof insertMacroExecutionSchema>;
 export type Stage = typeof stages.$inferSelect;
 export type InsertStage = z.infer<typeof insertStageSchema>;
 
-// Auto Responses (Auto Atendimento)
-export const autoResponses = pgTable("auto_responses", {
+// Chat Flows (Fluxos Conversacionais - estilo Typebot)
+export const chatFlows = pgTable("chat_flows", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull().references(() => companies.id),
-  whatsappAccountId: varchar("whatsapp_account_id").references(() => whatsappAccounts.id), // null = all accounts
+  whatsappAccountId: varchar("whatsapp_account_id").references(() => whatsappAccounts.id),
   name: text("name").notNull(),
+  description: text("description"),
   isActive: boolean("is_active").notNull().default(true),
-  
-  // Triggers (Acionamentos)
-  triggerType: text("trigger_type").notNull(), // any_message | keyword | first_message_day | first_message_ever
-  keywords: text("keywords").array(), // For keyword trigger
-  
-  // Actions (Ações)
-  actions: jsonb("actions").notNull().default([]), // [{type: "send_text", content}, {type: "send_image", mediaUrl}, {type: "add_tag", tagId}]
-  
-  // Rules (Regras de Acionamento)
-  allowGroups: boolean("allow_groups").notNull().default(false),
-  scheduleEnabled: boolean("schedule_enabled").notNull().default(false),
-  scheduleDays: text("schedule_days").array(), // ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
-  scheduleStartTime: text("schedule_start_time"), // "08:00"
-  scheduleEndTime: text("schedule_end_time"), // "18:00"
-  skipIfConversationOpen: boolean("skip_if_conversation_open").notNull().default(false),
-  skipIfConversationResolved: boolean("skip_if_conversation_resolved").notNull().default(false),
-  onlyFirstMessageDay: boolean("only_first_message_day").notNull().default(false),
-  includeSignature: boolean("include_signature").notNull().default(false),
-  
-  priority: text("priority").notNull().default("0"), // Order of execution
+  triggerKeywords: text("trigger_keywords").array(), // Palavras que iniciam o fluxo
+  triggerOnFirstMessage: boolean("trigger_on_first_message").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const autoResponsesRelations = relations(autoResponses, ({ one }) => ({
-  company: one(companies, { fields: [autoResponses.companyId], references: [companies.id] }),
-  whatsappAccount: one(whatsappAccounts, { fields: [autoResponses.whatsappAccountId], references: [whatsappAccounts.id] }),
-}));
-
-// Auto Response action types
-export const autoResponseActionSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("send_text"), content: z.string() }),
-  z.object({ type: z.literal("send_image"), mediaUrl: z.string(), caption: z.string().optional() }),
-  z.object({ type: z.literal("send_video"), mediaUrl: z.string(), caption: z.string().optional() }),
-  z.object({ type: z.literal("send_audio"), mediaUrl: z.string() }),
-  z.object({ type: z.literal("send_document"), mediaUrl: z.string(), fileName: z.string().optional() }),
-  z.object({ type: z.literal("add_tag"), tagId: z.string() }),
-  z.object({ type: z.literal("remove_tag"), tagId: z.string() }),
-  z.object({ type: z.literal("set_status"), status: z.enum(["open", "pending", "resolved", "closed"]) }),
-]);
-
-export type AutoResponseAction = z.infer<typeof autoResponseActionSchema>;
-
-export const insertAutoResponseSchema = createInsertSchema(autoResponses).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertAutoResponse = z.infer<typeof insertAutoResponseSchema>;
-export type AutoResponse = typeof autoResponses.$inferSelect;
-
-// Auto Response Logs (registro de execuções)
-export const autoResponseLogs = pgTable("auto_response_logs", {
+// Steps do fluxo (cada passo da conversa)
+export const chatFlowSteps = pgTable("chat_flow_steps", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  autoResponseId: varchar("auto_response_id").notNull().references(() => autoResponses.id, { onDelete: "cascade" }),
-  conversationId: varchar("conversation_id").references(() => conversations.id),
-  contactId: varchar("contact_id").references(() => contacts.id),
-  triggerMessage: text("trigger_message"),
-  actionsTaken: jsonb("actions_taken").notNull().default([]),
-  executedAt: timestamp("executed_at").defaultNow().notNull(),
+  flowId: varchar("flow_id").notNull().references(() => chatFlows.id, { onDelete: "cascade" }),
+  stepOrder: integer("step_order").notNull().default(0),
+  type: text("type").notNull(), // "message" | "menu" | "input" | "action"
+  message: text("message"), // Mensagem a enviar
+  menuOptions: jsonb("menu_options").default([]), // [{value: "1", label: "Vendas", nextStepId, tagId, assignUserId}]
+  inputField: text("input_field"), // Campo para capturar (nome, email, etc)
+  actionType: text("action_type"), // "assign_agent" | "add_tag" | "set_status" | "end_flow"
+  actionPayload: jsonb("action_payload").default({}), // {userId, tagId, status}
+  nextStepId: varchar("next_step_id"), // Próximo passo (para message/input)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const autoResponseLogsRelations = relations(autoResponseLogs, ({ one }) => ({
-  autoResponse: one(autoResponses, { fields: [autoResponseLogs.autoResponseId], references: [autoResponses.id] }),
-  conversation: one(conversations, { fields: [autoResponseLogs.conversationId], references: [conversations.id] }),
-  contact: one(contacts, { fields: [autoResponseLogs.contactId], references: [contacts.id] }),
+// Sessões ativas de fluxo (controla em qual passo cada conversa está)
+export const chatFlowSessions = pgTable("chat_flow_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  flowId: varchar("flow_id").notNull().references(() => chatFlows.id, { onDelete: "cascade" }),
+  conversationId: varchar("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  contactId: varchar("contact_id").notNull().references(() => contacts.id),
+  currentStepId: varchar("current_step_id").references(() => chatFlowSteps.id),
+  capturedData: jsonb("captured_data").default({}), // Dados capturados do cliente
+  status: text("status").notNull().default("active"), // "active" | "completed" | "abandoned"
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  lastInteractionAt: timestamp("last_interaction_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const chatFlowsRelations = relations(chatFlows, ({ one, many }) => ({
+  company: one(companies, { fields: [chatFlows.companyId], references: [companies.id] }),
+  whatsappAccount: one(whatsappAccounts, { fields: [chatFlows.whatsappAccountId], references: [whatsappAccounts.id] }),
+  steps: many(chatFlowSteps),
+  sessions: many(chatFlowSessions),
 }));
 
-export const insertAutoResponseLogSchema = createInsertSchema(autoResponseLogs).omit({ id: true, executedAt: true });
-export type InsertAutoResponseLog = z.infer<typeof insertAutoResponseLogSchema>;
-export type AutoResponseLog = typeof autoResponseLogs.$inferSelect;
+export const chatFlowStepsRelations = relations(chatFlowSteps, ({ one }) => ({
+  flow: one(chatFlows, { fields: [chatFlowSteps.flowId], references: [chatFlows.id] }),
+}));
+
+export const chatFlowSessionsRelations = relations(chatFlowSessions, ({ one }) => ({
+  flow: one(chatFlows, { fields: [chatFlowSessions.flowId], references: [chatFlows.id] }),
+  conversation: one(conversations, { fields: [chatFlowSessions.conversationId], references: [conversations.id] }),
+  contact: one(contacts, { fields: [chatFlowSessions.contactId], references: [contacts.id] }),
+  currentStep: one(chatFlowSteps, { fields: [chatFlowSessions.currentStepId], references: [chatFlowSteps.id] }),
+}));
+
+// Menu option type
+export const menuOptionSchema = z.object({
+  value: z.string(), // "1", "2", etc
+  label: z.string(), // "Vendas", "Suporte", etc
+  nextStepId: z.string().optional(),
+  tagId: z.string().optional(),
+  assignUserId: z.string().optional(),
+  setStatus: z.enum(["open", "pending", "resolved"]).optional(),
+});
+
+export type MenuOption = z.infer<typeof menuOptionSchema>;
+
+export const insertChatFlowSchema = createInsertSchema(chatFlows).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertChatFlow = z.infer<typeof insertChatFlowSchema>;
+export type ChatFlow = typeof chatFlows.$inferSelect;
+
+export const insertChatFlowStepSchema = createInsertSchema(chatFlowSteps).omit({ id: true, createdAt: true });
+export type InsertChatFlowStep = z.infer<typeof insertChatFlowStepSchema>;
+export type ChatFlowStep = typeof chatFlowSteps.$inferSelect;
+
+export const insertChatFlowSessionSchema = createInsertSchema(chatFlowSessions).omit({ id: true, startedAt: true, lastInteractionAt: true, completedAt: true });
+export type InsertChatFlowSession = z.infer<typeof insertChatFlowSessionSchema>;
+export type ChatFlowSession = typeof chatFlowSessions.$inferSelect;
 
 // Auth schemas
 export const loginSchema = z.object({
