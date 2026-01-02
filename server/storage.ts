@@ -57,6 +57,7 @@ export interface IStorage {
   getTags(companyId: string): Promise<Tag[]>;
   updateTag(id: string, data: Partial<InsertTag>): Promise<Tag | undefined>;
   deleteTag(id: string): Promise<void>;
+  reorderTags(companyId: string, tagIds: string[]): Promise<Tag[]>;
 
   // Contact Tags
   addContactTag(contactId: string, tagId: string): Promise<ContactTag>;
@@ -300,7 +301,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTags(companyId: string): Promise<Tag[]> {
-    return db.select().from(tags).where(eq(tags.companyId, companyId));
+    return db.select().from(tags).where(eq(tags.companyId, companyId)).orderBy(tags.stageOrder);
   }
 
   async updateTag(id: string, data: Partial<InsertTag>): Promise<Tag | undefined> {
@@ -314,6 +315,19 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTag(id: string): Promise<void> {
     await db.delete(tags).where(eq(tags.id, id));
+  }
+
+  async reorderTags(companyId: string, tagIds: string[]): Promise<Tag[]> {
+    const result: Tag[] = [];
+    for (let i = 0; i < tagIds.length; i++) {
+      const [tag] = await db
+        .update(tags)
+        .set({ stageOrder: String(i), updatedAt: new Date() })
+        .where(and(eq(tags.id, tagIds[i]), eq(tags.companyId, companyId)))
+        .returning();
+      if (tag) result.push(tag);
+    }
+    return result;
   }
 
   // Contact Tags

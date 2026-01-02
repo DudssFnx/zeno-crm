@@ -710,6 +710,21 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/tags/reorder", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { tagIds } = req.body;
+      if (!tagIds || !Array.isArray(tagIds)) {
+        return res.status(400).json({ message: "tagIds é obrigatório" });
+      }
+
+      const tags = await storage.reorderTags(req.user!.companyId, tagIds);
+      res.json(tags);
+    } catch (error) {
+      console.error("Reorder tags error:", error);
+      res.status(500).json({ message: "Falha ao reordenar etiquetas" });
+    }
+  });
+
   // Contact Tags routes
   app.post("/api/contacts/:id/tags", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
