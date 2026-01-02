@@ -55,6 +55,7 @@ export interface IStorage {
   getContactTags(contactId: string): Promise<Tag[]>;
 
   // Conversations
+  deleteAllConversations(companyId: string): Promise<number>;
   createConversation(data: InsertConversation): Promise<Conversation>;
   getConversation(id: string): Promise<Conversation | undefined>;
   getConversationWithDetails(id: string): Promise<ConversationWithDetails | undefined>;
@@ -251,6 +252,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Conversations
+  async deleteAllConversations(companyId: string): Promise<number> {
+    // First get all conversation IDs for this company
+    const companyConversations = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.companyId, companyId));
+    
+    const conversationIds = companyConversations.map(c => c.id);
+    
+    if (conversationIds.length === 0) return 0;
+    
+    // Delete all messages for these conversations
+    for (const convId of conversationIds) {
+      await db.delete(messages).where(eq(messages.conversationId, convId));
+    }
+    
+    // Delete all conversations
+    await db.delete(conversations).where(eq(conversations.companyId, companyId));
+    
+    return conversationIds.length;
+  }
+
   async createConversation(data: InsertConversation): Promise<Conversation> {
     const [conversation] = await db.insert(conversations).values(data).returning();
     return conversation;

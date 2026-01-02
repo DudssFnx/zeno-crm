@@ -1,7 +1,12 @@
 [
   {
     "accountId": "9c68dc39-a27f-4550-ba72-b2c8ec6a8903",
+    "wasConnected": false,
+    "lastConnectedAt": "2026-01-02T14:09:15.050Z"
+  },
+  {
+    "accountId": "b58e30ed-58ce-4599-8fa7-070cc1940b18",
     "wasConnected": true,
-    "lastConnectedAt": "2026-01-02T14:02:51.089Z"
+    "lastConnectedAt": "2026-01-02T14:15:10.772Z"
   }
 ]

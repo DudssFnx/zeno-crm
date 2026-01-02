@@ -691,6 +691,17 @@ export async function registerRoutes(
   });
 
   // Conversations routes
+  app.delete("/api/conversations/all", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const count = await storage.deleteAllConversations(req.user!.companyId);
+      console.log(`[API] Deleted ${count} conversations for company ${req.user!.companyId}`);
+      res.json({ success: true, deleted: count });
+    } catch (error) {
+      console.error("Delete all conversations error:", error);
+      res.status(500).json({ message: "Failed to delete conversations" });
+    }
+  });
+
   app.get("/api/conversations", authMiddleware(storage), async (req: AuthRequest, res) => {
     const { status, whatsappAccountId, assignedToUserId } = req.query;
     const conversations = await storage.getConversations(req.user!.companyId, {

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Search, Filter, MessageSquare } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Search, Filter, MessageSquare, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +12,19 @@ import { LoadingSpinner } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type { ConversationWithDetails, WhatsappAccount, User, Tag } from "@shared/schema";
 
 interface ConversationListProps {
@@ -22,11 +35,34 @@ interface ConversationListProps {
 
 export function ConversationList({ selectedId, onSelect, currentUserId }: ConversationListProps) {
   const authFetch = useAuthFetch();
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [accountFilter, setAccountFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
+
+  const deleteAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", "/api/conversations/all");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Conversas apagadas",
+        description: `${data.deleted} conversas foram removidas com sucesso.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      onSelect("");
+    },
+    onError: () => {
+      toast({
+        title: "Erro",
+        description: "Falha ao apagar conversas.",
+        variant: "destructive",
+      });
+    },
+  });
 
   const { data: conversations = [], isLoading } = useQuery<ConversationWithDetails[]>({
     queryKey: ["/api/conversations", statusFilter, accountFilter, assigneeFilter],
@@ -167,6 +203,36 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
               ))}
             </SelectContent>
           </Select>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button 
+                variant="destructive" 
+                size="icon"
+                disabled={conversations.length === 0 || deleteAllMutation.isPending}
+                data-testid="button-delete-all-conversations"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Apagar todas as conversas?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação irá remover permanentemente {conversations.length} conversas e todas as mensagens associadas. Esta ação não pode ser desfeita.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteAllMutation.mutate()}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deleteAllMutation.isPending ? "Apagando..." : "Apagar Tudo"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
