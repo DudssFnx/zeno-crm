@@ -101,6 +101,34 @@ export async function registerRoutes(
     }
   });
 
+  // Handler para quando um mapeamento LID -> phone é descoberto
+  // Isso atualiza contatos que foram criados com LID_ para usar o número real
+  whatsappBaileys.setLidMappingDiscoveredHandler(async (accountId, lid, phoneNumber) => {
+    try {
+      console.log(`[LidMapping] Discovered mapping: LID_${lid} -> ${phoneNumber}`);
+      
+      // Buscar contatos que têm o LID como phoneNumber
+      const lidPhoneNumber = `LID_${lid}`;
+      const account = await storage.getWhatsappAccount(accountId);
+      if (!account) return;
+
+      // Atualizar contatos com LID para usar o número real
+      const updatedCount = await storage.updateContactsByLid(account.companyId, lidPhoneNumber, phoneNumber);
+      
+      if (updatedCount > 0) {
+        console.log(`[LidMapping] Updated ${updatedCount} contact(s) from ${lidPhoneNumber} to ${phoneNumber}`);
+        
+        // Emitir evento para atualizar o frontend
+        io.to(`company:${account.companyId}`).emit("contacts:lid_resolved", {
+          oldPhoneNumber: lidPhoneNumber,
+          newPhoneNumber: phoneNumber,
+        });
+      }
+    } catch (error) {
+      console.error(`[LidMapping] Error updating contacts:`, error);
+    }
+  });
+
   io.use(async (socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) {

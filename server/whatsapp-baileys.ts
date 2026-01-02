@@ -67,12 +67,14 @@ export interface IncomingMessage {
 
 export type MessageHandler = (accountId: string, message: IncomingMessage) => Promise<void>;
 export type StatusUpdateHandler = (accountId: string, status: string) => Promise<void>;
+export type LidMappingDiscoveredHandler = (accountId: string, lid: string, phoneNumber: string) => Promise<void>;
 
 class WhatsAppBaileysGateway {
   private sessions: Map<string, BaileysSession> = new Map();
   private io: SocketServer | null = null;
   private messageHandler: MessageHandler | null = null;
   private statusUpdateHandler: StatusUpdateHandler | null = null;
+  private lidMappingDiscoveredHandler: LidMappingDiscoveredHandler | null = null;
   private isInitialized: boolean = false;
   private msgRetryCounterCache = new NodeCache();
   private logger = pino({ level: "silent" });
@@ -127,6 +129,10 @@ class WhatsAppBaileysGateway {
 
   setStatusUpdateHandler(handler: StatusUpdateHandler) {
     this.statusUpdateHandler = handler;
+  }
+
+  setLidMappingDiscoveredHandler(handler: LidMappingDiscoveredHandler) {
+    this.lidMappingDiscoveredHandler = handler;
   }
 
   setSocketServer(io: SocketServer) {
@@ -332,6 +338,80 @@ class WhatsAppBaileysGateway {
         console.log(`[Baileys] Message update: ${update.key.id} - ${JSON.stringify(update.update)}`);
       }
     });
+
+    // Listen for contacts.upsert to capture LID -> phone mappings
+    sock.ev.on("contacts.upsert", (contacts) => {
+      console.log(`[Baileys] Contacts upsert: ${contacts.length} contacts`);
+      for (const contact of contacts) {
+        this.processContactForLidMapping(accountId, contact);
+      }
+    });
+
+    // Listen for contacts.update to capture LID -> phone mappings
+    sock.ev.on("contacts.update", (contacts) => {
+      console.log(`[Baileys] Contacts update: ${contacts.length} contacts`);
+      for (const contact of contacts) {
+        this.processContactForLidMapping(accountId, contact as any);
+      }
+    });
+
+    // Listen for chats.upsert to capture LID -> phone mappings
+    sock.ev.on("chats.upsert", (chats) => {
+      console.log(`[Baileys] Chats upsert: ${chats.length} chats`);
+      for (const chat of chats) {
+        if (chat.id && chat.id.includes("@")) {
+          const jid = chat.id;
+          // Se o chat tiver lidJid associado, mapear
+          if ((chat as any).lidJid) {
+            const lidJid = (chat as any).lidJid;
+            const phoneNumber = extractPhoneFromJid(jid);
+            const lidNumber = extractPhoneFromJid(lidJid);
+            if (phoneNumber && lidNumber) {
+              const prevMapping = this.lidMapping[lidNumber];
+              this.storeLidToPhoneMapping(lidNumber, phoneNumber);
+              if (!prevMapping) {
+                this.notifyLidMappingDiscovered(accountId, lidNumber, phoneNumber);
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  private processContactForLidMapping(accountId: string, contact: any): void {
+    // Verificar se o contato tem informações de LID e número real
+    const jid = contact.id;
+    const lid = contact.lid || contact.lidJid;
+    const notify = contact.notify;
+    const name = contact.name || contact.verifiedName || notify;
+    
+    if (!jid) return;
+
+    // Se tiver LID associado, criar mapeamento
+    if (lid) {
+      const phoneNumber = extractPhoneFromJid(jid);
+      const lidNumber = extractPhoneFromJid(lid);
+      if (phoneNumber && lidNumber) {
+        const prevMapping = this.lidMapping[lidNumber];
+        this.storeLidToPhoneMapping(lidNumber, phoneNumber);
+        if (!prevMapping) {
+          console.log(`[Baileys] New LID mapping discovered from contact: ${lidNumber} -> ${phoneNumber}`);
+          this.notifyLidMappingDiscovered(accountId, lidNumber, phoneNumber);
+        }
+      }
+    }
+  }
+
+  private async notifyLidMappingDiscovered(accountId: string, lid: string, phoneNumber: string): Promise<void> {
+    // Notificar handler para atualizar contatos com LID no banco
+    if (this.lidMappingDiscoveredHandler) {
+      try {
+        await this.lidMappingDiscoveredHandler(accountId, lid, phoneNumber);
+      } catch (error) {
+        console.error(`[Baileys] Error in LID mapping handler:`, error);
+      }
+    }
   }
 
   private async processMessage(

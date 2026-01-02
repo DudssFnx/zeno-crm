@@ -46,6 +46,7 @@ export interface IStorage {
   getContactByPhone(companyId: string, phoneNumber: string): Promise<Contact | undefined>;
   getContacts(companyId: string): Promise<Contact[]>;
   updateContact(id: string, data: Partial<InsertContact>): Promise<Contact | undefined>;
+  updateContactsByLid(companyId: string, lidPhoneNumber: string, realPhoneNumber: string): Promise<number>;
   deleteContact(id: string): Promise<void>;
   deleteContacts(ids: string[]): Promise<void>;
 
@@ -237,6 +238,18 @@ export class DatabaseStorage implements IStorage {
       .where(eq(contacts.id, id))
       .returning();
     return contact;
+  }
+
+  async updateContactsByLid(companyId: string, lidPhoneNumber: string, realPhoneNumber: string): Promise<number> {
+    const result = await db
+      .update(contacts)
+      .set({ phoneNumber: realPhoneNumber, updatedAt: new Date() })
+      .where(and(
+        eq(contacts.companyId, companyId),
+        eq(contacts.phoneNumber, lidPhoneNumber)
+      ))
+      .returning({ id: contacts.id });
+    return result.length;
   }
 
   async deleteContact(id: string): Promise<void> {

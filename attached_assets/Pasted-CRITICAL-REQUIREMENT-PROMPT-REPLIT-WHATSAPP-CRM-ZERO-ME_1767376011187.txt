@@ -1,0 +1,114 @@
+CRITICAL REQUIREMENT PROMPT (REPLIT)
+WHATSAPP CRM — ZERO MESSAGE LOSS (BAILEYS)
+
+THIS TASK IS ONLY ABOUT ONE THING:
+ENSURE THAT NO WHATSAPP MESSAGE IS EVER LOST.
+
+DO NOT ADD FEATURES.
+DO NOT CHANGE UI.
+DO NOT ADD FUNNEL, TAGS, OR AUTOMATIONS.
+FOCUS ONLY ON MESSAGE DELIVERY.
+
+================================================
+ABSOLUTE RULE (NON-NEGOTIABLE)
+================================================
+
+EVERY WhatsApp message that arrives MUST be received, processed, and shown in the CRM panel.
+
+THIS APPLIES TO:
+- Chats already opened or not
+- Known contacts
+- Unknown contacts
+- Contacts never messaged before
+- Inbound-first messages
+- Any message received on WhatsApp
+
+IF A MESSAGE ARRIVES ON WHATSAPP → IT MUST APPEAR IN THE PANEL.
+
+NO EXCEPTIONS.
+NO CONDITIONS.
+NO FILTERS.
+
+================================================
+MANDATORY BACKEND BEHAVIOR
+================================================
+
+1) EVERY inbound message MUST be handled in:
+   sock.ev.on("messages.upsert")
+
+2) The system MUST:
+- Extract chatId ONLY using:
+  chatId = msg.key.remoteJid
+
+- Ignore ONLY:
+  - status@broadcast
+  - (optional) groups ending with @g.us if intentionally unsupported
+
+3) The system MUST NOT:
+- Check if the chat already exists before processing
+- Check if the chat is opened in the UI
+- Check if the operator sent a message first
+- Check if the contact is known
+- Filter messages based on frontend state
+
+================================================
+AUTO-CREATE CHAT (REQUIRED)
+================================================
+
+If a message arrives and the conversation does NOT exist:
+
+- CREATE the conversation immediately
+- Save the message
+- Emit to frontend
+- Show in panel
+
+If the conversation exists:
+- Save the message
+- Update lastMessageAt
+- Emit to frontend
+
+================================================
+FRONTEND VISIBILITY RULE
+================================================
+
+The conversation panel MUST be built ONLY from backend conversations.
+
+DO NOT:
+- Filter chats by “opened”
+- Filter chats by “sent”
+- Filter chats by “known contacts”
+
+If the backend has the conversation → the panel MUST show it.
+
+================================================
+FAIL-SAFE DESIGN (NO MESSAGE LOSS)
+================================================
+
+- Never return early from messages.upsert except for status@broadcast
+- Never silently ignore errors
+- Log every inbound message temporarily until confirmed working
+- It is acceptable to duplicate a message, but NEVER acceptable to lose one
+
+================================================
+ACCEPTANCE TEST (MANDATORY)
+================================================
+
+This task is COMPLETE only if:
+
+1) A WhatsApp message is sent from a number NEVER seen before
+2) The CRM receives it
+3) A chat is created automatically
+4) The message appears instantly in the panel
+5) No refresh is required
+6) No operator action is required
+
+================================================
+FINAL INSTRUCTION
+================================================
+
+PRIORITY ORDER:
+1) RECEIVE MESSAGE
+2) SAVE MESSAGE
+3) SHOW MESSAGE
+
+ANYTHING ELSE IS SECONDARY.
