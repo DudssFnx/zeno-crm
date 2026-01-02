@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Tag } from "lucide-react";
+import { Plus, Pencil, Trash2, UserCircle } from "lucide-react";
+import { useAuthFetch } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +46,7 @@ const PRESET_COLORS = [
 
 export default function AttributesSettingsPage() {
   const { toast } = useToast();
+  const authFetch = useAuthFetch();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAttr, setEditingAttr] = useState<ContactAttribute | null>(null);
   const [deleteConfirmAttr, setDeleteConfirmAttr] = useState<ContactAttribute | null>(null);
@@ -53,6 +55,11 @@ export default function AttributesSettingsPage() {
 
   const { data: attributes = [], isLoading } = useQuery<ContactAttribute[]>({
     queryKey: ["/api/contact-attributes"],
+    queryFn: async () => {
+      const res = await authFetch("/api/contact-attributes");
+      if (!res.ok) throw new Error("Falha ao buscar atributos");
+      return res.json();
+    },
   });
 
   const createMutation = useMutation({
@@ -137,7 +144,7 @@ export default function AttributesSettingsPage() {
         <div className="p-6 max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <Tag className="h-6 w-6 text-primary" />
+              <UserCircle className="h-6 w-6 text-primary" />
               <h1 className="text-2xl font-semibold">Atributos de Contato</h1>
             </div>
             <Button onClick={openCreateDialog} data-testid="button-create-attribute">
@@ -154,7 +161,7 @@ export default function AttributesSettingsPage() {
             <LoadingCard />
           ) : attributes.length === 0 ? (
             <EmptyState
-              icon={Tag}
+              icon={UserCircle}
               title="Nenhum atributo configurado"
               description="Crie atributos personalizados para classificar seus contatos."
               action={
