@@ -19,6 +19,7 @@ import KanbanPage from "@/pages/kanban";
 import MacrosPage from "@/pages/settings/macros";
 import ProfilePage from "@/pages/settings/profile";
 import StagesPage from "@/pages/settings/stages";
+import AttributesPage from "@/pages/settings/attributes";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -104,6 +105,9 @@ function Router() {
       </Route>
       <Route path="/settings/stages">
         <ProtectedRoute component={StagesPage} />
+      </Route>
+      <Route path="/settings/attributes">
+        <ProtectedRoute component={AttributesPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>
