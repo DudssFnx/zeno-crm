@@ -97,6 +97,30 @@ export const tagsRelations = relations(tags, ({ one, many }) => ({
   contactTags: many(contactTags),
 }));
 
+// Contact Attribute (customizable per company)
+export const contactAttributes = pgTable("contact_attributes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id),
+  name: text("name").notNull(), // Display name (e.g., "CLIENTE", "FORNECEDOR")
+  color: text("color").notNull().default("#6B7280"), // Badge color
+  displayOrder: text("display_order"), // Optional ordering
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const contactAttributesRelations = relations(contactAttributes, ({ one }) => ({
+  company: one(companies, { fields: [contactAttributes.companyId], references: [companies.id] }),
+}));
+
+export const insertContactAttributeSchema = createInsertSchema(contactAttributes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertContactAttribute = z.infer<typeof insertContactAttributeSchema>;
+export type ContactAttribute = typeof contactAttributes.$inferSelect;
+
 // Contact Tag (junction)
 export const contactTags = pgTable("contact_tags", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
