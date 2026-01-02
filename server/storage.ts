@@ -216,8 +216,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteContact(id: string): Promise<void> {
-    // Delete related contact_tags first
+    // Find all conversations for this contact
+    const contactConversations = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.contactId, id));
+    
+    // Delete messages for each conversation
+    for (const conv of contactConversations) {
+      await db.delete(messages).where(eq(messages.conversationId, conv.id));
+    }
+    
+    // Delete conversations
+    await db.delete(conversations).where(eq(conversations.contactId, id));
+    
+    // Delete related contact_tags
     await db.delete(contactTags).where(eq(contactTags.contactId, id));
+    
+    // Finally delete the contact
     await db.delete(contacts).where(eq(contacts.id, id));
   }
 
