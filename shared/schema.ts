@@ -167,6 +167,7 @@ export const conversations = pgTable("conversations", {
   stageId: varchar("stage_id"), // Kanban stage (references stages.id)
   status: text("status").notNull().default("open"), // open | pending | resolved | closed
   inbox: text("inbox").notNull().default("whatsapp"),
+  isUnread: boolean("is_unread").notNull().default(false), // Marcado como não lido (fica no topo)
   lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
   lastInboundAt: timestamp("last_inbound_at"), // Última msg RECEBIDA do cliente (para follow-up)
   lastOutboundAt: timestamp("last_outbound_at"), // Última msg ENVIADA por nós

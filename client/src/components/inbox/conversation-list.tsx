@@ -140,13 +140,18 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
       if (!hasTag) return false;
     }
     
-    // Filtro de não lidas: última mensagem é do cliente (incoming)
+    // Filtro de não lidas: campo isUnread marcado pelo usuário
     if (unreadFilter) {
-      const isUnread = conv.lastMessage?.direction === "incoming";
-      if (!isUnread) return false;
+      if (!conv.isUnread) return false;
     }
     
     return true;
+  })
+  // Ordenar: não lidas primeiro, depois por data
+  .sort((a, b) => {
+    if (a.isUnread && !b.isUnread) return -1;
+    if (!a.isUnread && b.isUnread) return 1;
+    return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
   });
 
   const formatTime = (date: Date | string) => {
@@ -352,7 +357,13 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-0.5">
                       <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                        <span className="font-medium text-[15px] truncate">
+                        {conv.isUnread && (
+                          <span className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" title="Não lida" />
+                        )}
+                        <span className={cn(
+                          "font-medium text-[15px] truncate",
+                          conv.isUnread && "font-semibold"
+                        )}>
                           {conv.contact.name}
                         </span>
                         {conv.contact.attributes && conv.contact.attributes.slice(0, 2).map((attr, idx) => (

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote, Globe, UserPlus, ArrowLeft, Pencil, Check, User, Star } from "lucide-react";
+import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote, Globe, UserPlus, ArrowLeft, Pencil, Check, User, Star, Mail, MailOpen } from "lucide-react";
 import { SiWhatsapp, SiInstagram, SiGoogle } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -192,6 +192,23 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
     },
   });
 
+  const toggleUnread = useMutation({
+    mutationFn: async () => {
+      const res = await authFetch(`/api/conversations/${conversationId}/toggle-unread`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Failed to toggle unread");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      toast({ 
+        title: conversation?.isUnread ? "Marcado como lido" : "Marcado como não lido"
+      });
+    },
+  });
+
   const handleNotesChange = (value: string) => {
     setNotes(value);
     if (notesTimeout) {
@@ -329,6 +346,27 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
                 </div>
               );
             })()}
+            
+            <Button
+              variant={conversation.isUnread ? "default" : "outline"}
+              size="sm"
+              onClick={() => toggleUnread.mutate()}
+              disabled={toggleUnread.isPending}
+              className="mt-4 gap-2"
+              data-testid="button-toggle-unread"
+            >
+              {conversation.isUnread ? (
+                <>
+                  <MailOpen className="h-4 w-4" />
+                  Marcar como Lido
+                </>
+              ) : (
+                <>
+                  <Mail className="h-4 w-4" />
+                  Marcar como Não Lido
+                </>
+              )}
+            </Button>
           </div>
 
           <Separator className="mb-6" />

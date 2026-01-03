@@ -973,6 +973,31 @@ export async function registerRoutes(
     }
   });
 
+  // Toggle unread status
+  app.post("/api/conversations/:id/toggle-unread", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const conversation = await storage.getConversation(req.params.id);
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+
+      const updated = await storage.updateConversation(req.params.id, { 
+        isUnread: !conversation.isUnread 
+      });
+      
+      // Emit real-time event
+      io.to(`company:${req.user!.companyId}`).emit("conversation:updated", {
+        conversationId: req.params.id,
+        isUnread: updated?.isUnread
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Toggle unread error:", error);
+      res.status(500).json({ message: "Failed to toggle unread status" });
+    }
+  });
+
   // Messages routes
   app.get("/api/conversations/:id/messages", authMiddleware(storage), async (req: AuthRequest, res) => {
     const messages = await storage.getMessages(req.params.id);
