@@ -44,6 +44,7 @@ import {
   AlertTriangle,
   Pencil,
   X,
+  Check,
 } from "lucide-react";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -505,6 +506,7 @@ function TriageMenusTab({
     stageId: "",
     keywords: [],
   });
+  const [editingOptionIdx, setEditingOptionIdx] = useState<number | null>(null);
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -611,11 +613,38 @@ function TriageMenusTab({
 
   const addOption = () => {
     if (!newOption.key || !newOption.label) return;
-    setFormData({
-      ...formData,
-      options: [...formData.options, newOption as TriageOption],
+    
+    if (editingOptionIdx !== null) {
+      const updatedOptions = [...formData.options];
+      updatedOptions[editingOptionIdx] = newOption as TriageOption;
+      setFormData({ ...formData, options: updatedOptions });
+      setEditingOptionIdx(null);
+    } else {
+      setFormData({
+        ...formData,
+        options: [...formData.options, newOption as TriageOption],
+      });
+    }
+    setNewOption({ key: "", label: "", response: "", departmentId: "", tagId: "", stageId: "", keywords: [] });
+  };
+
+  const editOption = (index: number) => {
+    const opt = formData.options[index];
+    setNewOption({
+      key: opt.key,
+      label: opt.label,
+      response: opt.response || "",
+      departmentId: opt.departmentId || "",
+      tagId: opt.tagId || "",
+      stageId: opt.stageId || "",
+      keywords: opt.keywords || [],
     });
-    setNewOption({ key: "", label: "", departmentId: "", tagId: "", stageId: "", keywords: [] });
+    setEditingOptionIdx(index);
+  };
+
+  const cancelEditOption = () => {
+    setEditingOptionIdx(null);
+    setNewOption({ key: "", label: "", response: "", departmentId: "", tagId: "", stageId: "", keywords: [] });
   };
 
   const removeOption = (index: number) => {
@@ -623,6 +652,9 @@ function TriageMenusTab({
       ...formData,
       options: formData.options.filter((_, i) => i !== index),
     });
+    if (editingOptionIdx === index) {
+      cancelEditOption();
+    }
   };
 
   const handleCreate = () => {
@@ -760,7 +792,7 @@ function TriageMenusTab({
                       className="p-2 border rounded-md space-y-2"
                     >
                       <div className="flex items-center gap-2">
-                        <Badge>{opt.key}</Badge>
+                        <Badge className={editingOptionIdx === idx ? "bg-primary text-primary-foreground" : ""}>{opt.key}</Badge>
                         <span className="flex-1 font-medium">{opt.label}</span>
                         {opt.tagId && (
                           <Badge variant="secondary" style={{ backgroundColor: tags.find((t) => t.id === opt.tagId)?.color }}>
@@ -775,7 +807,16 @@ function TriageMenusTab({
                         <Button
                           variant="ghost"
                           size="icon"
+                          onClick={() => editOption(idx)}
+                          data-testid={`button-edit-option-${idx}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => removeOption(idx)}
+                          data-testid={`button-remove-option-${idx}`}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -879,16 +920,37 @@ function TriageMenusTab({
                       </Select>
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={addOption}
-                    disabled={!newOption.key || !newOption.label}
-                    data-testid="button-add-option"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Adicionar Opcao
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={editingOptionIdx !== null ? "default" : "outline"}
+                      className="flex-1"
+                      onClick={addOption}
+                      disabled={!newOption.key || !newOption.label}
+                      data-testid="button-add-option"
+                    >
+                      {editingOptionIdx !== null ? (
+                        <>
+                          <Check className="h-4 w-4 mr-2" />
+                          Salvar Edicao
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Adicionar Opcao
+                        </>
+                      )}
+                    </Button>
+                    {editingOptionIdx !== null && (
+                      <Button
+                        variant="outline"
+                        onClick={cancelEditOption}
+                        data-testid="button-cancel-edit-option"
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Cancelar
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1083,7 +1145,7 @@ function TriageMenusTab({
                     className="p-2 border rounded-md space-y-2"
                   >
                     <div className="flex items-center gap-2">
-                      <Badge>{opt.key}</Badge>
+                      <Badge className={editingOptionIdx === idx ? "bg-primary text-primary-foreground" : ""}>{opt.key}</Badge>
                       <span className="flex-1 font-medium">{opt.label}</span>
                       {opt.tagId && (
                         <Badge variant="secondary" style={{ backgroundColor: tags.find((t) => t.id === opt.tagId)?.color }}>
@@ -1098,7 +1160,16 @@ function TriageMenusTab({
                       <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() => editOption(idx)}
+                        data-testid={`button-edit-edit-option-${idx}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => removeOption(idx)}
+                        data-testid={`button-edit-remove-option-${idx}`}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -1202,16 +1273,37 @@ function TriageMenusTab({
                     </Select>
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={addOption}
-                  disabled={!newOption.key || !newOption.label}
-                  data-testid="button-edit-add-option"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Adicionar Opcao
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant={editingOptionIdx !== null ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={addOption}
+                    disabled={!newOption.key || !newOption.label}
+                    data-testid="button-edit-add-option"
+                  >
+                    {editingOptionIdx !== null ? (
+                      <>
+                        <Check className="h-4 w-4 mr-2" />
+                        Salvar Edicao
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Adicionar Opcao
+                      </>
+                    )}
+                  </Button>
+                  {editingOptionIdx !== null && (
+                    <Button
+                      variant="outline"
+                      onClick={cancelEditOption}
+                      data-testid="button-edit-cancel-option"
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
