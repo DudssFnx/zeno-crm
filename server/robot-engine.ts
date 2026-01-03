@@ -196,10 +196,15 @@ class RobotEngine {
       }
 
       case "send_text": {
+        logger.info({ actionContent: action.content }, "Executing send_text action");
         if (action.content) {
           const processedContent = this.processTemplateVariables(action.content, context);
+          logger.info({ processedContent: processedContent.substring(0, 50) }, "Sending text message via robot");
           await sendMessage(context.conversationId, processedContent);
           await this.sleep(this.generateHumanizedDelay(500));
+          logger.info("Text message sent successfully");
+        } else {
+          logger.warn("send_text action has no content - skipping");
         }
         break;
       }
