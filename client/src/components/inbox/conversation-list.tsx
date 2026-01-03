@@ -315,7 +315,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
         </AlertDialog>
       </div>
 
-      <ScrollArea className="flex-1">
+      <div className="flex-1 min-h-0 overflow-y-auto" data-testid="conversation-list-scroll">
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
             <LoadingSpinner />
@@ -412,7 +412,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
             ))}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }
