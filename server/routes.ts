@@ -815,6 +815,31 @@ export async function registerRoutes(
 
   // Conversations routes
   
+  // Delete multiple conversations (bulk) - MUST come before /:id route
+  app.delete("/api/conversations/bulk", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { ids } = req.body;
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "IDs are required" });
+      }
+      const count = await storage.deleteConversations(req.user!.companyId, ids);
+      console.log(`[API] Deleted ${count} conversations for company ${req.user!.companyId}`);
+      
+      // Emit socket events for each deleted conversation
+      for (const conversationId of ids) {
+        io.to(`company:${req.user!.companyId}`).emit("conversation:deleted", {
+          companyId: req.user!.companyId,
+          conversationId,
+        });
+      }
+      
+      res.json({ success: true, deleted: count });
+    } catch (error) {
+      console.error("Delete conversations error:", error);
+      res.status(500).json({ message: "Failed to delete conversations" });
+    }
+  });
+  
   // Delete single conversation (admin/master only)
   app.delete("/api/conversations/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
@@ -842,31 +867,6 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Delete conversation error:", error);
       res.status(500).json({ message: "Failed to delete conversation" });
-    }
-  });
-  
-  // Delete multiple conversations (bulk) (admin/master only)
-  app.delete("/api/conversations/bulk", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const { ids } = req.body;
-      if (!ids || !Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "IDs are required" });
-      }
-      const count = await storage.deleteConversations(req.user!.companyId, ids);
-      console.log(`[API] Deleted ${count} conversations for company ${req.user!.companyId}`);
-      
-      // Emit socket events for each deleted conversation
-      for (const conversationId of ids) {
-        io.to(`company:${req.user!.companyId}`).emit("conversation:deleted", {
-          companyId: req.user!.companyId,
-          conversationId,
-        });
-      }
-      
-      res.json({ success: true, deleted: count });
-    } catch (error) {
-      console.error("Delete conversations error:", error);
-      res.status(500).json({ message: "Failed to delete conversations" });
     }
   });
 
