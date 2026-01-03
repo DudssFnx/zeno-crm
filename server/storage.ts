@@ -676,9 +676,23 @@ export class DatabaseStorage implements IStorage {
   async createMessage(data: InsertMessage): Promise<Message> {
     const [message] = await db.insert(messages).values(data).returning();
     
+    // Atualiza conversa: se incoming = não lida, se outgoing = lida
+    const updateData: Record<string, any> = { 
+      lastMessageAt: new Date(), 
+      updatedAt: new Date() 
+    };
+    
+    // Mensagem do cliente (incoming) = marcar como não lida
+    // Mensagem do atendente (outgoing) = marcar como lida
+    if (data.direction === "incoming") {
+      updateData.isUnread = true;
+    } else if (data.direction === "outgoing") {
+      updateData.isUnread = false;
+    }
+    
     await db
       .update(conversations)
-      .set({ lastMessageAt: new Date(), updatedAt: new Date() })
+      .set(updateData)
       .where(eq(conversations.id, data.conversationId));
 
     return message;
