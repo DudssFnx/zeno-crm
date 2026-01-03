@@ -19,7 +19,8 @@ import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { formatPhoneNumber } from "@/lib/utils";
+import { formatPhoneNumber, formatTimeAgo, getInactivityColor, cn } from "@/lib/utils";
+import { AttributeChip } from "@/components/attribute-chip";
 import type { Contact, WhatsappAccount } from "@shared/schema";
 
 const startConversationSchema = z.object({
@@ -37,6 +38,8 @@ export default function ContactsPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [attributeFilter, setAttributeFilter] = useState<string>("all");
+  const [inactivityFilter, setInactivityFilter] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -68,6 +71,49 @@ export default function ContactsPage() {
   });
 
   const connectedAccounts = accounts.filter(a => a.status === "connected");
+
+  const { data: contactAttributes = [] } = useQuery<{ id: string; name: string; color: string }[]>({
+    queryKey: ["/api/contact-attributes"],
+    queryFn: async () => {
+      const res = await authFetch("/api/contact-attributes");
+      if (!res.ok) throw new Error("Failed to fetch attributes");
+      return res.json();
+    },
+  });
+
+  const filteredContacts = contacts.filter((contact) => {
+    if (attributeFilter !== "all") {
+      if (attributeFilter === "has_any") {
+        if (!contact.attributes || contact.attributes.length === 0) return false;
+      } else {
+        const hasAttr = contact.attributes?.some(attr => 
+          attr.toLowerCase() === attributeFilter.toLowerCase()
+        );
+        if (!hasAttr) return false;
+      }
+    }
+    
+    if (inactivityFilter !== "all") {
+      const lastInbound = (contact as { lastInboundAt?: string | null }).lastInboundAt;
+      if (inactivityFilter === "never_inbound") {
+        if (lastInbound) return false;
+      } else {
+        if (!lastInbound) return false;
+        const date = new Date(lastInbound);
+        const diffDays = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+        switch (inactivityFilter) {
+          case "0_1": if (diffDays > 1) return false; break;
+          case "2_3": if (diffDays < 2 || diffDays > 3) return false; break;
+          case "4_7": if (diffDays < 4 || diffDays > 7) return false; break;
+          case "8_15": if (diffDays < 8 || diffDays > 15) return false; break;
+          case "16_30": if (diffDays < 16 || diffDays > 30) return false; break;
+          case "30_plus": if (diffDays < 30) return false; break;
+        }
+      }
+    }
+    
+    return true;
+  });
 
   const startConversation = useMutation({
     mutationFn: async (data: StartConversationData) => {
@@ -288,7 +334,7 @@ export default function ContactsPage() {
             </div>
           </div>
 
-          <div className="mb-6">
+          <div className="mb-6 space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -299,17 +345,52 @@ export default function ContactsPage() {
                 data-testid="input-search-contacts"
               />
             </div>
+            <div className="flex gap-2 flex-wrap">
+              <Select value={attributeFilter} onValueChange={setAttributeFilter}>
+                <SelectTrigger className="w-[180px]" data-testid="select-attribute-filter">
+                  <SelectValue placeholder="Atributo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos Atributos</SelectItem>
+                  <SelectItem value="has_any">Com Atributo</SelectItem>
+                  {contactAttributes.map((attr) => (
+                    <SelectItem key={attr.id} value={attr.name}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: attr.color }} />
+                        {attr.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={inactivityFilter} onValueChange={setInactivityFilter}>
+                <SelectTrigger className="w-[180px]" data-testid="select-inactivity-filter">
+                  <SelectValue placeholder="Inatividade" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="0_1">Hoje/Ontem</SelectItem>
+                  <SelectItem value="2_3">2-3 dias</SelectItem>
+                  <SelectItem value="4_7">4-7 dias</SelectItem>
+                  <SelectItem value="8_15">8-15 dias</SelectItem>
+                  <SelectItem value="16_30">16-30 dias</SelectItem>
+                  <SelectItem value="30_plus">+30 dias</SelectItem>
+                  <SelectItem value="never_inbound">Nunca respondeu</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {isLoading ? (
             <LoadingCard />
-          ) : contacts.length === 0 ? (
+          ) : filteredContacts.length === 0 ? (
             <Card>
               <CardContent className="p-0">
                 <EmptyState
                   icon={Users}
-                  title={searchQuery ? "Nenhum contato encontrado" : "Nenhum contato ainda"}
-                  description={searchQuery ? "Tente um termo de busca diferente" : "Inicie uma conversa para criar seu primeiro contato"}
+                  title={searchQuery || attributeFilter !== "all" || inactivityFilter !== "all" ? "Nenhum contato encontrado" : "Nenhum contato ainda"}
+                  description={searchQuery || attributeFilter !== "all" || inactivityFilter !== "all" ? "Tente alterar os filtros" : "Inicie uma conversa para criar seu primeiro contato"}
                   action={
                     <Button onClick={() => setIsDialogOpen(true)}>
                       <MessageSquare className="h-4 w-4 mr-2" />
@@ -322,10 +403,10 @@ export default function ContactsPage() {
           ) : (
             <Card>
               <CardContent className="p-0">
-                {!isOperator && contacts.length > 0 && (
+                {!isOperator && filteredContacts.length > 0 && (
                   <div className="flex items-center gap-3 p-3 border-b">
                     <Checkbox
-                      checked={selectedContacts.size === contacts.length}
+                      checked={selectedContacts.size === filteredContacts.length}
                       onCheckedChange={toggleSelectAll}
                       data-testid="checkbox-select-all-contacts"
                     />
@@ -337,33 +418,58 @@ export default function ContactsPage() {
                   </div>
                 )}
                 <div className="divide-y">
-                  {contacts.map((contact) => (
-                    <div
-                      key={contact.id}
-                      className="flex items-center gap-3 p-4 hover-elevate cursor-pointer"
-                      onClick={() => handleContactClick(contact)}
-                      data-testid={`contact-row-${contact.id}`}
-                    >
-                      {!isOperator && (
-                        <Checkbox
-                          checked={selectedContacts.has(contact.id)}
-                          onCheckedChange={() => {}}
-                          onClick={(e) => toggleContactSelection(contact.id, e)}
-                          data-testid={`checkbox-contact-${contact.id}`}
-                        />
-                      )}
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <AvatarWithFallback name={contact.name} src={contact.avatarUrl} size="md" />
-                        <div className="min-w-0 flex-1">
-                          <span className="font-medium block truncate">{contact.name}</span>
-                          <p className="text-sm text-muted-foreground truncate">{formatPhoneNumber(contact.phoneNumber)}</p>
+                  {filteredContacts.map((contact) => {
+                    const lastInbound = (contact as { lastInboundAt?: string | null }).lastInboundAt;
+                    const colorClass = contact.attributes && contact.attributes.length > 0 ? getInactivityColor(lastInbound) : null;
+                    return (
+                      <div
+                        key={contact.id}
+                        className="flex items-center gap-3 p-4 hover-elevate cursor-pointer"
+                        onClick={() => handleContactClick(contact)}
+                        data-testid={`contact-row-${contact.id}`}
+                      >
+                        {!isOperator && (
+                          <Checkbox
+                            checked={selectedContacts.has(contact.id)}
+                            onCheckedChange={() => {}}
+                            onClick={(e) => toggleContactSelection(contact.id, e)}
+                            data-testid={`checkbox-contact-${contact.id}`}
+                          />
+                        )}
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <AvatarWithFallback name={contact.name} src={contact.avatarUrl} size="md" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium truncate">{contact.name}</span>
+                              {contact.attributes && contact.attributes.slice(0, 2).map((attr, idx) => (
+                                <AttributeChip key={`${contact.id}-attr-${idx}`} name={attr} size="xs" />
+                              ))}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm text-muted-foreground truncate">{formatPhoneNumber(contact.phoneNumber)}</p>
+                              {colorClass && (
+                                <span 
+                                  className={cn(
+                                    "text-[10px] shrink-0",
+                                    colorClass === "ok" && "text-green-600 dark:text-green-400",
+                                    colorClass === "attention" && "text-yellow-600 dark:text-yellow-400",
+                                    colorClass === "critical" && "text-red-600 dark:text-red-400",
+                                    colorClass === "never" && "text-muted-foreground"
+                                  )}
+                                  title="Tempo desde última mensagem do cliente"
+                                >
+                                  {formatTimeAgo(lastInbound)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
+                        <Button variant="ghost" size="icon">
+                          <MessageSquare className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button variant="ghost" size="icon">
-                        <MessageSquare className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>

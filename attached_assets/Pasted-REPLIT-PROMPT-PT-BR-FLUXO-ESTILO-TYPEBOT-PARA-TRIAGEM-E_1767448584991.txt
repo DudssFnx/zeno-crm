@@ -1,0 +1,193 @@
+REPLIT PROMPT (PT-BR) — “FLUXO ESTILO TYPEBOT” PARA TRIAGEM E ROTEAMENTO DE CLIENTES POR SETOR (WHATSAPP CRM / BAILEYS)
+
+OBJETIVO:
+Quero implementar um “Flow Builder” estilo Typebot dentro do meu CRM WhatsApp (Baileys) para:
+1) Atender automaticamente o cliente com um menu (botões / lista)
+2) Identificar o motivo do contato
+3) Direcionar (rotear) a conversa para um SETOR específico (Vendas, Financeiro, Suporte, Logística etc.)
+4) Atualizar a conversa no CRM (departamento, responsável, etapa/funil, etiquetas)
+5) Opcional: mandar áudio automático (ou mensagem de voz) como no Waspeed
+
+Referências de mercado (o que CRMs bons fazem):
+- Routing por regras (setor/agent) e atualização do ticket/conversa :contentReference[oaicite:2]{index=2}
+- Round robin / distribuição automática :contentReference[oaicite:3]{index=3}
+- Workflows/flows de roteamento com lógica e templates :contentReference[oaicite:4]{index=4}
+- Botões e fluxos de atendimento estilo Typebot/WhatsApp bot :contentReference[oaicite:5]{index=5}
+
+================================================
+A) CONCEITO (COMO FUNCIONA)
+================================================
+
+Quando chegar a PRIMEIRA mensagem do cliente (ou quando o chat estiver em “triagem”):
+- O CRM dispara um “Fluxo de Triagem” automaticamente
+- O cliente recebe um menu com opções (botões/lista):
+  1) Vendas
+  2) Financeiro
+  3) Suporte
+  4) Falar com humano
+
+Quando o cliente escolhe:
+- A conversa é marcada com:
+  - departmentId (setor)
+  - tags (ex: "triagem_concluida", "vendas")
+  - stage (funil/kanban) (ex: "Novo" -> "Em atendimento")
+  - assignedTo (opcional: agente específico)
+- O CRM já abre/encaminha para a fila daquele setor (visão filtrada)
+- Envia uma resposta automática do setor (texto e opcional áudio)
+
+================================================
+B) MODELOS NO BANCO (OBRIGATÓRIO)
+================================================
+
+1) Departments (setores):
+Department {
+  id,
+  name,            // Vendas, Financeiro...
+  defaultStageId,  // estágio inicial do setor
+  agents: [userId],
+  assignmentMode: "round_robin" | "manual" | "by_tag" | "by_shift"
+}
+
+2) Flows (fluxos):
+Flow {
+  id,
+  name,
+  isActive,
+  trigger: {
+    type: "new_chat" | "new_inbound" | "keyword" | "manual",
+    keywords?: ["financeiro","boleto","pagamento"],
+    onlyIfUnassigned?: true
+  },
+  nodes: [ ... ],
+  edges: [ ... ]
+}
+
+3) Conversation (conversa):
+Conversation {
+  chatId,
+  contactName,
+  phone,
+  departmentId?,
+  stageId?,
+  tags: [],
+  assignedTo?,
+  flowState?: { flowId, nodeId, variables, updatedAt },
+  lastInboundAt,
+  lastMessageAt
+}
+
+================================================
+C) NODES (ESTILO TYPEBOT)
+================================================
+
+Implementar pelo menos estes tipos de nó:
+
+1) message
+- envia texto (template)
+2) buttons (quick replies)
+- envia opções e espera resposta (botão)
+3) input
+- pergunta e salva resposta em variável (ex: nome, CNPJ)
+4) condition
+- if/else (ex: mensagem contém “boleto” => financeiro)
+5) route_to_department
+- seta departmentId + stageId + tags
+- faz assignment (round robin opcional)
+6) handoff_human
+- encerra automação e marca conversa como “humano”
+7) send_audio (opcional)
+- envia áudio padrão do setor (arquivo .ogg/opus) OU fallback texto
+
+================================================
+D) TRIGGERS (OBRIGATÓRIO)
+================================================
+
+1) new_chat / new_inbound
+- quando chega mensagem e NÃO existe departmentId/assignedTo, inicia triagem
+
+2) keyword trigger
+- se cliente mandar “financeiro”, “boleto”, “pagamento”, já pula pro setor Financeiro
+(keyword routing é padrão de CRM) :contentReference[oaicite:6]{index=6}
+
+================================================
+E) ASSIGNMENT (ROUND ROBIN) (OPCIONAL RECOMENDADO)
+================================================
+Se o setor tiver agents, implementar round-robin:
+- pega próximo agente disponível do department.agents
+- salva assignedTo
+- registra no log
+
+(Distribuição automática é feature comum em CRMs WhatsApp) :contentReference[oaicite:7]{index=7}
+
+================================================
+F) INTEGRAÇÃO COM BAILEYS (OBRIGATÓRIO)
+================================================
+
+1) Ao receber msg (messages.upsert):
+- garantir que a conversa exista (auto-create)
+- se conversa está em flowState:
+  - entregar msg para o Flow Engine (resolver botão/input/keywords)
+- se conversa NÃO tem flowState e está “sem setor”:
+  - iniciar Flow de triagem automaticamente (trigger new_inbound)
+
+2) Envio de botões:
+- usar mensagens interativas suportadas (buttons/list) se sua lib permitir
+- fallback: enviar texto numerado (1,2,3,4) caso o recurso não esteja disponível
+
+3) Envio de áudio:
+- permitir enviar um áudio padrão do setor (arquivo local)
+- se falhar, fallback texto
+
+================================================
+G) PAINEL CRM (VISÃO POR SETOR)
+================================================
+
+1) Filtros rápidos:
+- “Todos”
+- “Vendas”
+- “Financeiro”
+- “Suporte”
+- “Sem setor (triagem pendente)”
+
+2) Cada conversa deve mostrar:
+- Setor
+- Agente (se atribuído)
+- Tags principais
+- Status “Bot ativo” ou “Humano”
+
+================================================
+H) LOGS E AUDITORIA (OBRIGATÓRIO)
+================================================
+Guardar histórico de automações:
+FlowLog {
+  chatId,
+  flowId,
+  nodeId,
+  action,
+  timestamp,
+  details
+}
+
+================================================
+I) ACEITE (TESTES)
+================================================
+1) Cliente novo manda “oi”
+- fluxo triagem dispara
+- cliente recebe menu
+- escolhe “Financeiro”
+- conversa vai para setor Financeiro no painel
+- recebe resposta automática (texto e opcional áudio)
+2) Cliente manda “boleto”
+- sistema roteia direto para Financeiro por keyword
+3) Handoff humano
+- cliente escolhe “Falar com humano”
+- bot para e conversa fica para atendimento
+
+================================================
+ENTREGÁVEIS
+================================================
+- Flow Engine (executor) + armazenamento de flowState por conversa
+- CRUD simples de flows (pelo menos JSON no banco)
+- Triagem padrão (modelo pronto)
+- Routing para departamentos + assignment opcional
+- Fallback quando botões interativos não existirem
