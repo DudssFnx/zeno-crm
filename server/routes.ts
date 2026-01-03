@@ -1882,14 +1882,19 @@ export async function registerRoutes(
           });
         } else {
           // Send text
+          console.log(`[Robot] Sending text message to ${chatId}: "${content.substring(0, 50)}..."`);
           const sent = await whatsappBaileys.sendMessage(
             conversation.whatsappAccountId,
             chatId,
             content
           );
+          console.log(`[Robot] WhatsApp sendMessage result:`, JSON.stringify(sent));
           
           if (sent.success && sent.messageId) {
             messageQueue.markMessageSentByCrm(sent.messageId);
+            console.log(`[Robot] Text message sent successfully: ${sent.messageId}`);
+          } else {
+            console.error(`[Robot] Text message send failed:`, sent.error);
           }
           
           // Save message
