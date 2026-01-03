@@ -586,6 +586,15 @@ export async function registerRoutes(
         if (!contact) {
           return res.status(404).json({ message: "Contact not found" });
         }
+        
+        io.to(`company:${req.user!.companyId}`).emit("contact:updated", {
+          companyId: req.user!.companyId,
+          contactId: contact.id,
+          notes: contact.notes,
+          updatedBy: req.user!.name,
+          updatedAt: new Date().toISOString(),
+        });
+        
         return res.json(contact);
       }
       
@@ -598,6 +607,15 @@ export async function registerRoutes(
       if (!contact) {
         return res.status(404).json({ message: "Contact not found" });
       }
+      
+      io.to(`company:${req.user!.companyId}`).emit("contact:updated", {
+        companyId: req.user!.companyId,
+        contactId: contact.id,
+        notes: contact.notes,
+        updatedBy: req.user!.name,
+        updatedAt: new Date().toISOString(),
+      });
+      
       res.json(contact);
     } catch (error) {
       console.error("Update contact error:", error);
@@ -1341,6 +1359,34 @@ export async function registerRoutes(
     }
   });
 
+  // PUT /api/macros/reorder - Reordenar macros (admin/master only)
+  app.put("/api/macros/reorder", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { macroIds } = req.body;
+      const companyId = req.user!.companyId;
+
+      if (!Array.isArray(macroIds) || macroIds.length === 0) {
+        return res.status(400).json({ message: "macroIds must be a non-empty array" });
+      }
+
+      // Verificar que todos os macros pertencem à empresa
+      const macros = await storage.getMacros(companyId);
+      const companyMacroIds = new Set(macros.map(m => m.id));
+
+      for (const id of macroIds) {
+        if (!companyMacroIds.has(id)) {
+          return res.status(403).json({ message: "Forbidden: macro does not belong to company" });
+        }
+      }
+
+      const reorderedMacros = await storage.reorderMacros(companyId, macroIds);
+      res.json(reorderedMacros);
+    } catch (error) {
+      console.error("Reorder macros error:", error);
+      res.status(500).json({ message: "Failed to reorder macros" });
+    }
+  });
+
   // POST /api/macros/execute - Executar macro (todos podem executar)
   app.post("/api/macros/execute", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
@@ -1753,7 +1799,7 @@ export async function registerRoutes(
 
   app.post("/api/stages", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { name, color } = req.body;
+      const { name, color, tagId } = req.body;
       if (!name) {
         return res.status(400).json({ message: "Nome é obrigatório" });
       }
@@ -1762,6 +1808,7 @@ export async function registerRoutes(
         companyId: req.user!.companyId,
         name,
         color: color || "#6B7280",
+        tagId: tagId || null,
       });
 
       res.json(stage);
@@ -1788,8 +1835,8 @@ export async function registerRoutes(
 
   app.put("/api/stages/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { name, color } = req.body;
-      const stage = await storage.updateStage(req.params.id, { name, color });
+      const { name, color, tagId } = req.body;
+      const stage = await storage.updateStage(req.params.id, { name, color, tagId: tagId || null });
       if (!stage) {
         return res.status(404).json({ message: "Estágio não encontrado" });
       }
@@ -1818,6 +1865,13 @@ export async function registerRoutes(
       if (!conversation) {
         return res.status(404).json({ message: "Conversa não encontrada" });
       }
+      
+      // Emitir evento socket para sincronizar todos os operadores
+      const conversationWithDetails = await storage.getConversationWithDetails(conversation.id);
+      if (conversationWithDetails) {
+        io.to(`company:${req.user!.companyId}`).emit("conversation:updated", conversationWithDetails);
+      }
+      
       res.json(conversation);
     } catch (error) {
       console.error("Update conversation stage error:", error);

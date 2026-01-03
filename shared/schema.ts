@@ -219,6 +219,7 @@ export const macros = pgTable("macros", {
   actions: jsonb("actions").notNull().default([]), // [{type: "ADD_TAG", tagId}, {type: "REMOVE_TAG", tagId}, {type: "SET_STATUS", status}]
   isGlobal: boolean("is_global").notNull().default(true),
   createdBy: varchar("created_by").references(() => users.id),
+  sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -270,12 +271,14 @@ export const stages = pgTable("stages", {
   name: text("name").notNull(),
   color: text("color").notNull().default("#6B7280"),
   order: text("order").notNull().default("0"),
+  tagId: varchar("tag_id").references(() => tags.id), // Tag associada ao estágio
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const stagesRelations = relations(stages, ({ one }) => ({
   company: one(companies, { fields: [stages.companyId], references: [companies.id] }),
+  tag: one(tags, { fields: [stages.tagId], references: [tags.id] }),
 }));
 
 // Insert schemas

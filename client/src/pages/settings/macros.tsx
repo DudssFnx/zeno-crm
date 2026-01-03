@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Zap, X, Tag as TagIcon, UserCircle, CircleDot, MessageCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Zap, X, Tag as TagIcon, UserCircle, CircleDot, MessageCircle, GripVertical } from "lucide-react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,6 +58,116 @@ const macroFormSchema = z.object({
 });
 
 type MacroFormData = z.infer<typeof macroFormSchema>;
+
+interface SortableMacroCardProps {
+  macro: Macro;
+  isAdmin: boolean;
+  tags: Tag[];
+  users: User[];
+  onEdit: (macro: Macro) => void;
+  onDelete: (id: string) => void;
+  getActionLabel: (action: { type: string; tagId?: string; status?: string; agentId?: string; message?: string; attribute?: string }) => string;
+  getActionIcon: (type: string) => typeof Zap;
+}
+
+function SortableMacroCard({ macro, isAdmin, onEdit, onDelete, getActionLabel, getActionIcon }: SortableMacroCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: macro.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const actions = (macro.actions as Array<{ type: string; tagId?: string; status?: string; agentId?: string; message?: string; attribute?: string }>) || [];
+
+  return (
+    <Card ref={setNodeRef} style={style} data-testid={`macro-card-${macro.id}`}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          {isAdmin && (
+            <div
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing pt-0.5 text-muted-foreground"
+              data-testid={`drag-handle-${macro.id}`}
+            >
+              <GripVertical className="h-5 w-5" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <Zap className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="font-medium">{macro.name}</span>
+            </div>
+            {macro.description && (
+              <p className="text-sm text-muted-foreground mb-2">{macro.description}</p>
+            )}
+            {macro.messageTemplate && (
+              <p className="text-sm text-muted-foreground mb-2 italic border-l-2 border-muted pl-2">
+                {macro.messageTemplate.length > 100
+                  ? `${macro.messageTemplate.substring(0, 100)}...`
+                  : macro.messageTemplate}
+              </p>
+            )}
+            {actions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {actions.map((action, idx) => {
+                  const ActionIcon = getActionIcon(action.type);
+                  return (
+                    <Badge key={idx} variant="outline" className="text-xs gap-1">
+                      <ActionIcon className="h-3 w-3" />
+                      {getActionLabel(action)}
+                    </Badge>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onEdit(macro)}
+                data-testid={`button-edit-macro-${macro.id}`}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    data-testid={`button-delete-macro-${macro.id}`}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Excluir Macro</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Tem certeza que deseja excluir a macro "{macro.name}"? Esta ação não pode ser desfeita.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => onDelete(macro.id)}
+                      className="bg-destructive text-destructive-foreground"
+                    >
+                      Excluir
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function MacrosPage() {
   const authFetch = useAuthFetch();
@@ -177,6 +290,40 @@ export default function MacrosPage() {
       toast({ title: "Falha ao excluir macro", variant: "destructive" });
     },
   });
+
+  const reorderMacros = useMutation({
+    mutationFn: async (macroIds: string[]) => {
+      const res = await authFetch("/api/macros/reorder", {
+        method: "PUT",
+        body: JSON.stringify({ macroIds }),
+      });
+      if (!res.ok) throw new Error("Failed to reorder macros");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/macros"] });
+    },
+    onError: () => {
+      toast({ title: "Falha ao reordenar macros", variant: "destructive" });
+      queryClient.invalidateQueries({ queryKey: ["/api/macros"] });
+    },
+  });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = macros.findIndex((m) => m.id === active.id);
+      const newIndex = macros.findIndex((m) => m.id === over.id);
+      const newOrder = arrayMove(macros, oldIndex, newIndex);
+      queryClient.setQueryData(["/api/macros"], newOrder);
+      reorderMacros.mutate(newOrder.map((m) => m.id));
+    }
+  };
 
   const handleOpenDialog = (macro?: Macro) => {
     if (macro) {
@@ -602,88 +749,25 @@ export default function MacrosPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
-              {macros.map((macro) => {
-                const actions = (macro.actions as Array<{ type: string; tagId?: string; status?: string; agentId?: string; message?: string; attribute?: string }>) || [];
-                return (
-                  <Card key={macro.id} data-testid={`macro-card-${macro.id}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Zap className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <span className="font-medium">{macro.name}</span>
-                          </div>
-                          {macro.description && (
-                            <p className="text-sm text-muted-foreground mb-2">{macro.description}</p>
-                          )}
-                          {macro.messageTemplate && (
-                            <p className="text-sm text-muted-foreground mb-2 italic border-l-2 border-muted pl-2">
-                              {macro.messageTemplate.length > 100
-                                ? `${macro.messageTemplate.substring(0, 100)}...`
-                                : macro.messageTemplate}
-                            </p>
-                          )}
-                          {actions.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mt-2">
-                              {actions.map((action, idx) => {
-                                const ActionIcon = getActionIcon(action.type);
-                                return (
-                                  <Badge key={idx} variant="outline" className="text-xs gap-1">
-                                    <ActionIcon className="h-3 w-3" />
-                                    {getActionLabel(action)}
-                                  </Badge>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                        {isAdmin && (
-                          <div className="flex items-center gap-2 shrink-0">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleOpenDialog(macro)}
-                              data-testid={`button-edit-macro-${macro.id}`}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  data-testid={`button-delete-macro-${macro.id}`}
-                                >
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Excluir Macro</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Tem certeza que deseja excluir a macro "{macro.name}"? Esta ação não pode ser desfeita.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => deleteMacro.mutate(macro.id)}
-                                    className="bg-destructive text-destructive-foreground"
-                                  >
-                                    Excluir
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={macros.map((m) => m.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-4">
+                  {macros.map((macro) => (
+                    <SortableMacroCard
+                      key={macro.id}
+                      macro={macro}
+                      isAdmin={isAdmin}
+                      tags={tags}
+                      users={users}
+                      onEdit={handleOpenDialog}
+                      onDelete={(id) => deleteMacro.mutate(id)}
+                      getActionLabel={getActionLabel}
+                      getActionIcon={getActionIcon}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
           )}
         </div>
       </div>

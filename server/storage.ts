@@ -55,11 +55,13 @@ export interface IStorage {
   getContact(id: string): Promise<Contact | undefined>;
   getContactWithTags(id: string): Promise<ContactWithTags | undefined>;
   getContactByPhone(companyId: string, phoneNumber: string): Promise<Contact | undefined>;
+  getContactByPhoneAndAccount(whatsappAccountId: string, phoneNumber: string): Promise<Contact | undefined>;
   getContacts(companyId: string): Promise<Contact[]>;
   updateContact(id: string, data: Partial<InsertContact>): Promise<Contact | undefined>;
   updateContactsByLid(companyId: string, lidPhoneNumber: string, realPhoneNumber: string): Promise<number>;
   deleteContact(id: string): Promise<void>;
   deleteContacts(ids: string[]): Promise<void>;
+  getOrCreateContact(data: InsertContact): Promise<{ contact: Contact; created: boolean }>;
 
   // Tags
   createTag(data: InsertTag): Promise<Tag>;
@@ -88,7 +90,9 @@ export interface IStorage {
     inactivePreset?: string; // "0_1" | "2_3" | "4_7" | "8_15" | "16_30" | "30_plus" | "never_inbound"
   }): Promise<ConversationWithDetails[]>;
   getOpenConversationByContact(contactId: string): Promise<Conversation | undefined>;
+  getOpenConversationByAccountAndContact(whatsappAccountId: string, contactId: string): Promise<Conversation | undefined>;
   updateConversation(id: string, data: Partial<InsertConversation> & { updatedAt?: Date; lastMessageAt?: Date }): Promise<Conversation | undefined>;
+  getOrCreateConversation(data: InsertConversation): Promise<{ conversation: Conversation; created: boolean }>;
 
   // Messages
   createMessage(data: InsertMessage): Promise<Message>;
@@ -116,6 +120,7 @@ export interface IStorage {
   getMacros(companyId: string): Promise<Macro[]>;
   updateMacro(id: string, data: Partial<InsertMacro>): Promise<Macro | undefined>;
   deleteMacro(id: string): Promise<void>;
+  reorderMacros(companyId: string, macroIds: string[]): Promise<Macro[]>;
   
   // Macro Executions
   createMacroExecution(data: InsertMacroExecution): Promise<MacroExecution>;
@@ -335,6 +340,71 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async getContactByPhoneAndAccount(whatsappAccountId: string, phoneNumber: string): Promise<Contact | undefined> {
+    const normalizedInput = normalizePhone(phoneNumber);
+    
+    const [contact] = await db
+      .select()
+      .from(contacts)
+      .where(and(
+        eq(contacts.whatsappAccountId, whatsappAccountId),
+        eq(contacts.phoneNumber, normalizedInput)
+      ));
+    
+    return contact;
+  }
+
+  async getOrCreateContact(data: InsertContact): Promise<{ contact: Contact; created: boolean }> {
+    if (!data.whatsappAccountId) {
+      throw new Error("whatsappAccountId is required for getOrCreateContact");
+    }
+    
+    const normalizedPhone = normalizePhone(data.phoneNumber);
+    console.log(`[Storage] getOrCreateContact: phone=${normalizedPhone} name="${data.name}" account=${data.whatsappAccountId}`);
+    
+    const existing = await this.getContactByPhoneAndAccount(data.whatsappAccountId, normalizedPhone);
+    if (existing) {
+      console.log(`[Storage] Contact exists: id=${existing.id} name="${existing.name}" phone=${existing.phoneNumber}`);
+      return { contact: existing, created: false };
+    }
+    
+    console.log(`[Storage] Contact not found, creating new contact...`);
+    
+    try {
+      const [contact] = await db
+        .insert(contacts)
+        .values({ ...data, phoneNumber: normalizedPhone })
+        .onConflictDoNothing()
+        .returning();
+      
+      if (contact) {
+        console.log(`[Storage] Contact CREATED: id=${contact.id} name="${contact.name}" phone=${contact.phoneNumber}`);
+        return { contact, created: true };
+      }
+      
+      console.log(`[Storage] Insert returned empty (conflict?), retrying fetch...`);
+      const retryContact = await this.getContactByPhoneAndAccount(data.whatsappAccountId, normalizedPhone);
+      if (retryContact) {
+        console.log(`[Storage] Contact found on retry: id=${retryContact.id} name="${retryContact.name}"`);
+        return { contact: retryContact, created: false };
+      }
+      
+      console.error(`[Storage] CRITICAL: Failed to create or find contact for phone ${normalizedPhone}`);
+      throw new Error(`Failed to create or find contact for phone ${normalizedPhone}`);
+    } catch (error: any) {
+      if (error.code === '23505') {
+        console.log(`[Storage] Unique constraint violation (23505), fetching existing...`);
+        const retryContact = await this.getContactByPhoneAndAccount(data.whatsappAccountId, normalizedPhone);
+        if (retryContact) {
+          console.log(`[Storage] Contact found after conflict: id=${retryContact.id}`);
+          return { contact: retryContact, created: false };
+        }
+      }
+      console.error(`[Storage] Error creating contact:`, error);
+      throw error;
+    }
+  }
+
   // Tags
   async createTag(data: InsertTag): Promise<Tag> {
     const [tag] = await db.insert(tags).values(data).returning();
@@ -526,6 +596,18 @@ export class DatabaseStorage implements IStorage {
     return conversation;
   }
 
+  async getOpenConversationByAccountAndContact(whatsappAccountId: string, contactId: string): Promise<Conversation | undefined> {
+    const [conversation] = await db
+      .select()
+      .from(conversations)
+      .where(and(
+        eq(conversations.whatsappAccountId, whatsappAccountId),
+        eq(conversations.contactId, contactId),
+        eq(conversations.status, "open")
+      ));
+    return conversation;
+  }
+
   async updateConversation(id: string, data: Partial<InsertConversation> & { updatedAt?: Date; lastMessageAt?: Date }): Promise<Conversation | undefined> {
     const [conversation] = await db
       .update(conversations)
@@ -533,6 +615,40 @@ export class DatabaseStorage implements IStorage {
       .where(eq(conversations.id, id))
       .returning();
     return conversation;
+  }
+
+  async getOrCreateConversation(data: InsertConversation): Promise<{ conversation: Conversation; created: boolean }> {
+    const existing = await this.getOpenConversationByAccountAndContact(data.whatsappAccountId, data.contactId);
+    if (existing) {
+      return { conversation: existing, created: false };
+    }
+    
+    try {
+      const [conversation] = await db
+        .insert(conversations)
+        .values(data)
+        .onConflictDoNothing()
+        .returning();
+      
+      if (conversation) {
+        return { conversation, created: true };
+      }
+      
+      const retryConversation = await this.getOpenConversationByAccountAndContact(data.whatsappAccountId, data.contactId);
+      if (retryConversation) {
+        return { conversation: retryConversation, created: false };
+      }
+      
+      throw new Error(`Failed to create or find conversation for contact ${data.contactId}`);
+    } catch (error: any) {
+      if (error.code === '23505') {
+        const retryConversation = await this.getOpenConversationByAccountAndContact(data.whatsappAccountId, data.contactId);
+        if (retryConversation) {
+          return { conversation: retryConversation, created: false };
+        }
+      }
+      throw error;
+    }
   }
 
   // Messages
@@ -652,7 +768,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMacros(companyId: string): Promise<Macro[]> {
-    return db.select().from(macros).where(eq(macros.companyId, companyId)).orderBy(desc(macros.createdAt));
+    return db.select().from(macros).where(eq(macros.companyId, companyId)).orderBy(asc(macros.sortOrder), asc(macros.createdAt));
   }
 
   async updateMacro(id: string, data: Partial<InsertMacro>): Promise<Macro | undefined> {
@@ -666,6 +782,19 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMacro(id: string): Promise<void> {
     await db.delete(macros).where(eq(macros.id, id));
+  }
+
+  async reorderMacros(companyId: string, macroIds: string[]): Promise<Macro[]> {
+    const result: Macro[] = [];
+    for (let i = 0; i < macroIds.length; i++) {
+      const [macro] = await db
+        .update(macros)
+        .set({ sortOrder: i, updatedAt: new Date() })
+        .where(and(eq(macros.id, macroIds[i]), eq(macros.companyId, companyId)))
+        .returning();
+      if (macro) result.push(macro);
+    }
+    return result;
   }
 
   // Macro Executions
@@ -732,6 +861,48 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateConversationStage(conversationId: string, stageId: string | null): Promise<Conversation | undefined> {
+    // Obtém a conversa atual para saber o stage anterior e o contactId
+    const [currentConv] = await db.select().from(conversations).where(eq(conversations.id, conversationId));
+    if (!currentConv) return undefined;
+
+    const contactId = currentConv.contactId;
+    const oldStageId = currentConv.stageId;
+
+    // Busca a tag do stage anterior (se existir)
+    let oldTagId: string | null = null;
+    if (oldStageId) {
+      const [oldStage] = await db.select().from(stages).where(eq(stages.id, oldStageId));
+      if (oldStage?.tagId) {
+        oldTagId = oldStage.tagId;
+      }
+    }
+
+    // Busca a tag do novo stage (se existir)
+    let newTagId: string | null = null;
+    if (stageId) {
+      const [newStage] = await db.select().from(stages).where(eq(stages.id, stageId));
+      if (newStage?.tagId) {
+        newTagId = newStage.tagId;
+      }
+    }
+
+    // Remove a tag do stage anterior do contato (se diferente da nova)
+    if (oldTagId && oldTagId !== newTagId) {
+      await db.delete(contactTags).where(
+        and(eq(contactTags.contactId, contactId), eq(contactTags.tagId, oldTagId))
+      );
+    }
+
+    // Adiciona a tag do novo stage ao contato (se não existir)
+    if (newTagId && newTagId !== oldTagId) {
+      const existingTag = await db.select().from(contactTags)
+        .where(and(eq(contactTags.contactId, contactId), eq(contactTags.tagId, newTagId)));
+      if (existingTag.length === 0) {
+        await db.insert(contactTags).values({ contactId, tagId: newTagId });
+      }
+    }
+
+    // Atualiza o stage da conversa
     const [conversation] = await db
       .update(conversations)
       .set({ stageId, updatedAt: new Date() })

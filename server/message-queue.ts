@@ -374,71 +374,96 @@ async function processMessageInBackground(msg: QueuedMessage) {
     return;
   }
   
-  // Log outgoing messages from phone that will be processed
-  if (direction === "outgoing") {
-    console.log(`[ZERO_LOSS] PROCESSING_OUTGOING_BACKGROUND: phone=${phoneNumber} content="${content.substring(0, 30)}"`);
-  }
+  // ENTRY POINT LOG - all messages that reach here should be processed
+  console.log(`[MessageHandler] ENTRY: direction=${direction} rawPhone=${phoneNumber} pushName="${contactName || 'undefined'}" content="${content.substring(0, 30)}"`);
 
   try {
-    // Buscar ou criar contato (usar cache)
-    let contact = getContactFromCache(companyId, phoneNumber) as any;
-    let contactCreated = false;
-    
-    if (!contact) {
-      contact = await storage.getContactByPhone(companyId, phoneNumber);
-      if (contact) {
-        setContactInCache(companyId, phoneNumber, contact);
-      }
-    }
-    
     const logPrefix = direction === "outgoing" ? "[PHONE_MSG]" : "[INBOUND]";
+    const normalizedPhone = normalizePhone(phoneNumber);
+    
+    // Log normalization result
+    console.log(`[MessageHandler] Normalized phone: ${phoneNumber} -> ${normalizedPhone}`);
+    
+    // ATOMIC: getOrCreateContact to avoid race conditions
+    let contact = getContactFromCache(companyId, normalizedPhone) as any;
+    let contactCreated = false;
+    let contactFromCache = !!contact;
     
     if (!contact) {
-      console.log(`${logPrefix} phone=${phoneNumber} contact=NOT_FOUND → CREATING CONTACT`);
-      contact = await storage.createContact({
+      // Determine contact name: use pushName if available, otherwise use phone number
+      // Handle special cases: empty string, undefined, or null pushName
+      let finalContactName = normalizedPhone; // Default: use phone number
+      if (contactName && contactName.trim() && contactName.trim() !== normalizedPhone) {
+        finalContactName = contactName.trim();
+      } else if (normalizedPhone.startsWith("LID_")) {
+        // For LID contacts without pushName, use a descriptive name
+        finalContactName = `Contato ${normalizedPhone}`;
+      } else {
+        // For regular numbers, format with +55
+        finalContactName = `Contato +${normalizedPhone}`;
+      }
+      
+      console.log(`[MessageHandler] Creating/finding contact: name="${finalContactName}" phone="${normalizedPhone}" pushName="${contactName || 'undefined'}"`);
+      
+      // Use atomic getOrCreateContact - handles race conditions with DB unique index
+      const result = await storage.getOrCreateContact({
         companyId,
         whatsappAccountId: accountId,
-        name: contactName || phoneNumber,
-        phoneNumber: normalizePhone(phoneNumber),
+        name: finalContactName,
+        phoneNumber: normalizedPhone,
         avatarUrl,
         source: "whatsapp",
       });
-      setContactInCache(companyId, phoneNumber, contact);
-      contactCreated = true;
-      console.log(`${logPrefix} Created contact: ${contact.id} name="${contact.name}"`);
+      contact = result.contact;
+      contactCreated = result.created;
+      setContactInCache(companyId, normalizedPhone, contact);
       
-      // Enfileirar busca de avatar em background
-      queueAvatarFetch({
-        accountId,
-        companyId,
-        contactId: contact.id,
-        phoneNumber,
-      });
+      if (contactCreated) {
+        // REQUIRED LOG FORMAT
+        console.log(`[Contact] Created: ${contact.name} - ${normalizedPhone}`);
+        console.log(`${logPrefix} phone=${normalizedPhone} → CREATED NEW CONTACT: ${contact.id}`);
+        // Enfileirar busca de avatar em background
+        queueAvatarFetch({
+          accountId,
+          companyId,
+          contactId: contact.id,
+          phoneNumber: normalizedPhone,
+        });
+      } else {
+        console.log(`[Contact] Found existing: ${contact.name} - ${normalizedPhone} (id: ${contact.id})`);
+        console.log(`${logPrefix} phone=${normalizedPhone} → FOUND EXISTING CONTACT: ${contact.id}`);
+      }
+    } else {
+      console.log(`[Contact] From cache: ${contact.name} - ${normalizedPhone} (id: ${contact.id})`);
     }
     
-    // Buscar ou criar conversa (usar cache)
+    // ATOMIC: getOrCreateConversation to avoid race conditions
     let conversation = getConversationFromCache(contact.id) as any;
     let conversationCreated = false;
     
     if (!conversation) {
-      conversation = await storage.getOpenConversationByContact(contact.id);
-      if (conversation) {
-        setConversationInCache(contact.id, conversation);
-      }
-    }
-    
-    if (!conversation) {
-      console.log(`${logPrefix} phone=${phoneNumber} conversation=NOT_FOUND → CREATING CHAT`);
-      conversation = await storage.createConversation({
+      // Use atomic getOrCreateConversation - handles race conditions with DB unique index
+      const result = await storage.getOrCreateConversation({
         companyId,
         whatsappAccountId: accountId,
         contactId: contact.id,
         status: "open",
         inbox: "whatsapp",
       });
+      conversation = result.conversation;
+      conversationCreated = result.created;
       setConversationInCache(contact.id, conversation);
-      conversationCreated = true;
-      console.log(`${logPrefix} Created conversation: ${conversation.id} for contact=${contact.id}`);
+      
+      if (conversationCreated) {
+        // REQUIRED LOG FORMAT
+        console.log(`[Conversation] Created for contact: ${contact.id}`);
+        console.log(`${logPrefix} phone=${normalizedPhone} → CREATED NEW CONVERSATION: ${conversation.id}`);
+      } else {
+        console.log(`[Conversation] Found existing for contact: ${contact.id} (conv: ${conversation.id})`);
+        console.log(`${logPrefix} phone=${normalizedPhone} → FOUND EXISTING CONVERSATION: ${conversation.id}`);
+      }
+    } else {
+      console.log(`[Conversation] From cache for contact: ${contact.id} (conv: ${conversation.id})`);
     }
     
     // Criar mensagem no banco (include mediaType if media is present, but not mediaUrl yet)

@@ -1,10 +1,17 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, GripVertical, Pencil, Trash2, LayoutGrid } from "lucide-react";
+import { Plus, GripVertical, Pencil, Trash2, LayoutGrid, Tag as TagIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -46,7 +53,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Stage } from "@shared/schema";
+import type { Stage, Tag } from "@shared/schema";
 
 const PRESET_COLORS = [
   "#3B82F6",
@@ -63,11 +70,12 @@ const PRESET_COLORS = [
 
 interface SortableStageItemProps {
   stage: Stage;
+  tags: Tag[];
   onEdit: () => void;
   onDelete: () => void;
 }
 
-function SortableStageItem({ stage, onEdit, onDelete }: SortableStageItemProps) {
+function SortableStageItem({ stage, tags, onEdit, onDelete }: SortableStageItemProps) {
   const {
     attributes,
     listeners,
@@ -82,6 +90,8 @@ function SortableStageItem({ stage, onEdit, onDelete }: SortableStageItemProps) 
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
+
+  const associatedTag = tags.find(t => t.id === stage.tagId);
 
   return (
     <div
@@ -101,7 +111,20 @@ function SortableStageItem({ stage, onEdit, onDelete }: SortableStageItemProps) 
         className="w-4 h-4 rounded-full shrink-0"
         style={{ backgroundColor: stage.color }}
       />
-      <span className="flex-1 font-medium text-sm">{stage.name}</span>
+      <div className="flex-1 min-w-0">
+        <span className="font-medium text-sm">{stage.name}</span>
+        {associatedTag && (
+          <div className="flex items-center gap-1 mt-0.5">
+            <TagIcon className="h-3 w-3 text-muted-foreground" />
+            <span 
+              className="text-xs px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: associatedTag.color + "20", color: associatedTag.color }}
+            >
+              {associatedTag.name}
+            </span>
+          </div>
+        )}
+      </div>
       <div className="flex items-center gap-1">
         <Button
           size="icon"
@@ -145,6 +168,7 @@ export default function StagesSettingsPage() {
   const [deleteConfirmStage, setDeleteConfirmStage] = useState<Stage | null>(null);
   const [formName, setFormName] = useState("");
   const [formColor, setFormColor] = useState(PRESET_COLORS[0]);
+  const [formTagId, setFormTagId] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<Stage | null>(null);
 
   const sensors = useSensors(
@@ -164,8 +188,17 @@ export default function StagesSettingsPage() {
     },
   });
 
+  const { data: tags = [] } = useQuery<Tag[]>({
+    queryKey: ["/api/tags"],
+    queryFn: async () => {
+      const res = await authFetch("/api/tags");
+      if (!res.ok) throw new Error("Falha ao buscar tags");
+      return res.json();
+    },
+  });
+
   const createStage = useMutation({
-    mutationFn: async (data: { name: string; color: string }) => {
+    mutationFn: async (data: { name: string; color: string; tagId: string | null }) => {
       const res = await apiRequest("POST", "/api/stages", data);
       return res.json();
     },
@@ -180,7 +213,7 @@ export default function StagesSettingsPage() {
   });
 
   const updateStage = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { name: string; color: string } }) => {
+    mutationFn: async ({ id, data }: { id: string; data: { name: string; color: string; tagId: string | null } }) => {
       const res = await apiRequest("PUT", `/api/stages/${id}`, data);
       return res.json();
     },
@@ -225,6 +258,7 @@ export default function StagesSettingsPage() {
     setEditingStage(null);
     setFormName("");
     setFormColor(PRESET_COLORS[0]);
+    setFormTagId(null);
     setIsDialogOpen(true);
   };
 
@@ -232,6 +266,7 @@ export default function StagesSettingsPage() {
     setEditingStage(stage);
     setFormName(stage.name);
     setFormColor(stage.color);
+    setFormTagId(stage.tagId || null);
     setIsDialogOpen(true);
   };
 
@@ -240,6 +275,7 @@ export default function StagesSettingsPage() {
     setEditingStage(null);
     setFormName("");
     setFormColor(PRESET_COLORS[0]);
+    setFormTagId(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -247,9 +283,9 @@ export default function StagesSettingsPage() {
     if (!formName.trim()) return;
 
     if (editingStage) {
-      updateStage.mutate({ id: editingStage.id, data: { name: formName, color: formColor } });
+      updateStage.mutate({ id: editingStage.id, data: { name: formName, color: formColor, tagId: formTagId } });
     } else {
-      createStage.mutate({ name: formName, color: formColor });
+      createStage.mutate({ name: formName, color: formColor, tagId: formTagId });
     }
   };
 
@@ -329,6 +365,7 @@ export default function StagesSettingsPage() {
                         <SortableStageItem
                           key={stage.id}
                           stage={stage}
+                          tags={tags}
                           onEdit={() => openEditDialog(stage)}
                           onDelete={() => setDeleteConfirmStage(stage)}
                         />
@@ -387,6 +424,34 @@ export default function StagesSettingsPage() {
                     />
                   ))}
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Tag Associada</Label>
+                <p className="text-xs text-muted-foreground">
+                  Ao mover uma conversa para este estágio no Kanban, a tag selecionada será aplicada automaticamente.
+                </p>
+                <Select
+                  value={formTagId || "none"}
+                  onValueChange={(value) => setFormTagId(value === "none" ? null : value)}
+                >
+                  <SelectTrigger data-testid="select-tag">
+                    <SelectValue placeholder="Selecione uma tag (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhuma</SelectItem>
+                    {tags.map((tag) => (
+                      <SelectItem key={tag.id} value={tag.id}>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: tag.color }}
+                          />
+                          {tag.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <DialogFooter>

@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Send, StickyNote, Phone, Check, CheckCheck, Zap, Paperclip, UserPlus, Calendar, X, FileIcon, ImageIcon, Search, Download, FileText, Film, Music, AlertCircle, Smile, Mic, Square, ArrowLeft, UserCircle } from "lucide-react";
+import { Send, StickyNote, Phone, Check, CheckCheck, Zap, Paperclip, UserPlus, Calendar, X, FileIcon, ImageIcon, Search, Download, FileText, Film, Music, AlertCircle, Smile, Mic, Square, ArrowLeft, UserCircle, ArrowDown, Pencil, Loader2, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -198,8 +197,14 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [pendingAttributes, setPendingAttributes] = useState<string[]>([]);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [noteValue, setNoteValue] = useState("");
+  const [noteSaveStatus, setNoteSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const pendingAttributesRef = useRef<string[]>([]);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const noteInputRef = useRef<HTMLInputElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const cannedDropdownRef = useRef<HTMLDivElement>(null);
@@ -381,6 +386,27 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     },
   });
 
+  const updateContactNotes = useMutation({
+    mutationFn: async (notes: string) => {
+      const res = await authFetch(`/api/contacts/${conversation?.contact?.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ notes }),
+      });
+      if (!res.ok) throw new Error("Failed to update notes");
+      return res.json();
+    },
+    onSuccess: () => {
+      setNoteSaveStatus("saved");
+      setTimeout(() => setNoteSaveStatus("idle"), 2000);
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+    },
+    onError: () => {
+      toast({ title: "Falha ao salvar anotação", variant: "destructive" });
+      setNoteSaveStatus("idle");
+    },
+  });
+
   const executeMacro = useMutation({
     mutationFn: async (macroId: string) => {
       const res = await authFetch("/api/macros/execute", {
@@ -404,13 +430,76 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     },
   });
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    if (!messagesContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    setIsAtBottom(distanceFromBottom < 100);
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+    if (isAtBottom) {
+      scrollToBottom();
+    }
+  }, [messages, isAtBottom, scrollToBottom]);
+
+  useEffect(() => {
+    scrollToBottom("instant");
+    setIsAtBottom(true);
+  }, [conversationId, scrollToBottom]);
+
+  useEffect(() => {
+    if (conversation?.contact?.notes !== undefined) {
+      setNoteValue(conversation.contact.notes || "");
+    }
+    setIsEditingNote(false);
+    setNoteSaveStatus("idle");
+  }, [conversationId, conversation?.contact?.notes]);
+
+  useEffect(() => {
+    if (isEditingNote && noteInputRef.current) {
+      noteInputRef.current.focus();
+    }
+  }, [isEditingNote]);
+
+  const handleNoteChange = useCallback((value: string) => {
+    setNoteValue(value);
+    setNoteSaveStatus("saving");
+    
+    if (noteSaveTimeoutRef.current) {
+      clearTimeout(noteSaveTimeoutRef.current);
+    }
+    
+    noteSaveTimeoutRef.current = setTimeout(() => {
+      updateContactNotes.mutate(value);
+    }, 500);
+  }, [updateContactNotes]);
+
+  const handleNoteBlur = useCallback(() => {
+    setIsEditingNote(false);
+    if (noteSaveTimeoutRef.current) {
+      clearTimeout(noteSaveTimeoutRef.current);
+    }
+    if (noteValue !== (conversation?.contact?.notes || "")) {
+      updateContactNotes.mutate(noteValue);
+    }
+  }, [noteValue, conversation?.contact?.notes, updateContactNotes]);
+
+  const handleNoteKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleNoteBlur();
+    }
+    if (e.key === "Escape") {
+      setNoteValue(conversation?.contact?.notes || "");
+      setIsEditingNote(false);
+      setNoteSaveStatus("idle");
+    }
+  }, [handleNoteBlur, conversation?.contact?.notes]);
 
   useEffect(() => {
     setSelectedCannedIndex(0);
@@ -824,93 +913,139 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
           </div>
         </div>
       )}
-      <header className="h-14 border-b flex items-center justify-between gap-2 px-3 md:px-4 shrink-0">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          {isMobile && onBack && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onBack}
-              className="shrink-0 min-h-[44px] min-w-[44px]"
-              data-testid="button-back-to-list"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          )}
-          <button
-            onClick={onContactClick}
-            className="flex items-center gap-3 hover-elevate rounded-lg p-1 min-w-0 flex-1"
-            data-testid="button-contact-details"
-          >
-            <AvatarWithFallback
-              name={conversation.contact.name}
-              src={conversation.contact.avatarUrl}
-              size="md"
-            />
-            <div className="text-left min-w-0 flex-1">
-              <div className="font-medium text-[15px] truncate">{conversation.contact.name}</div>
-              <div className="text-xs text-muted-foreground truncate">{formatPhoneNumber(conversation.contact.phoneNumber)}</div>
-            </div>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {isMobile ? (
-            <Button
-              variant="ghost"
-              size="icon"
+      <header className="border-b shrink-0">
+        <div className="h-14 flex items-center justify-between gap-2 px-3 md:px-4">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {isMobile && onBack && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onBack}
+                className="shrink-0 min-h-[44px] min-w-[44px]"
+                data-testid="button-back-to-list"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+            )}
+            <button
               onClick={onContactClick}
-              className="min-h-[44px] min-w-[44px]"
-              data-testid="button-contact-details-mobile"
+              className="flex items-center gap-3 hover-elevate rounded-lg p-1 min-w-0 flex-1"
+              data-testid="button-contact-details"
             >
-              <UserCircle className="h-5 w-5" />
-            </Button>
-          ) : (
-            <>
-              <Select
-                value={conversation.status}
-                onValueChange={(status) => updateStatus.mutate(status)}
-              >
-                <SelectTrigger className="w-[130px]" data-testid="select-conversation-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="open">Aberto</SelectItem>
-                  <SelectItem value="pending">Pendente</SelectItem>
-                  <SelectItem value="resolved">Resolvido</SelectItem>
-                  <SelectItem value="closed">Fechado</SelectItem>
-                </SelectContent>
-              </Select>
+              <AvatarWithFallback
+                name={conversation.contact.name}
+                src={conversation.contact.avatarUrl}
+                size="md"
+              />
+              <div className="text-left min-w-0 flex-1">
+                <div className="font-medium text-[15px] truncate">{conversation.contact.name}</div>
+                <div className="text-xs text-muted-foreground truncate">{formatPhoneNumber(conversation.contact.phoneNumber)}</div>
+              </div>
+            </button>
+          </div>
 
-              <Select
-                value={conversation.assignedToUserId || "unassigned"}
-                onValueChange={(v) => assignAgent.mutate(v === "unassigned" ? null : v)}
+          <div className="flex items-center gap-2 shrink-0">
+            {isMobile ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onContactClick}
+                className="min-h-[44px] min-w-[44px]"
+                data-testid="button-contact-details-mobile"
               >
-                <SelectTrigger className="w-[150px]" data-testid="select-assign-agent">
-                  <SelectValue placeholder="Atribuir para..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Não atribuído</SelectItem>
-                  {agents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </>
+                <UserCircle className="h-5 w-5" />
+              </Button>
+            ) : (
+              <>
+                <Select
+                  value={conversation.status}
+                  onValueChange={(status) => updateStatus.mutate(status)}
+                >
+                  <SelectTrigger className="w-[130px]" data-testid="select-conversation-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="open">Aberto</SelectItem>
+                    <SelectItem value="pending">Pendente</SelectItem>
+                    <SelectItem value="resolved">Resolvido</SelectItem>
+                    <SelectItem value="closed">Fechado</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={conversation.assignedToUserId || "unassigned"}
+                  onValueChange={(v) => assignAgent.mutate(v === "unassigned" ? null : v)}
+                >
+                  <SelectTrigger className="w-[150px]" data-testid="select-assign-agent">
+                    <SelectValue placeholder="Atribuir para..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Não atribuído</SelectItem>
+                    {agents.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+          </div>
+        </div>
+        
+        <div className="px-3 md:px-4 pb-2 flex items-center gap-2">
+          <StickyNote className="h-4 w-4 text-muted-foreground shrink-0" />
+          {isEditingNote ? (
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <Input
+                ref={noteInputRef}
+                value={noteValue}
+                onChange={(e) => handleNoteChange(e.target.value)}
+                onBlur={handleNoteBlur}
+                onKeyDown={handleNoteKeyDown}
+                placeholder="Adicionar anotação..."
+                className="h-7 text-sm flex-1"
+                data-testid="input-contact-note"
+              />
+              {noteSaveStatus === "saving" && (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+              )}
+              {noteSaveStatus === "saved" && (
+                <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsEditingNote(true)}
+              className="flex items-center gap-2 text-sm text-left hover-elevate rounded px-2 py-1 -mx-2 flex-1 min-w-0 group"
+              data-testid="button-edit-note"
+            >
+              <span className={cn(
+                "truncate flex-1",
+                noteValue ? "text-foreground" : "text-muted-foreground italic"
+              )}>
+                {noteValue || "Sem anotação"}
+              </span>
+              <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+              {noteSaveStatus === "saved" && (
+                <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+              )}
+            </button>
           )}
         </div>
       </header>
 
-      <ScrollArea 
-        className="flex-1 p-4" 
-        ref={scrollRef}
-        style={{
-          backgroundColor: "hsl(var(--background))",
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%2325D366' fill-opacity='0.05'%3E%3Cpath opacity='.5' d='M96 95h4v1h-4v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9zm-1 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9z'/%3E%3Cpath d='M6 5V0H5v5H0v1h5v94h1V6h94V5H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-        }}
-      >
+      <div className="flex-1 relative overflow-hidden">
+        <div 
+          ref={messagesContainerRef}
+          onScroll={handleScroll}
+          className="absolute inset-0 overflow-y-auto p-4"
+          style={{
+            backgroundColor: "hsl(var(--background))",
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%2325D366' fill-opacity='0.05'%3E%3Cpath opacity='.5' d='M96 95h4v1h-4v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9zm-1 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9z'/%3E%3Cpath d='M6 5V0H5v5H0v1h5v94h1V6h94V5H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}
+          data-testid="messages-container"
+        >
         {msgsLoading ? (
           <div className="flex items-center justify-center h-32">
             <LoadingSpinner />
@@ -1029,7 +1164,22 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
             <div ref={messagesEndRef} />
           </div>
         )}
-      </ScrollArea>
+        </div>
+        {!isAtBottom && messages.length > 0 && (
+          <Button
+            variant="secondary"
+            size="icon"
+            className="absolute bottom-4 right-4 rounded-full shadow-lg z-10"
+            onClick={() => {
+              scrollToBottom();
+              setIsAtBottom(true);
+            }}
+            data-testid="button-scroll-to-bottom"
+          >
+            <ArrowDown className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
 
       <footer className="border-t p-4 shrink-0">
         {selectedFile && (
