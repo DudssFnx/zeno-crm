@@ -1174,436 +1174,6 @@ export async function registerRoutes(
     }
   });
 
-  // ============ Chat Flows (Fluxos Conversacionais) ============
-  
-  // Listar fluxos
-  app.get("/api/chat-flows", authMiddleware(storage), async (req: AuthRequest, res) => {
-    try {
-      const flows = await storage.getChatFlows(req.user!.companyId);
-      res.json(flows);
-    } catch (error) {
-      console.error("Get chat flows error:", error);
-      res.status(500).json({ message: "Falha ao listar fluxos" });
-    }
-  });
-
-  // Obter fluxo com steps
-  app.get("/api/chat-flows/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
-    try {
-      const flow = await storage.getChatFlow(req.params.id);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const steps = await storage.getChatFlowSteps(flow.id);
-      res.json({ ...flow, steps });
-    } catch (error) {
-      console.error("Get chat flow error:", error);
-      res.status(500).json({ message: "Falha ao obter fluxo" });
-    }
-  });
-
-  // Criar fluxo
-  app.post("/api/chat-flows", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const { name } = req.body;
-      if (!name || typeof name !== "string" || name.trim().length === 0) {
-        return res.status(400).json({ message: "Nome é obrigatório" });
-      }
-      const flow = await storage.createChatFlow({ ...req.body, companyId: req.user!.companyId });
-      res.json(flow);
-    } catch (error) {
-      console.error("Create chat flow error:", error);
-      res.status(500).json({ message: "Falha ao criar fluxo" });
-    }
-  });
-
-  // Atualizar fluxo
-  app.put("/api/chat-flows/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const existingFlow = await storage.getChatFlow(req.params.id);
-      if (!existingFlow || existingFlow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const { companyId, ...updateData } = req.body;
-      const flow = await storage.updateChatFlow(req.params.id, updateData);
-      if (!flow) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      res.json(flow);
-    } catch (error) {
-      console.error("Update chat flow error:", error);
-      res.status(500).json({ message: "Falha ao atualizar fluxo" });
-    }
-  });
-
-  // Deletar fluxo
-  app.delete("/api/chat-flows/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const flow = await storage.getChatFlow(req.params.id);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      await storage.deleteChatFlow(req.params.id);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Delete chat flow error:", error);
-      res.status(500).json({ message: "Falha ao deletar fluxo" });
-    }
-  });
-
-  // Toggle ativo/inativo
-  app.patch("/api/chat-flows/:id/toggle", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const flow = await storage.getChatFlow(req.params.id);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const updated = await storage.updateChatFlow(req.params.id, { isActive: !flow.isActive });
-      res.json(updated);
-    } catch (error) {
-      console.error("Toggle chat flow error:", error);
-      res.status(500).json({ message: "Falha ao alternar status do fluxo" });
-    }
-  });
-
-  // ============ Chat Flow Steps ============
-  
-  // Criar step
-  app.post("/api/chat-flows/:flowId/steps", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const flow = await storage.getChatFlow(req.params.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const step = await storage.createChatFlowStep({ ...req.body, flowId: req.params.flowId });
-      res.json(step);
-    } catch (error) {
-      console.error("Create chat flow step error:", error);
-      res.status(500).json({ message: "Falha ao criar step" });
-    }
-  });
-
-  // Atualizar step
-  app.put("/api/chat-flow-steps/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const existingStep = await storage.getChatFlowStep(req.params.id);
-      if (!existingStep) {
-        return res.status(404).json({ message: "Step não encontrado" });
-      }
-      const flow = await storage.getChatFlow(existingStep.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const step = await storage.updateChatFlowStep(req.params.id, req.body);
-      if (!step) {
-        return res.status(404).json({ message: "Step não encontrado" });
-      }
-      res.json(step);
-    } catch (error) {
-      console.error("Update chat flow step error:", error);
-      res.status(500).json({ message: "Falha ao atualizar step" });
-    }
-  });
-
-  // Deletar step
-  app.delete("/api/chat-flow-steps/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const existingStep = await storage.getChatFlowStep(req.params.id);
-      if (!existingStep) {
-        return res.status(404).json({ message: "Step não encontrado" });
-      }
-      const flow = await storage.getChatFlow(existingStep.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      await storage.deleteChatFlowStep(req.params.id);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Delete chat flow step error:", error);
-      res.status(500).json({ message: "Falha ao deletar step" });
-    }
-  });
-
-  // Reordenar steps
-  app.put("/api/chat-flows/:flowId/steps/reorder", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const flow = await storage.getChatFlow(req.params.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const { stepIds } = req.body;
-      if (!stepIds || !Array.isArray(stepIds)) {
-        return res.status(400).json({ message: "stepIds é obrigatório" });
-      }
-      for (let i = 0; i < stepIds.length; i++) {
-        await storage.updateChatFlowStep(stepIds[i], { stepOrder: i });
-      }
-      const steps = await storage.getChatFlowSteps(req.params.flowId);
-      res.json(steps);
-    } catch (error) {
-      console.error("Reorder chat flow steps error:", error);
-      res.status(500).json({ message: "Falha ao reordenar steps" });
-    }
-  });
-
-  // ================== CHAT FLOW NODES (Novo Sistema) ==================
-
-  // GET /api/chat-flows/:flowId/nodes - Listar todos os nós de um fluxo
-  app.get("/api/chat-flows/:flowId/nodes", authMiddleware(storage), async (req: AuthRequest, res) => {
-    try {
-      const flow = await storage.getChatFlow(req.params.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const nodes = await storage.getChatFlowNodes(req.params.flowId);
-      res.json(nodes);
-    } catch (error) {
-      console.error("Get chat flow nodes error:", error);
-      res.status(500).json({ message: "Falha ao buscar nós" });
-    }
-  });
-
-  // POST /api/chat-flows/:flowId/nodes - Criar nó
-  app.post("/api/chat-flows/:flowId/nodes", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const flow = await storage.getChatFlow(req.params.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const { type, name, config, positionX, positionY } = req.body;
-      if (!type) {
-        return res.status(400).json({ message: "Tipo do nó é obrigatório" });
-      }
-      const node = await storage.createChatFlowNode({
-        flowId: req.params.flowId,
-        type,
-        name: name || null,
-        config: config || {},
-        positionX: positionX || 0,
-        positionY: positionY || 0,
-      });
-      res.json(node);
-    } catch (error) {
-      console.error("Create chat flow node error:", error);
-      res.status(500).json({ message: "Falha ao criar nó" });
-    }
-  });
-
-  // PUT /api/chat-flow-nodes/:id - Atualizar nó
-  app.put("/api/chat-flow-nodes/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const existingNode = await storage.getChatFlowNode(req.params.id);
-      if (!existingNode) {
-        return res.status(404).json({ message: "Nó não encontrado" });
-      }
-      const flow = await storage.getChatFlow(existingNode.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const { type, name, config, positionX, positionY } = req.body;
-      const node = await storage.updateChatFlowNode(req.params.id, {
-        type: type !== undefined ? type : existingNode.type,
-        name: name !== undefined ? name : existingNode.name,
-        config: config !== undefined ? config : existingNode.config,
-        positionX: positionX !== undefined ? positionX : existingNode.positionX,
-        positionY: positionY !== undefined ? positionY : existingNode.positionY,
-      });
-      res.json(node);
-    } catch (error) {
-      console.error("Update chat flow node error:", error);
-      res.status(500).json({ message: "Falha ao atualizar nó" });
-    }
-  });
-
-  // DELETE /api/chat-flow-nodes/:id - Deletar nó
-  app.delete("/api/chat-flow-nodes/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const existingNode = await storage.getChatFlowNode(req.params.id);
-      if (!existingNode) {
-        return res.status(404).json({ message: "Nó não encontrado" });
-      }
-      const flow = await storage.getChatFlow(existingNode.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      await storage.deleteChatFlowNode(req.params.id);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Delete chat flow node error:", error);
-      res.status(500).json({ message: "Falha ao deletar nó" });
-    }
-  });
-
-  // ================== CHAT FLOW EDGES ==================
-
-  // GET /api/chat-flows/:flowId/edges - Listar todas as conexões de um fluxo
-  app.get("/api/chat-flows/:flowId/edges", authMiddleware(storage), async (req: AuthRequest, res) => {
-    try {
-      const flow = await storage.getChatFlow(req.params.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const edges = await storage.getChatFlowEdges(req.params.flowId);
-      res.json(edges);
-    } catch (error) {
-      console.error("Get chat flow edges error:", error);
-      res.status(500).json({ message: "Falha ao buscar conexões" });
-    }
-  });
-
-  // POST /api/chat-flows/:flowId/edges - Criar conexão
-  app.post("/api/chat-flows/:flowId/edges", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const flow = await storage.getChatFlow(req.params.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const { fromNodeId, toNodeId, condition, label, sortOrder } = req.body;
-      if (!fromNodeId || !toNodeId) {
-        return res.status(400).json({ message: "fromNodeId e toNodeId são obrigatórios" });
-      }
-      const edge = await storage.createChatFlowEdge({
-        flowId: req.params.flowId,
-        fromNodeId,
-        toNodeId,
-        condition: condition || {},
-        label: label || null,
-        sortOrder: sortOrder || 0,
-      });
-      res.json(edge);
-    } catch (error) {
-      console.error("Create chat flow edge error:", error);
-      res.status(500).json({ message: "Falha ao criar conexão" });
-    }
-  });
-
-  // PUT /api/chat-flow-edges/:id - Atualizar conexão
-  app.put("/api/chat-flow-edges/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const existingEdge = await storage.getChatFlowEdge(req.params.id);
-      if (!existingEdge) {
-        return res.status(404).json({ message: "Conexão não encontrada" });
-      }
-      const flow = await storage.getChatFlow(existingEdge.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const { fromNodeId, toNodeId, condition, label, sortOrder } = req.body;
-      const edge = await storage.updateChatFlowEdge(req.params.id, {
-        fromNodeId: fromNodeId !== undefined ? fromNodeId : existingEdge.fromNodeId,
-        toNodeId: toNodeId !== undefined ? toNodeId : existingEdge.toNodeId,
-        condition: condition !== undefined ? condition : existingEdge.condition,
-        label: label !== undefined ? label : existingEdge.label,
-        sortOrder: sortOrder !== undefined ? sortOrder : existingEdge.sortOrder,
-      });
-      res.json(edge);
-    } catch (error) {
-      console.error("Update chat flow edge error:", error);
-      res.status(500).json({ message: "Falha ao atualizar conexão" });
-    }
-  });
-
-  // DELETE /api/chat-flow-edges/:id - Deletar conexão
-  app.delete("/api/chat-flow-edges/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const existingEdge = await storage.getChatFlowEdge(req.params.id);
-      if (!existingEdge) {
-        return res.status(404).json({ message: "Conexão não encontrada" });
-      }
-      const flow = await storage.getChatFlow(existingEdge.flowId);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      await storage.deleteChatFlowEdge(req.params.id);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Delete chat flow edge error:", error);
-      res.status(500).json({ message: "Falha ao deletar conexão" });
-    }
-  });
-
-  // ================== CHAT FLOW FULL SAVE ==================
-
-  // PUT /api/chat-flows/:id/full - Salvar fluxo completo (nós + conexões)
-  app.put("/api/chat-flows/:id/full", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const flow = await storage.getChatFlow(req.params.id);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      
-      const { name, description, status, isActive, startNodeId, triggerKeywords, triggerOnFirstMessage, triggerOnStageNew, triggerOnTagAdded, nodes, edges } = req.body;
-      
-      // Atualizar dados do fluxo
-      const updatedFlow = await storage.updateChatFlow(req.params.id, {
-        name: name !== undefined ? name : flow.name,
-        description: description !== undefined ? description : flow.description,
-        status: status !== undefined ? status : flow.status,
-        isActive: isActive !== undefined ? isActive : flow.isActive,
-        startNodeId: startNodeId !== undefined ? startNodeId : flow.startNodeId,
-        triggerKeywords: triggerKeywords !== undefined ? triggerKeywords : flow.triggerKeywords,
-        triggerOnFirstMessage: triggerOnFirstMessage !== undefined ? triggerOnFirstMessage : flow.triggerOnFirstMessage,
-        triggerOnStageNew: triggerOnStageNew !== undefined ? triggerOnStageNew : flow.triggerOnStageNew,
-        triggerOnTagAdded: triggerOnTagAdded !== undefined ? triggerOnTagAdded : flow.triggerOnTagAdded,
-      });
-      
-      // Recriar nós se fornecidos
-      if (nodes !== undefined) {
-        await storage.deleteChatFlowNodes(req.params.id);
-        for (const node of nodes) {
-          await storage.createChatFlowNode({
-            ...node,
-            flowId: req.params.id,
-          });
-        }
-      }
-      
-      // Recriar conexões se fornecidas
-      if (edges !== undefined) {
-        await storage.deleteChatFlowEdges(req.params.id);
-        for (const edge of edges) {
-          await storage.createChatFlowEdge({
-            ...edge,
-            flowId: req.params.id,
-          });
-        }
-      }
-      
-      // Retornar fluxo com nós e conexões
-      const resultNodes = await storage.getChatFlowNodes(req.params.id);
-      const resultEdges = await storage.getChatFlowEdges(req.params.id);
-      
-      res.json({
-        ...updatedFlow,
-        nodes: resultNodes,
-        edges: resultEdges,
-      });
-    } catch (error) {
-      console.error("Save full chat flow error:", error);
-      res.status(500).json({ message: "Falha ao salvar fluxo" });
-    }
-  });
-
-  // GET /api/chat-flows/:id/full - Obter fluxo completo (com nós + conexões)
-  app.get("/api/chat-flows/:id/full", authMiddleware(storage), async (req: AuthRequest, res) => {
-    try {
-      const flow = await storage.getChatFlow(req.params.id);
-      if (!flow || flow.companyId !== req.user!.companyId) {
-        return res.status(404).json({ message: "Fluxo não encontrado" });
-      }
-      const nodes = await storage.getChatFlowNodes(req.params.id);
-      const edges = await storage.getChatFlowEdges(req.params.id);
-      res.json({
-        ...flow,
-        nodes,
-        edges,
-      });
-    } catch (error) {
-      console.error("Get full chat flow error:", error);
-      res.status(500).json({ message: "Falha ao buscar fluxo" });
-    }
-  });
-
   // ================== SCHEDULED MESSAGES ==================
 
   // GET /api/scheduled-messages - Listar mensagens agendadas
@@ -2010,6 +1580,168 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Execute macro error:", error);
       res.status(500).json({ message: "Failed to execute macro" });
+    }
+  });
+
+  // ============ DEPARTMENTS ============
+  app.get("/api/departments", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const departments = await storage.getDepartments(req.user!.companyId);
+      res.json(departments);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch departments" });
+    }
+  });
+
+  app.post("/api/departments", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const department = await storage.createDepartment({ ...req.body, companyId: req.user!.companyId });
+      res.status(201).json(department);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create department" });
+    }
+  });
+
+  app.put("/api/departments/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const department = await storage.updateDepartment(req.params.id, req.body, req.user!.companyId);
+      if (!department) return res.status(404).json({ error: "Department not found" });
+      res.json(department);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update department" });
+    }
+  });
+
+  app.delete("/api/departments/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteDepartment(req.params.id, req.user!.companyId);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete department" });
+    }
+  });
+
+  // Department Agents
+  app.get("/api/departments/:id/agents", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const dept = await storage.getDepartment(req.params.id, req.user!.companyId);
+      if (!dept) return res.status(404).json({ error: "Department not found" });
+      const agents = await storage.getDepartmentAgents(req.params.id);
+      res.json(agents);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch department agents" });
+    }
+  });
+
+  app.post("/api/departments/:id/agents", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const dept = await storage.getDepartment(req.params.id, req.user!.companyId);
+      if (!dept) return res.status(404).json({ error: "Department not found" });
+      const agent = await storage.addDepartmentAgent({
+        departmentId: req.params.id,
+        userId: req.body.userId,
+      });
+      res.status(201).json(agent);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to add agent to department" });
+    }
+  });
+
+  app.delete("/api/departments/:id/agents/:userId", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const dept = await storage.getDepartment(req.params.id, req.user!.companyId);
+      if (!dept) return res.status(404).json({ error: "Department not found" });
+      await storage.removeDepartmentAgent(req.params.id, req.params.userId);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to remove agent" });
+    }
+  });
+
+  // ============ TRIAGE MENUS ============
+  app.get("/api/triage-menus", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const menus = await storage.getTriageMenus(req.user!.companyId);
+      res.json(menus);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch triage menus" });
+    }
+  });
+
+  app.post("/api/triage-menus", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const menu = await storage.createTriageMenu({ ...req.body, companyId: req.user!.companyId });
+      res.status(201).json(menu);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create triage menu" });
+    }
+  });
+
+  app.put("/api/triage-menus/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const menu = await storage.updateTriageMenu(req.params.id, req.body, req.user!.companyId);
+      if (!menu) return res.status(404).json({ error: "Menu not found" });
+      res.json(menu);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update triage menu" });
+    }
+  });
+
+  app.delete("/api/triage-menus/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteTriageMenu(req.params.id, req.user!.companyId);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete triage menu" });
+    }
+  });
+
+  // ============ AUTOMATION RULES ============
+  app.get("/api/automation-rules", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const rules = await storage.getAutomationRules(req.user!.companyId);
+      res.json(rules);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch automation rules" });
+    }
+  });
+
+  app.post("/api/automation-rules", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const rule = await storage.createAutomationRule({ ...req.body, companyId: req.user!.companyId });
+      res.status(201).json(rule);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create automation rule" });
+    }
+  });
+
+  app.put("/api/automation-rules/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const rule = await storage.updateAutomationRule(req.params.id, req.body, req.user!.companyId);
+      if (!rule) return res.status(404).json({ error: "Rule not found" });
+      res.json(rule);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update automation rule" });
+    }
+  });
+
+  app.delete("/api/automation-rules/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteAutomationRule(req.params.id, req.user!.companyId);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete automation rule" });
+    }
+  });
+
+  // Automation Executions Log
+  app.get("/api/automation-executions", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      const executions = await storage.getAutomationExecutions(req.user!.companyId, limit);
+      res.json(executions);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch automation executions" });
     }
   });
 

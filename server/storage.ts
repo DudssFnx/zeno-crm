@@ -139,10 +139,10 @@ export interface IStorage {
 
   // Departments
   createDepartment(data: InsertDepartment): Promise<Department>;
-  getDepartment(id: string): Promise<Department | undefined>;
+  getDepartment(id: string, companyId: string): Promise<Department | undefined>;
   getDepartments(companyId: string): Promise<Department[]>;
-  updateDepartment(id: string, data: Partial<InsertDepartment>): Promise<Department | undefined>;
-  deleteDepartment(id: string): Promise<void>;
+  updateDepartment(id: string, data: Partial<InsertDepartment>, companyId: string): Promise<Department | undefined>;
+  deleteDepartment(id: string, companyId: string): Promise<void>;
 
   // Department Agents
   addDepartmentAgent(data: InsertDepartmentAgent): Promise<DepartmentAgent>;
@@ -151,10 +151,10 @@ export interface IStorage {
 
   // Triage Menus
   createTriageMenu(data: InsertTriageMenu): Promise<TriageMenu>;
-  getTriageMenu(id: string): Promise<TriageMenu | undefined>;
+  getTriageMenu(id: string, companyId: string): Promise<TriageMenu | undefined>;
   getTriageMenus(companyId: string): Promise<TriageMenu[]>;
-  updateTriageMenu(id: string, data: Partial<InsertTriageMenu>): Promise<TriageMenu | undefined>;
-  deleteTriageMenu(id: string): Promise<void>;
+  updateTriageMenu(id: string, data: Partial<InsertTriageMenu>, companyId: string): Promise<TriageMenu | undefined>;
+  deleteTriageMenu(id: string, companyId: string): Promise<void>;
 
   // Triage Sessions
   createTriageSession(data: InsertTriageSession): Promise<TriageSession>;
@@ -164,10 +164,10 @@ export interface IStorage {
 
   // Automation Rules
   createAutomationRule(data: InsertAutomationRule): Promise<AutomationRule>;
-  getAutomationRule(id: string): Promise<AutomationRule | undefined>;
+  getAutomationRule(id: string, companyId: string): Promise<AutomationRule | undefined>;
   getAutomationRules(companyId: string): Promise<AutomationRule[]>;
-  updateAutomationRule(id: string, data: Partial<InsertAutomationRule>): Promise<AutomationRule | undefined>;
-  deleteAutomationRule(id: string): Promise<void>;
+  updateAutomationRule(id: string, data: Partial<InsertAutomationRule>, companyId: string): Promise<AutomationRule | undefined>;
+  deleteAutomationRule(id: string, companyId: string): Promise<void>;
 
   // Automation Executions
   logAutomationExecution(data: InsertAutomationExecution): Promise<AutomationExecution>;
@@ -783,8 +783,9 @@ export class DatabaseStorage implements IStorage {
     return dept;
   }
 
-  async getDepartment(id: string): Promise<Department | undefined> {
-    const [dept] = await db.select().from(departments).where(eq(departments.id, id));
+  async getDepartment(id: string, companyId: string): Promise<Department | undefined> {
+    const [dept] = await db.select().from(departments)
+      .where(and(eq(departments.id, id), eq(departments.companyId, companyId)));
     return dept;
   }
 
@@ -794,18 +795,21 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(departments.name));
   }
 
-  async updateDepartment(id: string, data: Partial<InsertDepartment>): Promise<Department | undefined> {
+  async updateDepartment(id: string, data: Partial<InsertDepartment>, companyId: string): Promise<Department | undefined> {
     const [dept] = await db
       .update(departments)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(departments.id, id))
+      .where(and(eq(departments.id, id), eq(departments.companyId, companyId)))
       .returning();
     return dept;
   }
 
-  async deleteDepartment(id: string): Promise<void> {
+  async deleteDepartment(id: string, companyId: string): Promise<void> {
+    const [existing] = await db.select().from(departments)
+      .where(and(eq(departments.id, id), eq(departments.companyId, companyId)));
+    if (!existing) return;
     await db.delete(departmentAgents).where(eq(departmentAgents.departmentId, id));
-    await db.delete(departments).where(eq(departments.id, id));
+    await db.delete(departments).where(and(eq(departments.id, id), eq(departments.companyId, companyId)));
   }
 
   // Department Agents
@@ -833,8 +837,9 @@ export class DatabaseStorage implements IStorage {
     return menu;
   }
 
-  async getTriageMenu(id: string): Promise<TriageMenu | undefined> {
-    const [menu] = await db.select().from(triageMenus).where(eq(triageMenus.id, id));
+  async getTriageMenu(id: string, companyId: string): Promise<TriageMenu | undefined> {
+    const [menu] = await db.select().from(triageMenus)
+      .where(and(eq(triageMenus.id, id), eq(triageMenus.companyId, companyId)));
     return menu;
   }
 
@@ -844,17 +849,17 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(triageMenus.createdAt));
   }
 
-  async updateTriageMenu(id: string, data: Partial<InsertTriageMenu>): Promise<TriageMenu | undefined> {
+  async updateTriageMenu(id: string, data: Partial<InsertTriageMenu>, companyId: string): Promise<TriageMenu | undefined> {
     const [menu] = await db
       .update(triageMenus)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(triageMenus.id, id))
+      .where(and(eq(triageMenus.id, id), eq(triageMenus.companyId, companyId)))
       .returning();
     return menu;
   }
 
-  async deleteTriageMenu(id: string): Promise<void> {
-    await db.delete(triageMenus).where(eq(triageMenus.id, id));
+  async deleteTriageMenu(id: string, companyId: string): Promise<void> {
+    await db.delete(triageMenus).where(and(eq(triageMenus.id, id), eq(triageMenus.companyId, companyId)));
   }
 
   // Triage Sessions
@@ -892,8 +897,9 @@ export class DatabaseStorage implements IStorage {
     return rule;
   }
 
-  async getAutomationRule(id: string): Promise<AutomationRule | undefined> {
-    const [rule] = await db.select().from(automationRules).where(eq(automationRules.id, id));
+  async getAutomationRule(id: string, companyId: string): Promise<AutomationRule | undefined> {
+    const [rule] = await db.select().from(automationRules)
+      .where(and(eq(automationRules.id, id), eq(automationRules.companyId, companyId)));
     return rule;
   }
 
@@ -903,17 +909,17 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(automationRules.priority), desc(automationRules.createdAt));
   }
 
-  async updateAutomationRule(id: string, data: Partial<InsertAutomationRule>): Promise<AutomationRule | undefined> {
+  async updateAutomationRule(id: string, data: Partial<InsertAutomationRule>, companyId: string): Promise<AutomationRule | undefined> {
     const [rule] = await db
       .update(automationRules)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(automationRules.id, id))
+      .where(and(eq(automationRules.id, id), eq(automationRules.companyId, companyId)))
       .returning();
     return rule;
   }
 
-  async deleteAutomationRule(id: string): Promise<void> {
-    await db.delete(automationRules).where(eq(automationRules.id, id));
+  async deleteAutomationRule(id: string, companyId: string): Promise<void> {
+    await db.delete(automationRules).where(and(eq(automationRules.id, id), eq(automationRules.companyId, companyId)));
   }
 
   // Automation Executions

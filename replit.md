@@ -93,21 +93,33 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 - Settings page at `/settings/macros`
 - Execute via macro button in chat window
 
-### Fluxos Conversacionais (Chat Flows)
-- Sistema de auto-atendimento estilo Typebot
-- Menus numerados para roteamento de clientes ("Digite 1 para Vendas, 2 para Suporte")
-- Settings page at `/settings/chat-flows`
-- Tipos de passos:
-  - **message** - Enviar mensagem de texto
-  - **menu** - Menu de opções numeradas
-  - **input** - Capturar dados do cliente (nome, email, etc.)
-  - **action** - Executar ações (atribuir agente, adicionar tag, definir status, encerrar fluxo)
-- Gatilhos:
-  - **triggerOnFirstMessage** - Iniciar na primeira mensagem da conversa
-  - **triggerKeywords** - Iniciar quando mensagem contém palavras-chave
-- Template variables: `{{nome}}`, `{{primeiro_nome}}`, `{{telefone}}`
-- Sessões rastreiam o progresso do cliente no fluxo
-- Tabelas: chat_flows, chat_flow_steps, chat_flow_sessions
+### Automacao Hibrida (Hybrid Automation)
+Sistema de automacao inteligente com triagem, roteamento e anti-ban.
+Settings page at `/settings/automation`
+
+**Departamentos**
+- Organize equipe em departamentos (Vendas, Suporte, Financeiro)
+- Palavras-chave para roteamento automatico
+- Round-robin assignment de agentes
+
+**Menu de Triagem**
+- Menus numerados para auto-atendimento ("Digite 1 para Vendas, 2 para Suporte")
+- Opcao de falar com atendente humano (tecla 0)
+- Disparo na primeira mensagem ou por palavras-chave
+- Roteamento para departamento + aplicacao de tag + definicao de estagio
+
+**Regras de Automacao (Zoho-style)**
+- Regras baseadas em eventos (message.incoming, inactivity, status.changed)
+- Condicoes e acoes configuráveis
+- Prioridade de execução
+
+**Anti-Ban Safeguards**
+- Delays humanizados (1500-3500ms com jitter)
+- Deduplicacao de mensagens (hash MD5, janela 5min)
+- Log de todas as mensagens enviadas automaticamente
+- Apenas responde a mensagens inbound (nunca inicia conversa)
+
+- Tabelas: departments, department_agents, triage_menus, triage_sessions, automation_rules, automation_executions, anti_spam_logs
 
 ### Media Handling
 - Upload/download media files (images, audio, video, documents)

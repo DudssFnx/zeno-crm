@@ -1,0 +1,101 @@
+Você é um dev sênior (full-stack) e vai corrigir bugs e implementar melhorias no meu CRM de WhatsApp (web app). 
+Objetivo: corrigir erros críticos (scroll, duplicação de conversa, criação de contato) e implementar melhorias (macros reordenáveis, kanban -> etiqueta, notas visíveis).
+
+REGRAS IMPORTANTES
+- É EXCEPCIONALMENTE PROIBIDO abrir duas conversas para o mesmo contato ao mesmo tempo.
+- Nenhuma mensagem pode se perder: toda mensagem recebida deve entrar em "Conversas abertas" e anexar ao contato correto.
+- Antes de alterar, leia o código e identifique exatamente onde está o bug. Faça as mudanças com o mínimo de impacto.
+
+1) BUG: Barra de rolagem da conversa não funciona (subir/descer)
+Tarefas:
+- Localize o componente da tela de conversa (chat panel) e descubra por que o scroll não está rolando.
+- Verifique: overflow CSS, height fixa, container com flex, event listeners, "scroll lock", overlay, body overflow hidden.
+- Garanta que:
+  - O container do histórico tenha `overflow-y: auto` e altura calculada corretamente (flex: 1).
+  - No mobile/desktop funcione mouse wheel, trackpad e arraste.
+  - Não exista um elemento por cima capturando scroll.
+- Adicionar “Auto-scroll inteligente”:
+  - Quando chegar mensagem nova, só rolar pro final se o usuário já estiver próximo do final.
+  - Se ele estiver lendo mensagens antigas, NÃO puxar pro final.
+- Implementar botão “Ir para o fim” quando não estiver no final.
+
+2) BUG CRÍTICO: Mike abriu duas conversas (duplicação de conversa / thread)
+Tarefas:
+- Identificar por que uma mesma pessoa/numero gera duas conversas diferentes.
+- Causas comuns para checar:
+  - Normalização de número falha (+55, 55, DDD, 9 dígitos, caracteres).
+  - Chave errada no banco (ex: conversa pelo message.from vs chatId).
+  - Race condition: webhook duplicado, evento repetido, atualização concorrente.
+  - Conversa sendo criada em dois lugares diferentes do código.
+- Implementar regra definitiva:
+  - Uma conversa por `contact_id` OU por `normalized_phone`.
+  - Criar índice único no banco: (account_id, normalized_phone) ou (instance_id, chat_id).
+  - No backend, ao receber mensagem, usar “upsert” transacional:
+    - upsert contato
+    - upsert conversa
+    - inserir mensagem (idempotente)
+- Garantir idempotência:
+  - Se o provedor reenviar webhook/evento, não duplicar mensagem nem conversa.
+  - Criar índice único para `message_id` (do provedor) quando existir.
+- Na UI:
+  - Impedir abrir duas tabs/painéis do mesmo contato:
+    - Se clicar no mesmo contato, apenas focar a conversa já aberta.
+    - Se abrir em modo split, bloquear duplicado e mostrar aviso.
+
+3) BUG: “kbelludo atacadista” chamou e não criou contato automático
+Tarefas:
+- Localizar fluxo que cria contato ao receber primeira mensagem.
+- Garantir que TODO inbound:
+  - normalize telefone
+  - procure contato
+  - se não existir, crie contato automaticamente com nome fallback:
+    - nome = pushName do WhatsApp se existir, senão “Contato +55...”
+- Validar por logs:
+  - Adicionar logging (server) no ponto de entrada do webhook/evento e no ponto de criação do contato.
+  - Criar uma tela/admin ou console logs com: phone, normalized_phone, chat_id, created_contact_id, created_conversation_id.
+
+4) MELHORIA: Macros com ordem customizável (mover sequência)
+Tarefas:
+- No banco, adicionar campo `position` ou `sort_order` na tabela de macros.
+- Implementar UI com drag-and-drop para reordenar macros.
+- Salvar nova ordem no backend (endpoint /macros/reorder).
+- Garantir que a lista sempre carregue ordenada por `sort_order`.
+
+5) MELHORIA: Kanban -> ao trocar coluna, trocar etiqueta automaticamente
+Tarefas:
+- Definir mapeamento: cada coluna do Kanban tem uma etiqueta vinculada (tag/label).
+- Ao mover card:
+  - atualizar `stage_id`/`column_id`
+  - atualizar `tag` automaticamente (remover tag anterior de funil e aplicar a nova)
+- Backend deve validar:
+  - atualização atômica (transaction)
+  - emitir evento realtime (socket) para todos operadores verem.
+
+6) MELHORIA: Campo de anotação do lado do nome no painel de conversa
+Tarefas:
+- Adicionar campo “Nota” visível e editável ao lado do nome do contato na conversa.
+- Exemplo: “ESPERANDO MERCADORIA” e deve ser visto por TODOS operadores.
+- Requisitos:
+  - Salvar no banco (contact.note ou conversation.note).
+  - Auto-save (debounce 400–700ms) e botão “Salvar” opcional.
+  - Mostrar “última atualização por (operador) e data/hora” (se existir user).
+  - Sincronizar em tempo real para todos (Socket.io).
+
+7) TESTES / CHECKLIST de validação (obrigatório)
+- Caso 1: receber mensagem de um número novo → cria contato e conversa automaticamente.
+- Caso 2: o mesmo número em formatos diferentes (+55..., 55..., sem +) → cai no MESMO contato/conversa.
+- Caso 3: webhook duplicado → não duplica conversa nem mensagem.
+- Caso 4: scroll sobe/desce e auto-scroll respeita leitura antiga.
+- Caso 5: mover card no Kanban → etiqueta muda e todos veem.
+- Caso 6: reordenar macros → persiste após refresh.
+- Caso 7: nota do contato aparece para todos operadores imediatamente.
+
+ENTREGA
+- Faça as alterações no código com commits lógicos (ou blocos organizados) e explique rapidamente:
+  - causa raiz de cada bug
+  - onde foi corrigido
+  - quais migrations foram criadas
+  - quais endpoints/componentes mudaram
+- Se faltar informação (ex: qual banco/stack), primeiro detecte no projeto (package.json, prisma, etc.) e siga o que já existe.
+
+Comece agora analisando o projeto (estrutura de pastas, modelos do banco, fluxo de entrada de mensagens) e aplique as correções.
