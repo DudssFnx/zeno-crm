@@ -349,75 +349,112 @@ export type InsertMacroExecution = z.infer<typeof insertMacroExecutionSchema>;
 export type Stage = typeof stages.$inferSelect;
 export type InsertStage = z.infer<typeof insertStageSchema>;
 
-// ============ AUTOMATION FLOWS (Sistema Avançado Estilo Typebot) ============
+// ============ AUTOMAÇÃO HÍBRIDA (Anti-Ban + Triagem Inteligente) ============
 
-// Flow principal - representa um fluxo de automação
-export const chatFlows = pgTable("chat_flows", {
+// Setores/Departamentos para roteamento
+export const departments = pgTable("departments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull().references(() => companies.id),
-  whatsappAccountId: varchar("whatsapp_account_id").references(() => whatsappAccounts.id),
-  name: text("name").notNull(),
+  name: text("name").notNull(), // Vendas, Financeiro, Suporte, etc.
   description: text("description"),
-  status: text("status").notNull().default("draft"), // draft | published
-  isActive: boolean("is_active").notNull().default(true),
-  startNodeId: varchar("start_node_id"), // Nó inicial do fluxo
-  triggerKeywords: text("trigger_keywords").array(),
-  triggerOnFirstMessage: boolean("trigger_on_first_message").notNull().default(true),
-  triggerOnStageNew: boolean("trigger_on_stage_new").notNull().default(false),
-  triggerOnTagAdded: varchar("trigger_on_tag_added"), // tagId que dispara
+  keywords: text("keywords").array(), // Palavras-chave para roteamento automático
+  isDefault: boolean("is_default").notNull().default(false), // Setor padrão
+  displayOrder: integer("display_order").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// Nós do fluxo - cada nó representa uma ação ou decisão
-export const chatFlowNodes = pgTable("chat_flow_nodes", {
+// Fila de atendentes por setor (para round-robin)
+export const departmentAgents = pgTable("department_agents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  flowId: varchar("flow_id").notNull().references(() => chatFlows.id, { onDelete: "cascade" }),
-  type: text("type").notNull(), // SEND_TEXT | ASK_INPUT | CONDITION | SET_TAG | MOVE_STAGE | ASSIGN_QUEUE | ASSIGN_AGENT | SEND_MEDIA | HANDOFF_TO_HUMAN | END
-  name: text("name"), // Nome descritivo do nó
-  config: jsonb("config").default({}), // Configurações específicas do tipo de nó
-  positionX: integer("position_x").default(0), // Para editor visual
-  positionY: integer("position_y").default(0), // Para editor visual
+  departmentId: varchar("department_id").notNull().references(() => departments.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  isActive: boolean("is_active").notNull().default(true),
+  lastAssignedAt: timestamp("last_assigned_at"), // Para round-robin
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Conexões entre nós (edges)
-export const chatFlowEdges = pgTable("chat_flow_edges", {
+// Menu de triagem configurável
+export const triageMenus = pgTable("triage_menus", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  flowId: varchar("flow_id").notNull().references(() => chatFlows.id, { onDelete: "cascade" }),
-  fromNodeId: varchar("from_node_id").notNull().references(() => chatFlowNodes.id, { onDelete: "cascade" }),
-  toNodeId: varchar("to_node_id").notNull().references(() => chatFlowNodes.id, { onDelete: "cascade" }),
-  condition: jsonb("condition").default({}), // Para condições: {type: "equals", value: "1", variable: "menu_choice"}
-  label: text("label"), // Label da conexão (para UI)
-  sortOrder: integer("sort_order").default(0), // Ordem para múltiplas saídas
+  companyId: varchar("company_id").notNull().references(() => companies.id),
+  whatsappAccountId: varchar("whatsapp_account_id").references(() => whatsappAccounts.id),
+  name: text("name").notNull(),
+  welcomeMessage: text("welcome_message").notNull(), // "Olá! Como posso te ajudar hoje?"
+  options: jsonb("options").notNull().default([]), // [{key: "1", label: "Vendas", departmentId: "...", keywords: ["comprar","preço"]}]
+  humanOptionKey: text("human_option_key").default("0"), // Tecla para falar com humano
+  invalidMessage: text("invalid_message").default("Desculpe, não entendi. Por favor, escolha uma opção válida."),
+  timeoutMinutes: integer("timeout_minutes").default(30), // Timeout da sessão
+  isActive: boolean("is_active").notNull().default(true),
+  triggerOnFirstMessage: boolean("trigger_on_first_message").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// Sessões de fluxo - rastreia progresso do cliente
-export const chatFlowSessions = pgTable("chat_flow_sessions", {
+// Sessão de triagem por conversa
+export const triageSessions = pgTable("triage_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  flowId: varchar("flow_id").notNull().references(() => chatFlows.id, { onDelete: "cascade" }),
   conversationId: varchar("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
-  contactId: varchar("contact_id").notNull().references(() => contacts.id),
-  currentNodeId: varchar("current_node_id").references(() => chatFlowNodes.id),
-  variables: jsonb("variables").default({}), // Variáveis capturadas {menu_choice: "1", nome: "João"}
-  state: text("state").notNull().default("active"), // active | waiting_input | handoff | paused | ended
-  startedAt: timestamp("started_at").defaultNow().notNull(),
+  menuId: varchar("menu_id").notNull().references(() => triageMenus.id),
+  state: text("state").notNull().default("awaiting_choice"), // awaiting_choice | routed | human_handoff | expired
+  chosenOption: text("chosen_option"),
+  departmentId: varchar("department_id").references(() => departments.id),
+  menuSentAt: timestamp("menu_sent_at").defaultNow().notNull(),
   lastInteractionAt: timestamp("last_interaction_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
 });
 
-// Mensagens agendadas - para follow-ups e campanhas
+// Regras de automação Zoho-like
+export const automationRules = pgTable("automation_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  triggerEvent: text("trigger_event").notNull(), // message_received | conversation_created | tag_added | stage_changed | inactivity
+  triggerFilters: jsonb("trigger_filters").default({}), // {tagId: "...", stageId: "...", inactivityDays: 3}
+  conditions: jsonb("conditions").default([]), // [{field: "message", operator: "contains", value: "boleto"}]
+  actions: jsonb("actions").notNull().default([]), // [{type: "add_tag", tagId: "..."}, {type: "assign_department", departmentId: "..."}]
+  priority: integer("priority").default(0), // Maior = executa primeiro
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Log de execução de automações
+export const automationExecutions = pgTable("automation_executions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ruleId: varchar("rule_id").references(() => automationRules.id),
+  conversationId: varchar("conversation_id").references(() => conversations.id),
+  contactId: varchar("contact_id").references(() => contacts.id),
+  triggerEvent: text("trigger_event").notNull(),
+  actionsExecuted: jsonb("actions_executed").default([]),
+  success: boolean("success").notNull().default(true),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Controle anti-spam (evita banimento)
+export const antiSpamLogs = pgTable("anti_spam_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id),
+  conversationId: varchar("conversation_id").references(() => conversations.id),
+  messageHash: text("message_hash").notNull(), // Hash do conteúdo para evitar repetição
+  messageType: text("message_type").notNull(), // triage_menu | auto_reply | rule_action
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  delayUsedMs: integer("delay_used_ms"), // Delay aplicado
+});
+
+// Mensagens agendadas
 export const scheduledMessages = pgTable("scheduled_messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull().references(() => companies.id),
   conversationId: varchar("conversation_id").references(() => conversations.id),
   contactId: varchar("contact_id").references(() => contacts.id),
   whatsappAccountId: varchar("whatsapp_account_id").references(() => whatsappAccounts.id),
-  flowSessionId: varchar("flow_session_id").references(() => chatFlowSessions.id),
-  content: text("content").notNull(), // Mensagem a enviar
-  mediaUrl: text("media_url"), // URL de mídia (opcional)
-  mediaType: text("media_type"), // image | video | audio | document
-  scheduledFor: timestamp("scheduled_for").notNull(), // Quando enviar
+  content: text("content").notNull(),
+  mediaUrl: text("media_url"),
+  mediaType: text("media_type"),
+  scheduledFor: timestamp("scheduled_for").notNull(),
   status: text("status").notNull().default("pending"), // pending | sent | failed | cancelled
   sentAt: timestamp("sent_at"),
   errorMessage: text("error_message"),
@@ -425,50 +462,38 @@ export const scheduledMessages = pgTable("scheduled_messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Steps do fluxo (LEGADO - mantido para compatibilidade)
-export const chatFlowSteps = pgTable("chat_flow_steps", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  flowId: varchar("flow_id").notNull().references(() => chatFlows.id, { onDelete: "cascade" }),
-  stepOrder: integer("step_order").notNull().default(0),
-  type: text("type").notNull(),
-  message: text("message"),
-  menuOptions: jsonb("menu_options").default([]),
-  inputField: text("input_field"),
-  actionType: text("action_type"),
-  actionPayload: jsonb("action_payload").default({}),
-  nextStepId: varchar("next_step_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const chatFlowsRelations = relations(chatFlows, ({ one, many }) => ({
-  company: one(companies, { fields: [chatFlows.companyId], references: [companies.id] }),
-  whatsappAccount: one(whatsappAccounts, { fields: [chatFlows.whatsappAccountId], references: [whatsappAccounts.id] }),
-  nodes: many(chatFlowNodes),
-  edges: many(chatFlowEdges),
-  sessions: many(chatFlowSessions),
-  steps: many(chatFlowSteps), // Legado
+// Relations
+export const departmentsRelations = relations(departments, ({ one, many }) => ({
+  company: one(companies, { fields: [departments.companyId], references: [companies.id] }),
+  agents: many(departmentAgents),
 }));
 
-export const chatFlowNodesRelations = relations(chatFlowNodes, ({ one, many }) => ({
-  flow: one(chatFlows, { fields: [chatFlowNodes.flowId], references: [chatFlows.id] }),
-  outgoingEdges: many(chatFlowEdges),
+export const departmentAgentsRelations = relations(departmentAgents, ({ one }) => ({
+  department: one(departments, { fields: [departmentAgents.departmentId], references: [departments.id] }),
+  user: one(users, { fields: [departmentAgents.userId], references: [users.id] }),
 }));
 
-export const chatFlowEdgesRelations = relations(chatFlowEdges, ({ one }) => ({
-  flow: one(chatFlows, { fields: [chatFlowEdges.flowId], references: [chatFlows.id] }),
-  fromNode: one(chatFlowNodes, { fields: [chatFlowEdges.fromNodeId], references: [chatFlowNodes.id] }),
-  toNode: one(chatFlowNodes, { fields: [chatFlowEdges.toNodeId], references: [chatFlowNodes.id] }),
+export const triageMenusRelations = relations(triageMenus, ({ one, many }) => ({
+  company: one(companies, { fields: [triageMenus.companyId], references: [companies.id] }),
+  whatsappAccount: one(whatsappAccounts, { fields: [triageMenus.whatsappAccountId], references: [whatsappAccounts.id] }),
+  sessions: many(triageSessions),
 }));
 
-export const chatFlowSessionsRelations = relations(chatFlowSessions, ({ one }) => ({
-  flow: one(chatFlows, { fields: [chatFlowSessions.flowId], references: [chatFlows.id] }),
-  conversation: one(conversations, { fields: [chatFlowSessions.conversationId], references: [conversations.id] }),
-  contact: one(contacts, { fields: [chatFlowSessions.contactId], references: [contacts.id] }),
-  currentNode: one(chatFlowNodes, { fields: [chatFlowSessions.currentNodeId], references: [chatFlowNodes.id] }),
+export const triageSessionsRelations = relations(triageSessions, ({ one }) => ({
+  conversation: one(conversations, { fields: [triageSessions.conversationId], references: [conversations.id] }),
+  menu: one(triageMenus, { fields: [triageSessions.menuId], references: [triageMenus.id] }),
+  department: one(departments, { fields: [triageSessions.departmentId], references: [departments.id] }),
 }));
 
-export const chatFlowStepsRelations = relations(chatFlowSteps, ({ one }) => ({
-  flow: one(chatFlows, { fields: [chatFlowSteps.flowId], references: [chatFlows.id] }),
+export const automationRulesRelations = relations(automationRules, ({ one, many }) => ({
+  company: one(companies, { fields: [automationRules.companyId], references: [companies.id] }),
+  executions: many(automationExecutions),
+}));
+
+export const automationExecutionsRelations = relations(automationExecutions, ({ one }) => ({
+  rule: one(automationRules, { fields: [automationExecutions.ruleId], references: [automationRules.id] }),
+  conversation: one(conversations, { fields: [automationExecutions.conversationId], references: [conversations.id] }),
+  contact: one(contacts, { fields: [automationExecutions.contactId], references: [contacts.id] }),
 }));
 
 export const scheduledMessagesRelations = relations(scheduledMessages, ({ one }) => ({
@@ -476,60 +501,71 @@ export const scheduledMessagesRelations = relations(scheduledMessages, ({ one })
   conversation: one(conversations, { fields: [scheduledMessages.conversationId], references: [conversations.id] }),
   contact: one(contacts, { fields: [scheduledMessages.contactId], references: [contacts.id] }),
   whatsappAccount: one(whatsappAccounts, { fields: [scheduledMessages.whatsappAccountId], references: [whatsappAccounts.id] }),
-  flowSession: one(chatFlowSessions, { fields: [scheduledMessages.flowSessionId], references: [chatFlowSessions.id] }),
   createdByUser: one(users, { fields: [scheduledMessages.createdBy], references: [users.id] }),
 }));
 
-// ============ Node Type Configurations ============
+// ============ Types & Schemas ============
 
-// Tipos de nós disponíveis
-export const nodeTypes = [
-  "SEND_TEXT",
-  "ASK_INPUT", 
-  "CONDITION",
-  "SET_TAG",
-  "MOVE_STAGE",
-  "ASSIGN_QUEUE",
-  "ASSIGN_AGENT",
-  "SEND_MEDIA",
-  "HANDOFF_TO_HUMAN",
-  "END",
+// Tipos de eventos de trigger
+export const triggerEvents = [
+  "message_received",
+  "conversation_created", 
+  "tag_added",
+  "tag_removed",
+  "stage_changed",
+  "inactivity",
+  "assignment_changed",
 ] as const;
 
-export type NodeType = typeof nodeTypes[number];
+export type TriggerEvent = typeof triggerEvents[number];
 
-// Configuração de nó SEND_TEXT
-export const sendTextConfigSchema = z.object({
-  text: z.string(),
-  delay: z.number().optional(), // Delay em ms antes de enviar
+// Tipos de ações de automação
+export const automationActionTypes = [
+  "add_tag",
+  "remove_tag",
+  "set_stage",
+  "assign_department",
+  "assign_agent",
+  "send_message",
+  "notify_operator",
+  "set_status",
+] as const;
+
+export type AutomationActionType = typeof automationActionTypes[number];
+
+// Schema de opção do menu de triagem
+export const triageOptionSchema = z.object({
+  key: z.string(), // "1", "2", "3", etc.
+  label: z.string(), // "Vendas", "Financeiro", etc.
+  departmentId: z.string().optional(),
+  keywords: z.array(z.string()).optional(), // Palavras-chave alternativas
+  stageId: z.string().optional(), // Move para stage específico
+  tagId: z.string().optional(), // Adiciona tag
 });
 
-// Configuração de nó ASK_INPUT
-export const askInputConfigSchema = z.object({
-  prompt: z.string(), // Mensagem pedindo input
-  variableName: z.string(), // Nome da variável para salvar
-  validValues: z.array(z.string()).optional(), // Valores válidos (para menus)
-  invalidMessage: z.string().optional(), // Mensagem de erro
-  inputType: z.enum(["text", "number", "email", "phone", "menu"]).optional(),
+export type TriageOption = z.infer<typeof triageOptionSchema>;
+
+// Schema de condição de automação
+export const automationConditionSchema = z.object({
+  field: z.string(), // "message", "tag", "stage", "department", "contact.attributes"
+  operator: z.enum(["equals", "not_equals", "contains", "not_contains", "starts_with", "ends_with", "is_empty", "is_not_empty"]),
+  value: z.string(),
 });
 
-// Configuração de nó CONDITION
-export const conditionConfigSchema = z.object({
-  variable: z.string(), // Variável a checar
-  operator: z.enum(["equals", "contains", "startsWith", "endsWith", "greaterThan", "lessThan"]),
-  value: z.string(), // Valor a comparar
+export type AutomationCondition = z.infer<typeof automationConditionSchema>;
+
+// Schema de ação de automação
+export const automationActionSchema = z.object({
+  type: z.enum(["add_tag", "remove_tag", "set_stage", "assign_department", "assign_agent", "send_message", "notify_operator", "set_status"]),
+  tagId: z.string().optional(),
+  stageId: z.string().optional(),
+  departmentId: z.string().optional(),
+  userId: z.string().optional(),
+  message: z.string().optional(),
+  status: z.string().optional(),
 });
 
-// Configuração de nó SET_TAG
-export const setTagConfigSchema = z.object({
-  tagId: z.string(),
-  action: z.enum(["add", "remove"]).default("add"),
-});
-
-// Configuração de nó MOVE_STAGE
-export const moveStageConfigSchema = z.object({
-  stageId: z.string(),
-});
+export type AutomationAction = z.infer<typeof automationActionSchema>;
 
 // Configuração de nó ASSIGN_QUEUE/ASSIGN_AGENT
 export const assignConfigSchema = z.object({
@@ -564,30 +600,37 @@ export type MenuOption = z.infer<typeof menuOptionSchema>;
 
 // ============ Insert Schemas ============
 
-export const insertChatFlowSchema = createInsertSchema(chatFlows).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertChatFlow = z.infer<typeof insertChatFlowSchema>;
-export type ChatFlow = typeof chatFlows.$inferSelect;
+export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
+export type Department = typeof departments.$inferSelect;
 
-export const insertChatFlowNodeSchema = createInsertSchema(chatFlowNodes).omit({ id: true, createdAt: true });
-export type InsertChatFlowNode = z.infer<typeof insertChatFlowNodeSchema>;
-export type ChatFlowNode = typeof chatFlowNodes.$inferSelect;
+export const insertDepartmentAgentSchema = createInsertSchema(departmentAgents).omit({ id: true, createdAt: true });
+export type InsertDepartmentAgent = z.infer<typeof insertDepartmentAgentSchema>;
+export type DepartmentAgent = typeof departmentAgents.$inferSelect;
 
-export const insertChatFlowEdgeSchema = createInsertSchema(chatFlowEdges).omit({ id: true });
-export type InsertChatFlowEdge = z.infer<typeof insertChatFlowEdgeSchema>;
-export type ChatFlowEdge = typeof chatFlowEdges.$inferSelect;
+export const insertTriageMenuSchema = createInsertSchema(triageMenus).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTriageMenu = z.infer<typeof insertTriageMenuSchema>;
+export type TriageMenu = typeof triageMenus.$inferSelect;
 
-export const insertChatFlowSessionSchema = createInsertSchema(chatFlowSessions).omit({ id: true, startedAt: true, lastInteractionAt: true, completedAt: true });
-export type InsertChatFlowSession = z.infer<typeof insertChatFlowSessionSchema>;
-export type ChatFlowSession = typeof chatFlowSessions.$inferSelect;
+export const insertTriageSessionSchema = createInsertSchema(triageSessions).omit({ id: true, menuSentAt: true, lastInteractionAt: true, completedAt: true });
+export type InsertTriageSession = z.infer<typeof insertTriageSessionSchema>;
+export type TriageSession = typeof triageSessions.$inferSelect;
+
+export const insertAutomationRuleSchema = createInsertSchema(automationRules).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAutomationRule = z.infer<typeof insertAutomationRuleSchema>;
+export type AutomationRule = typeof automationRules.$inferSelect;
+
+export const insertAutomationExecutionSchema = createInsertSchema(automationExecutions).omit({ id: true, createdAt: true });
+export type InsertAutomationExecution = z.infer<typeof insertAutomationExecutionSchema>;
+export type AutomationExecution = typeof automationExecutions.$inferSelect;
+
+export const insertAntiSpamLogSchema = createInsertSchema(antiSpamLogs).omit({ id: true, sentAt: true });
+export type InsertAntiSpamLog = z.infer<typeof insertAntiSpamLogSchema>;
+export type AntiSpamLog = typeof antiSpamLogs.$inferSelect;
 
 export const insertScheduledMessageSchema = createInsertSchema(scheduledMessages).omit({ id: true, createdAt: true, sentAt: true });
 export type InsertScheduledMessage = z.infer<typeof insertScheduledMessageSchema>;
 export type ScheduledMessage = typeof scheduledMessages.$inferSelect;
-
-// Legado
-export const insertChatFlowStepSchema = createInsertSchema(chatFlowSteps).omit({ id: true, createdAt: true });
-export type InsertChatFlowStep = z.infer<typeof insertChatFlowStepSchema>;
-export type ChatFlowStep = typeof chatFlowSteps.$inferSelect;
 
 // Auth schemas
 export const loginSchema = z.object({

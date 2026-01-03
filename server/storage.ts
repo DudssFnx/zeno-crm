@@ -4,8 +4,8 @@ import {
   companies, users, whatsappAccounts, contacts, tags, contactTags,
   conversations, messages, webhookConfigs, automationLogs, cannedResponses,
   macros, macroExecutions, stages, contactAttributes,
-  chatFlows, chatFlowSteps, chatFlowSessions,
-  chatFlowNodes, chatFlowEdges, scheduledMessages,
+  departments, departmentAgents, triageMenus, triageSessions,
+  automationRules, automationExecutions, antiSpamLogs, scheduledMessages,
   type Company, type InsertCompany, type User, type InsertUser,
   type WhatsappAccount, type InsertWhatsappAccount,
   type Contact, type InsertContact, type Tag, type InsertTag,
@@ -18,11 +18,13 @@ import {
   type MacroExecution, type InsertMacroExecution,
   type Stage, type InsertStage,
   type ContactAttribute, type InsertContactAttribute,
-  type ChatFlow, type InsertChatFlow,
-  type ChatFlowStep, type InsertChatFlowStep,
-  type ChatFlowSession, type InsertChatFlowSession,
-  type ChatFlowNode, type InsertChatFlowNode,
-  type ChatFlowEdge, type InsertChatFlowEdge,
+  type Department, type InsertDepartment,
+  type DepartmentAgent, type InsertDepartmentAgent,
+  type TriageMenu, type InsertTriageMenu,
+  type TriageSession, type InsertTriageSession,
+  type AutomationRule, type InsertAutomationRule,
+  type AutomationExecution, type InsertAutomationExecution,
+  type AntiSpamLog, type InsertAntiSpamLog,
   type ScheduledMessage, type InsertScheduledMessage,
   type ConversationWithDetails, type ContactWithTags, type MessageWithSender,
 } from "@shared/schema";
@@ -135,42 +137,41 @@ export interface IStorage {
   updateContactAttribute(id: string, data: Partial<InsertContactAttribute>): Promise<ContactAttribute | undefined>;
   deleteContactAttribute(id: string): Promise<void>;
 
-  // Chat Flows
-  createChatFlow(data: InsertChatFlow): Promise<ChatFlow>;
-  getChatFlow(id: string): Promise<ChatFlow | undefined>;
-  getChatFlows(companyId: string): Promise<ChatFlow[]>;
-  updateChatFlow(id: string, data: Partial<InsertChatFlow>): Promise<ChatFlow | undefined>;
-  deleteChatFlow(id: string): Promise<void>;
+  // Departments
+  createDepartment(data: InsertDepartment): Promise<Department>;
+  getDepartment(id: string): Promise<Department | undefined>;
+  getDepartments(companyId: string): Promise<Department[]>;
+  updateDepartment(id: string, data: Partial<InsertDepartment>): Promise<Department | undefined>;
+  deleteDepartment(id: string): Promise<void>;
 
-  // Chat Flow Steps
-  createChatFlowStep(data: InsertChatFlowStep): Promise<ChatFlowStep>;
-  getChatFlowStep(id: string): Promise<ChatFlowStep | undefined>;
-  getChatFlowSteps(flowId: string): Promise<ChatFlowStep[]>;
-  updateChatFlowStep(id: string, data: Partial<InsertChatFlowStep>): Promise<ChatFlowStep | undefined>;
-  deleteChatFlowStep(id: string): Promise<void>;
+  // Department Agents
+  addDepartmentAgent(data: InsertDepartmentAgent): Promise<DepartmentAgent>;
+  removeDepartmentAgent(departmentId: string, userId: string): Promise<void>;
+  getDepartmentAgents(departmentId: string): Promise<DepartmentAgent[]>;
 
-  // Chat Flow Sessions
-  createChatFlowSession(data: InsertChatFlowSession): Promise<ChatFlowSession>;
-  getChatFlowSession(id: string): Promise<ChatFlowSession | undefined>;
-  getActiveSessionByConversation(conversationId: string): Promise<ChatFlowSession | undefined>;
-  updateChatFlowSession(id: string, data: Partial<InsertChatFlowSession> & { lastInteractionAt?: Date; completedAt?: Date }): Promise<ChatFlowSession | undefined>;
+  // Triage Menus
+  createTriageMenu(data: InsertTriageMenu): Promise<TriageMenu>;
+  getTriageMenu(id: string): Promise<TriageMenu | undefined>;
+  getTriageMenus(companyId: string): Promise<TriageMenu[]>;
+  updateTriageMenu(id: string, data: Partial<InsertTriageMenu>): Promise<TriageMenu | undefined>;
+  deleteTriageMenu(id: string): Promise<void>;
 
-  // Chat Flow Nodes (Novo sistema)
-  createChatFlowNode(data: InsertChatFlowNode): Promise<ChatFlowNode>;
-  getChatFlowNode(id: string): Promise<ChatFlowNode | undefined>;
-  getChatFlowNodes(flowId: string): Promise<ChatFlowNode[]>;
-  updateChatFlowNode(id: string, data: Partial<InsertChatFlowNode>): Promise<ChatFlowNode | undefined>;
-  deleteChatFlowNode(id: string): Promise<void>;
-  deleteChatFlowNodes(flowId: string): Promise<void>;
+  // Triage Sessions
+  createTriageSession(data: InsertTriageSession): Promise<TriageSession>;
+  getTriageSession(id: string): Promise<TriageSession | undefined>;
+  getActiveTriageSession(conversationId: string): Promise<TriageSession | undefined>;
+  updateTriageSession(id: string, data: Partial<TriageSession>): Promise<TriageSession | undefined>;
 
-  // Chat Flow Edges (Novo sistema)
-  createChatFlowEdge(data: InsertChatFlowEdge): Promise<ChatFlowEdge>;
-  getChatFlowEdge(id: string): Promise<ChatFlowEdge | undefined>;
-  getChatFlowEdges(flowId: string): Promise<ChatFlowEdge[]>;
-  getOutgoingEdges(nodeId: string): Promise<ChatFlowEdge[]>;
-  updateChatFlowEdge(id: string, data: Partial<InsertChatFlowEdge>): Promise<ChatFlowEdge | undefined>;
-  deleteChatFlowEdge(id: string): Promise<void>;
-  deleteChatFlowEdges(flowId: string): Promise<void>;
+  // Automation Rules
+  createAutomationRule(data: InsertAutomationRule): Promise<AutomationRule>;
+  getAutomationRule(id: string): Promise<AutomationRule | undefined>;
+  getAutomationRules(companyId: string): Promise<AutomationRule[]>;
+  updateAutomationRule(id: string, data: Partial<InsertAutomationRule>): Promise<AutomationRule | undefined>;
+  deleteAutomationRule(id: string): Promise<void>;
+
+  // Automation Executions
+  logAutomationExecution(data: InsertAutomationExecution): Promise<AutomationExecution>;
+  getAutomationExecutions(companyId: string, limit?: number): Promise<AutomationExecution[]>;
 
   // Scheduled Messages
   createScheduledMessage(data: InsertScheduledMessage): Promise<ScheduledMessage>;
@@ -776,169 +777,160 @@ export class DatabaseStorage implements IStorage {
     await db.delete(contactAttributes).where(eq(contactAttributes.id, id));
   }
 
-  // Chat Flows
-  async createChatFlow(data: InsertChatFlow): Promise<ChatFlow> {
-    const [flow] = await db.insert(chatFlows).values(data).returning();
-    return flow;
+  // Departments
+  async createDepartment(data: InsertDepartment): Promise<Department> {
+    const [dept] = await db.insert(departments).values(data).returning();
+    return dept;
   }
 
-  async getChatFlow(id: string): Promise<ChatFlow | undefined> {
-    const [flow] = await db.select().from(chatFlows).where(eq(chatFlows.id, id));
-    return flow;
+  async getDepartment(id: string): Promise<Department | undefined> {
+    const [dept] = await db.select().from(departments).where(eq(departments.id, id));
+    return dept;
   }
 
-  async getChatFlows(companyId: string): Promise<ChatFlow[]> {
-    return db.select().from(chatFlows)
-      .where(eq(chatFlows.companyId, companyId))
-      .orderBy(desc(chatFlows.createdAt));
+  async getDepartments(companyId: string): Promise<Department[]> {
+    return db.select().from(departments)
+      .where(eq(departments.companyId, companyId))
+      .orderBy(asc(departments.name));
   }
 
-  async updateChatFlow(id: string, data: Partial<InsertChatFlow>): Promise<ChatFlow | undefined> {
-    const [flow] = await db
-      .update(chatFlows)
+  async updateDepartment(id: string, data: Partial<InsertDepartment>): Promise<Department | undefined> {
+    const [dept] = await db
+      .update(departments)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(chatFlows.id, id))
+      .where(eq(departments.id, id))
       .returning();
-    return flow;
+    return dept;
   }
 
-  async deleteChatFlow(id: string): Promise<void> {
-    await db.delete(chatFlows).where(eq(chatFlows.id, id));
+  async deleteDepartment(id: string): Promise<void> {
+    await db.delete(departmentAgents).where(eq(departmentAgents.departmentId, id));
+    await db.delete(departments).where(eq(departments.id, id));
   }
 
-  // Chat Flow Steps
-  async createChatFlowStep(data: InsertChatFlowStep): Promise<ChatFlowStep> {
-    const [step] = await db.insert(chatFlowSteps).values(data).returning();
-    return step;
+  // Department Agents
+  async addDepartmentAgent(data: InsertDepartmentAgent): Promise<DepartmentAgent> {
+    const [agent] = await db.insert(departmentAgents).values(data).returning();
+    return agent;
   }
 
-  async getChatFlowStep(id: string): Promise<ChatFlowStep | undefined> {
-    const [step] = await db.select().from(chatFlowSteps).where(eq(chatFlowSteps.id, id));
-    return step;
-  }
-
-  async getChatFlowSteps(flowId: string): Promise<ChatFlowStep[]> {
-    return db.select().from(chatFlowSteps)
-      .where(eq(chatFlowSteps.flowId, flowId))
-      .orderBy(asc(chatFlowSteps.stepOrder));
-  }
-
-  async updateChatFlowStep(id: string, data: Partial<InsertChatFlowStep>): Promise<ChatFlowStep | undefined> {
-    const [step] = await db
-      .update(chatFlowSteps)
-      .set(data)
-      .where(eq(chatFlowSteps.id, id))
-      .returning();
-    return step;
-  }
-
-  async deleteChatFlowStep(id: string): Promise<void> {
-    await db.delete(chatFlowSteps).where(eq(chatFlowSteps.id, id));
-  }
-
-  // Chat Flow Sessions
-  async createChatFlowSession(data: InsertChatFlowSession): Promise<ChatFlowSession> {
-    const [session] = await db.insert(chatFlowSessions).values(data).returning();
-    return session;
-  }
-
-  async getChatFlowSession(id: string): Promise<ChatFlowSession | undefined> {
-    const [session] = await db.select().from(chatFlowSessions).where(eq(chatFlowSessions.id, id));
-    return session;
-  }
-
-  async getActiveSessionByConversation(conversationId: string): Promise<ChatFlowSession | undefined> {
-    const [session] = await db.select().from(chatFlowSessions)
+  async removeDepartmentAgent(departmentId: string, userId: string): Promise<void> {
+    await db.delete(departmentAgents)
       .where(and(
-        eq(chatFlowSessions.conversationId, conversationId),
-        eq(chatFlowSessions.status, "active")
+        eq(departmentAgents.departmentId, departmentId),
+        eq(departmentAgents.userId, userId)
+      ));
+  }
+
+  async getDepartmentAgents(departmentId: string): Promise<DepartmentAgent[]> {
+    return db.select().from(departmentAgents)
+      .where(eq(departmentAgents.departmentId, departmentId));
+  }
+
+  // Triage Menus
+  async createTriageMenu(data: InsertTriageMenu): Promise<TriageMenu> {
+    const [menu] = await db.insert(triageMenus).values(data).returning();
+    return menu;
+  }
+
+  async getTriageMenu(id: string): Promise<TriageMenu | undefined> {
+    const [menu] = await db.select().from(triageMenus).where(eq(triageMenus.id, id));
+    return menu;
+  }
+
+  async getTriageMenus(companyId: string): Promise<TriageMenu[]> {
+    return db.select().from(triageMenus)
+      .where(eq(triageMenus.companyId, companyId))
+      .orderBy(desc(triageMenus.createdAt));
+  }
+
+  async updateTriageMenu(id: string, data: Partial<InsertTriageMenu>): Promise<TriageMenu | undefined> {
+    const [menu] = await db
+      .update(triageMenus)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(triageMenus.id, id))
+      .returning();
+    return menu;
+  }
+
+  async deleteTriageMenu(id: string): Promise<void> {
+    await db.delete(triageMenus).where(eq(triageMenus.id, id));
+  }
+
+  // Triage Sessions
+  async createTriageSession(data: InsertTriageSession): Promise<TriageSession> {
+    const [session] = await db.insert(triageSessions).values(data).returning();
+    return session;
+  }
+
+  async getTriageSession(id: string): Promise<TriageSession | undefined> {
+    const [session] = await db.select().from(triageSessions).where(eq(triageSessions.id, id));
+    return session;
+  }
+
+  async getActiveTriageSession(conversationId: string): Promise<TriageSession | undefined> {
+    const [session] = await db.select().from(triageSessions)
+      .where(and(
+        eq(triageSessions.conversationId, conversationId),
+        eq(triageSessions.status, "active")
       ));
     return session;
   }
 
-  async updateChatFlowSession(id: string, data: Partial<InsertChatFlowSession> & { lastInteractionAt?: Date; completedAt?: Date }): Promise<ChatFlowSession | undefined> {
-    const updateData: Record<string, unknown> = { ...data };
-    if (!data.lastInteractionAt) {
-      updateData.lastInteractionAt = new Date();
-    }
+  async updateTriageSession(id: string, data: Partial<TriageSession>): Promise<TriageSession | undefined> {
     const [session] = await db
-      .update(chatFlowSessions)
-      .set(updateData)
-      .where(eq(chatFlowSessions.id, id))
+      .update(triageSessions)
+      .set(data)
+      .where(eq(triageSessions.id, id))
       .returning();
     return session;
   }
 
-  // Chat Flow Nodes (Novo sistema)
-  async createChatFlowNode(data: InsertChatFlowNode): Promise<ChatFlowNode> {
-    const [node] = await db.insert(chatFlowNodes).values(data).returning();
-    return node;
+  // Automation Rules
+  async createAutomationRule(data: InsertAutomationRule): Promise<AutomationRule> {
+    const [rule] = await db.insert(automationRules).values(data).returning();
+    return rule;
   }
 
-  async getChatFlowNode(id: string): Promise<ChatFlowNode | undefined> {
-    const [node] = await db.select().from(chatFlowNodes).where(eq(chatFlowNodes.id, id));
-    return node;
+  async getAutomationRule(id: string): Promise<AutomationRule | undefined> {
+    const [rule] = await db.select().from(automationRules).where(eq(automationRules.id, id));
+    return rule;
   }
 
-  async getChatFlowNodes(flowId: string): Promise<ChatFlowNode[]> {
-    return db.select().from(chatFlowNodes).where(eq(chatFlowNodes.flowId, flowId));
+  async getAutomationRules(companyId: string): Promise<AutomationRule[]> {
+    return db.select().from(automationRules)
+      .where(eq(automationRules.companyId, companyId))
+      .orderBy(asc(automationRules.priority), desc(automationRules.createdAt));
   }
 
-  async updateChatFlowNode(id: string, data: Partial<InsertChatFlowNode>): Promise<ChatFlowNode | undefined> {
-    const [node] = await db
-      .update(chatFlowNodes)
-      .set(data)
-      .where(eq(chatFlowNodes.id, id))
+  async updateAutomationRule(id: string, data: Partial<InsertAutomationRule>): Promise<AutomationRule | undefined> {
+    const [rule] = await db
+      .update(automationRules)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(automationRules.id, id))
       .returning();
-    return node;
+    return rule;
   }
 
-  async deleteChatFlowNode(id: string): Promise<void> {
-    await db.delete(chatFlowNodes).where(eq(chatFlowNodes.id, id));
+  async deleteAutomationRule(id: string): Promise<void> {
+    await db.delete(automationRules).where(eq(automationRules.id, id));
   }
 
-  async deleteChatFlowNodes(flowId: string): Promise<void> {
-    await db.delete(chatFlowNodes).where(eq(chatFlowNodes.flowId, flowId));
+  // Automation Executions
+  async logAutomationExecution(data: InsertAutomationExecution): Promise<AutomationExecution> {
+    const [execution] = await db.insert(automationExecutions).values(data).returning();
+    return execution;
   }
 
-  // Chat Flow Edges (Novo sistema)
-  async createChatFlowEdge(data: InsertChatFlowEdge): Promise<ChatFlowEdge> {
-    const [edge] = await db.insert(chatFlowEdges).values(data).returning();
-    return edge;
-  }
-
-  async getChatFlowEdge(id: string): Promise<ChatFlowEdge | undefined> {
-    const [edge] = await db.select().from(chatFlowEdges).where(eq(chatFlowEdges.id, id));
-    return edge;
-  }
-
-  async getChatFlowEdges(flowId: string): Promise<ChatFlowEdge[]> {
-    return db.select().from(chatFlowEdges)
-      .where(eq(chatFlowEdges.flowId, flowId))
-      .orderBy(asc(chatFlowEdges.sortOrder));
-  }
-
-  async getOutgoingEdges(nodeId: string): Promise<ChatFlowEdge[]> {
-    return db.select().from(chatFlowEdges)
-      .where(eq(chatFlowEdges.fromNodeId, nodeId))
-      .orderBy(asc(chatFlowEdges.sortOrder));
-  }
-
-  async updateChatFlowEdge(id: string, data: Partial<InsertChatFlowEdge>): Promise<ChatFlowEdge | undefined> {
-    const [edge] = await db
-      .update(chatFlowEdges)
-      .set(data)
-      .where(eq(chatFlowEdges.id, id))
-      .returning();
-    return edge;
-  }
-
-  async deleteChatFlowEdge(id: string): Promise<void> {
-    await db.delete(chatFlowEdges).where(eq(chatFlowEdges.id, id));
-  }
-
-  async deleteChatFlowEdges(flowId: string): Promise<void> {
-    await db.delete(chatFlowEdges).where(eq(chatFlowEdges.flowId, flowId));
+  async getAutomationExecutions(companyId: string, limit?: number): Promise<AutomationExecution[]> {
+    let query = db.select().from(automationExecutions)
+      .where(eq(automationExecutions.companyId, companyId))
+      .orderBy(desc(automationExecutions.executedAt));
+    
+    if (limit) {
+      return query.limit(limit);
+    }
+    return query;
   }
 
   // Scheduled Messages
