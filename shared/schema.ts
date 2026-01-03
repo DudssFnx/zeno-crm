@@ -669,3 +669,69 @@ export type ContactWithTags = Contact & {
 export type MessageWithSender = Message & {
   sender?: User;
 };
+
+// ============ Robô (Auto Atendimento Scripts) ============
+
+// Ações disponíveis no robô
+export const robotActionSchema = z.object({
+  id: z.string(),
+  type: z.enum([
+    "send_text",        // Enviar texto
+    "send_image",       // Enviar imagem
+    "send_audio",       // Enviar áudio
+    "send_video",       // Enviar vídeo
+    "send_document",    // Enviar documento
+    "simulate_typing",  // Simular digitando
+    "simulate_recording", // Simular gravando áudio
+    "delay",            // Aguardar tempo
+    "add_tag",          // Adicionar tag
+    "remove_tag",       // Remover tag
+    "set_status",       // Alterar status da conversa
+    "assign_agent",     // Atribuir atendente
+    "transfer",         // Transferir atendimento
+  ]),
+  // Campos específicos por tipo de ação
+  content: z.string().optional(),         // Texto da mensagem ou URL do arquivo
+  mediaUrl: z.string().optional(),        // URL do arquivo de mídia
+  fileName: z.string().optional(),        // Nome do arquivo
+  delayMs: z.number().optional(),         // Delay em ms (para delay/simulate)
+  tagId: z.string().optional(),           // ID da tag
+  status: z.enum(["open", "pending", "resolved"]).optional(),
+  agentId: z.string().optional(),         // ID do agente
+  departmentId: z.string().optional(),    // ID do departamento para transferência
+});
+
+export type RobotAction = z.infer<typeof robotActionSchema>;
+
+// Tabela de robôs
+export const robots = pgTable("robots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  actions: jsonb("actions").notNull().default([]), // Array de RobotAction
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Execuções de robô
+export const robotExecutions = pgTable("robot_executions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  robotId: varchar("robot_id").notNull().references(() => robots.id),
+  conversationId: varchar("conversation_id").notNull().references(() => conversations.id),
+  executedBy: varchar("executed_by").references(() => users.id),
+  status: text("status").notNull().default("running"), // running | completed | failed | cancelled
+  currentActionIndex: integer("current_action_index").notNull().default(0),
+  error: text("error"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertRobotSchema = createInsertSchema(robots).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertRobot = z.infer<typeof insertRobotSchema>;
+export type Robot = typeof robots.$inferSelect;
+
+export const insertRobotExecutionSchema = createInsertSchema(robotExecutions).omit({ id: true, startedAt: true, completedAt: true });
+export type InsertRobotExecution = z.infer<typeof insertRobotExecutionSchema>;
+export type RobotExecution = typeof robotExecutions.$inferSelect;
