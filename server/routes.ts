@@ -1353,6 +1353,35 @@ export async function registerRoutes(
     }
   });
 
+  // PUT /api/macros/reorder - Reordenar macros (admin/master only)
+  // IMPORTANTE: Esta rota deve vir ANTES de /api/macros/:id para evitar conflito
+  app.put("/api/macros/reorder", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { macroIds } = req.body;
+      const companyId = req.user!.companyId;
+
+      if (!Array.isArray(macroIds) || macroIds.length === 0) {
+        return res.status(400).json({ message: "macroIds must be a non-empty array" });
+      }
+
+      // Verificar que todos os macros pertencem à empresa
+      const macros = await storage.getMacros(companyId);
+      const companyMacroIds = new Set(macros.map(m => m.id));
+
+      for (const id of macroIds) {
+        if (!companyMacroIds.has(id)) {
+          return res.status(403).json({ message: "Forbidden: macro does not belong to company" });
+        }
+      }
+
+      const reorderedMacros = await storage.reorderMacros(companyId, macroIds);
+      res.json(reorderedMacros);
+    } catch (error) {
+      console.error("Reorder macros error:", error);
+      res.status(500).json({ message: "Failed to reorder macros" });
+    }
+  });
+
   // PUT /api/macros/:id - Atualizar macro (admin/master only)
   app.put("/api/macros/:id", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
     try {
@@ -1390,34 +1419,6 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Delete macro error:", error);
       res.status(500).json({ message: "Failed to delete macro" });
-    }
-  });
-
-  // PUT /api/macros/reorder - Reordenar macros (admin/master only)
-  app.put("/api/macros/reorder", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const { macroIds } = req.body;
-      const companyId = req.user!.companyId;
-
-      if (!Array.isArray(macroIds) || macroIds.length === 0) {
-        return res.status(400).json({ message: "macroIds must be a non-empty array" });
-      }
-
-      // Verificar que todos os macros pertencem à empresa
-      const macros = await storage.getMacros(companyId);
-      const companyMacroIds = new Set(macros.map(m => m.id));
-
-      for (const id of macroIds) {
-        if (!companyMacroIds.has(id)) {
-          return res.status(403).json({ message: "Forbidden: macro does not belong to company" });
-        }
-      }
-
-      const reorderedMacros = await storage.reorderMacros(companyId, macroIds);
-      res.json(reorderedMacros);
-    } catch (error) {
-      console.error("Reorder macros error:", error);
-      res.status(500).json({ message: "Failed to reorder macros" });
     }
   });
 
