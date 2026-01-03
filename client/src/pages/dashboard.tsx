@@ -20,6 +20,7 @@ import {
   Star,
   GripVertical,
   Bot,
+  Workflow,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -62,7 +63,7 @@ const settingsItems = [
   { icon: Zap, label: "Respostas Rápidas", path: "/settings/canned-responses", adminOnly: true },
   { icon: PlaySquare, label: "Macros", path: "/settings/macros", adminOnly: true },
   { icon: Bot, label: "Robos", path: "/settings/robots", adminOnly: true },
-  { icon: Zap, label: "Automacao", path: "/settings/automation", adminOnly: true },
+  { icon: Workflow, label: "Automacao", path: "/settings/automation", adminOnly: true },
   { icon: Webhook, label: "Webhooks", path: "/settings/webhooks", adminOnly: true },
   { icon: Settings, label: "Meu Perfil", path: "/settings/profile" },
 ];
