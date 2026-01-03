@@ -524,6 +524,12 @@ export async function registerRoutes(
     res.json(contact);
   });
 
+  // Get contact attribute counts
+  app.get("/api/contacts/:id/attribute-counts", authMiddleware(storage), async (req: AuthRequest, res) => {
+    const counts = await storage.getContactAttributeCounts(req.params.id);
+    res.json(counts);
+  });
+
   // Start conversation by phone number
   app.post("/api/contacts/start-conversation", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
@@ -1506,6 +1512,12 @@ export async function registerRoutes(
                 }
                 
                 await storage.updateContact(contact.id, { attributes: updatedAttrs });
+                
+                // Incrementar contagem do atributo
+                if (newAttr) {
+                  await storage.incrementContactAttributeCount(contact.id, newAttr);
+                }
+                
                 actionsApplied.push({ type: "SET_ATTRIBUTE", attribute: action.attribute, success: true });
                 
                 io.to(`company:${req.user!.companyId}`).emit("contact:updated", {
