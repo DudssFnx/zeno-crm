@@ -15,13 +15,14 @@ export function TagChip({ tag, onRemove, className, size = "sm" }: TagChipProps)
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full font-medium",
-        size === "sm" ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-sm",
+        "inline-flex items-center gap-1.5 rounded-md font-semibold uppercase tracking-wide shadow-sm",
+        size === "sm" ? "px-2.5 py-1 text-[10px]" : "px-3 py-1.5 text-xs",
         className
       )}
       style={{
         backgroundColor: tag.color,
         color: isLight ? "#1f2937" : "#ffffff",
+        border: `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'}`,
       }}
     >
       {tag.name}
@@ -33,7 +34,7 @@ export function TagChip({ tag, onRemove, className, size = "sm" }: TagChipProps)
             onRemove();
           }}
           className={cn(
-            "rounded-full p-0.5 transition-colors",
+            "rounded p-0.5 transition-colors ml-0.5",
             isLight ? "hover:bg-black/10" : "hover:bg-white/20"
           )}
           data-testid={`button-remove-tag-${tag.id}`}
