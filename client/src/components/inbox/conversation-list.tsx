@@ -45,6 +45,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
   const [accountFilter, setAccountFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
+  const [attributeFilter, setAttributeFilter] = useState<string>("all");
   const [inactivityFilter, setInactivityFilter] = useState<string>("all");
   const [unreadFilter, setUnreadFilter] = useState<boolean>(false);
   const [selectedConversations, setSelectedConversations] = useState<Set<string>>(new Set());
@@ -128,6 +129,15 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
     },
   });
 
+  const { data: contactAttributes = [] } = useQuery<{ id: string; name: string; color: string }[]>({
+    queryKey: ["/api/contact-attributes"],
+    queryFn: async () => {
+      const res = await authFetch("/api/contact-attributes");
+      if (!res.ok) throw new Error("Failed to fetch attributes");
+      return res.json();
+    },
+  });
+
   const filteredConversations = conversations.filter((conv) => {
     if (search) {
       const searchLower = search.toLowerCase();
@@ -139,6 +149,18 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
     if (tagFilter !== "all") {
       const hasTag = conv.tags?.some(t => t.id === tagFilter);
       if (!hasTag) return false;
+    }
+    
+    if (attributeFilter !== "all") {
+      if (attributeFilter === "has_any") {
+        const hasAnyAttribute = conv.contact.attributes && conv.contact.attributes.length > 0;
+        if (!hasAnyAttribute) return false;
+      } else {
+        const hasAttribute = conv.contact.attributes?.some(attr => 
+          attr.toLowerCase() === attributeFilter.toLowerCase()
+        );
+        if (!hasAttribute) return false;
+      }
     }
     
     // Filtro de não lidas: última mensagem é do cliente (incoming)
@@ -235,6 +257,27 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                       style={{ backgroundColor: tag.color }}
                     />
                     {tag.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={attributeFilter} onValueChange={setAttributeFilter}>
+            <SelectTrigger className="flex-1 min-w-[100px]" data-testid="select-attribute-filter">
+              <SelectValue placeholder="Atributo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos Atributos</SelectItem>
+              <SelectItem value="has_any">Com Atributo</SelectItem>
+              {contactAttributes.map((attr) => (
+                <SelectItem key={attr.id} value={attr.name}>
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: attr.color }}
+                    />
+                    {attr.name}
                   </div>
                 </SelectItem>
               ))}
@@ -382,7 +425,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                       {conv.assignedToUserId === currentUserId && (
                         <span className="w-2 h-2 rounded-full bg-primary shrink-0" title="Atribuído a você" />
                       )}
-                      {(() => {
+                      {conv.contact.attributes && conv.contact.attributes.length > 0 && (() => {
                         const lastInbound = (conv as { lastInboundAt?: string | null }).lastInboundAt;
                         const colorClass = getInactivityColor(lastInbound);
                         return (
