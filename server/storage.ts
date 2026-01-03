@@ -6,7 +6,7 @@ import {
   macros, macroExecutions, stages, contactAttributes,
   departments, departmentAgents, triageMenus, triageSessions,
   automationRules, automationExecutions, antiSpamLogs, scheduledMessages,
-  robots,
+  robots, robotExecutions,
   type Company, type InsertCompany, type User, type InsertUser,
   type WhatsappAccount, type InsertWhatsappAccount,
   type Contact, type InsertContact, type Tag, type InsertTag,
@@ -1185,6 +1185,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteRobot(id: string): Promise<void> {
+    // Delete robot executions first (foreign key constraint)
+    await db.delete(robotExecutions).where(eq(robotExecutions.robotId, id));
     await db.delete(robots).where(eq(robots.id, id));
   }
 }

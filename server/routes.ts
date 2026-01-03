@@ -1693,6 +1693,7 @@ export async function registerRoutes(
       await storage.deleteRobot(req.params.id);
       res.json({ success: true });
     } catch (error) {
+      console.error("Error deleting robot:", error);
       res.status(500).json({ error: "Failed to delete robot" });
     }
   });
