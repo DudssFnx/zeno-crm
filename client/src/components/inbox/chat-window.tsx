@@ -206,6 +206,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [pendingAttributes, setPendingAttributes] = useState<string[]>([]);
+  const [pendingTags, setPendingTags] = useState<string[]>([]);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [noteValue, setNoteValue] = useState("");
@@ -213,6 +214,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   const [isMacroDialogOpen, setIsMacroDialogOpen] = useState(false);
   const [isRobotDialogOpen, setIsRobotDialogOpen] = useState(false);
   const pendingAttributesRef = useRef<string[]>([]);
+  const pendingTagsRef = useRef<string[]>([]);
   const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const noteInputRef = useRef<HTMLInputElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -368,6 +370,29 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
         pendingAttributesRef.current = [];
         setPendingAttributes([]);
       }
+
+      // Aplicar etiquetas se houver pendentes da resposta rápida
+      const tagsToApply = pendingTagsRef.current;
+      console.log("[ChatWindow] onSuccess - pendingTagsRef:", tagsToApply, "contactId:", conversation?.contact?.id);
+      if (tagsToApply.length > 0 && conversation?.contact?.id) {
+        try {
+          for (const tagId of tagsToApply) {
+            console.log("[ChatWindow] Aplicando etiqueta:", tagId);
+            const res = await authFetch(`/api/contacts/${conversation.contact.id}/tags`, {
+              method: "POST",
+              body: JSON.stringify({ tagId }),
+            });
+            console.log("[ChatWindow] Resultado da aplicação de etiqueta:", res.ok);
+          }
+          queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+        } catch (e) {
+          console.error("[ChatWindow] Falha ao aplicar etiquetas:", e);
+        }
+        // Limpar o ref e state
+        pendingTagsRef.current = [];
+        setPendingTags([]);
+      }
       
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
@@ -376,6 +401,8 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
       toast({ title: error.message || "Falha ao enviar mensagem", variant: "destructive" });
       pendingAttributesRef.current = [];
       setPendingAttributes([]);
+      pendingTagsRef.current = [];
+      setPendingTags([]);
     },
   });
 
@@ -609,7 +636,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   };
 
   const selectCannedResponse = (response: CannedResponse) => {
-    console.log("[ChatWindow] Selecionada resposta rápida:", response.shortcut, "atributos:", response.attributes);
+    console.log("[ChatWindow] Selecionada resposta rápida:", response.shortcut, "atributos:", response.attributes, "tags:", response.tagIds);
     setMessage(response.content);
     setShowCannedResponses(false);
     setCannedSearchTerm("");
@@ -617,6 +644,11 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
       console.log("[ChatWindow] Definindo pendingAttributes (ref):", response.attributes);
       setPendingAttributes(response.attributes);
       pendingAttributesRef.current = response.attributes;
+    }
+    if (response.tagIds && response.tagIds.length > 0) {
+      console.log("[ChatWindow] Definindo pendingTags (ref):", response.tagIds);
+      setPendingTags(response.tagIds);
+      pendingTagsRef.current = response.tagIds;
     }
     textareaRef.current?.focus();
   };

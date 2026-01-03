@@ -280,6 +280,7 @@ export const cannedResponses = pgTable("canned_responses", {
   shortcut: text("shortcut").notNull(),
   content: text("content").notNull(),
   attributes: text("attributes").array(), // Array de atributos (máximo 3)
+  tagIds: text("tag_ids").array(), // Array de IDs de etiquetas a aplicar
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

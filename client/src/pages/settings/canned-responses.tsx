@@ -19,9 +19,10 @@ import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import type { CannedResponse, ContactAttribute } from "@shared/schema";
+import type { CannedResponse, ContactAttribute, Tag } from "@shared/schema";
 
 const MAX_ATTRIBUTES = 3;
+const MAX_TAGS = 5;
 
 const cannedResponseFormSchema = z.object({
   shortcut: z.string().min(1, "O atalho é obrigatório").max(50, "Máximo 50 caracteres"),
@@ -36,6 +37,7 @@ export default function CannedResponsesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingResponse, setEditingResponse] = useState<CannedResponse | null>(null);
   const [selectedAttributes, setSelectedAttributes] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const form = useForm<CannedResponseFormData>({
     resolver: zodResolver(cannedResponseFormSchema),
@@ -47,6 +49,15 @@ export default function CannedResponsesPage() {
     queryFn: async () => {
       const res = await authFetch("/api/contact-attributes");
       if (!res.ok) throw new Error("Failed to fetch contact attributes");
+      return res.json();
+    },
+  });
+
+  const { data: tags = [] } = useQuery<Tag[]>({
+    queryKey: ["/api/tags"],
+    queryFn: async () => {
+      const res = await authFetch("/api/tags");
+      if (!res.ok) throw new Error("Failed to fetch tags");
       return res.json();
     },
   });
@@ -67,6 +78,7 @@ export default function CannedResponsesPage() {
         body: JSON.stringify({
           ...data,
           attributes: selectedAttributes.length > 0 ? selectedAttributes : null,
+          tagIds: selectedTags.length > 0 ? selectedTags : null,
         }),
       });
       if (!res.ok) {
@@ -80,6 +92,7 @@ export default function CannedResponsesPage() {
       setIsDialogOpen(false);
       form.reset();
       setSelectedAttributes([]);
+      setSelectedTags([]);
       toast({ title: "Resposta rápida criada com sucesso" });
     },
     onError: (error: Error) => {
@@ -95,6 +108,7 @@ export default function CannedResponsesPage() {
           shortcut: data.shortcut,
           content: data.content,
           attributes: selectedAttributes.length > 0 ? selectedAttributes : null,
+          tagIds: selectedTags.length > 0 ? selectedTags : null,
         }),
       });
       if (!res.ok) {
@@ -109,6 +123,7 @@ export default function CannedResponsesPage() {
       setEditingResponse(null);
       form.reset();
       setSelectedAttributes([]);
+      setSelectedTags([]);
       toast({ title: "Resposta rápida atualizada com sucesso" });
     },
     onError: (error: Error) => {
@@ -139,10 +154,12 @@ export default function CannedResponsesPage() {
         content: response.content,
       });
       setSelectedAttributes(response.attributes || []);
+      setSelectedTags(response.tagIds || []);
     } else {
       setEditingResponse(null);
       form.reset({ shortcut: "", content: "" });
       setSelectedAttributes([]);
+      setSelectedTags([]);
     }
     setIsDialogOpen(true);
   };
@@ -172,6 +189,29 @@ export default function CannedResponsesPage() {
 
   const removeAttribute = (attrName: string) => {
     setSelectedAttributes(selectedAttributes.filter(a => a !== attrName));
+  };
+
+  const addTag = (tagId: string) => {
+    if (tagId === "NONE") return;
+    if (selectedTags.length >= MAX_TAGS) {
+      toast({ 
+        title: `Máximo de ${MAX_TAGS} etiquetas`, 
+        description: "Remova uma etiqueta para adicionar outra.",
+        variant: "destructive" 
+      });
+      return;
+    }
+    if (!selectedTags.includes(tagId)) {
+      setSelectedTags([...selectedTags, tagId]);
+    }
+  };
+
+  const removeTag = (tagId: string) => {
+    setSelectedTags(selectedTags.filter(t => t !== tagId));
+  };
+
+  const getTagById = (tagId: string) => {
+    return tags.find(t => t.id === tagId);
   };
 
   const getAttributeColor = (attrName: string) => {
@@ -253,6 +293,74 @@ export default function CannedResponsesPage() {
                       )}
                     />
                     
+                    <div className="space-y-2">
+                      <FormLabel>Etiquetas (máximo {MAX_TAGS})</FormLabel>
+                      
+                      {selectedTags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {selectedTags.map((tagId) => {
+                            const tag = getTagById(tagId);
+                            if (!tag) return null;
+                            return (
+                              <Badge 
+                                key={tagId}
+                                variant="outline"
+                                className="text-xs pr-1 font-semibold uppercase"
+                                style={{ 
+                                  backgroundColor: tag.color,
+                                  borderColor: tag.color,
+                                  color: '#fff'
+                                }}
+                              >
+                                {tag.name}
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-4 w-4 ml-1 p-0 text-white/80 hover:text-white"
+                                  onClick={() => removeTag(tagId)}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
+                      
+                      <Select
+                        value=""
+                        onValueChange={addTag}
+                        disabled={selectedTags.length >= MAX_TAGS}
+                      >
+                        <SelectTrigger data-testid="select-canned-response-tag">
+                          <SelectValue placeholder={
+                            selectedTags.length >= MAX_TAGS 
+                              ? "Máximo de etiquetas atingido"
+                              : "Adicionar etiqueta"
+                          } />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {tags
+                            .filter(tag => !selectedTags.includes(tag.id))
+                            .map((tag) => (
+                              <SelectItem key={tag.id} value={tag.id}>
+                                <span className="flex items-center gap-2">
+                                  <span
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: tag.color }}
+                                  />
+                                  {tag.name}
+                                </span>
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        As etiquetas serão aplicadas ao contato ao enviar a resposta
+                      </p>
+                    </div>
+
                     <div className="space-y-2">
                       <FormLabel>Atributos (máximo {MAX_ATTRIBUTES})</FormLabel>
                       
