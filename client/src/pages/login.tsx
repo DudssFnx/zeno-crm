@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { MessageSquare, Mail, Lock } from "lucide-react";
+import { Mail, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LoadingSpinner } from "@/components/loading-spinner";
+import zenoLogo from "@assets/image_1767464880710.png";
 
 const loginSchema = z.object({
   email: z.string().email("Digite um email válido"),
@@ -51,10 +52,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <header className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <MessageSquare className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-lg font-semibold">Atendimentos Madrugadão</span>
+          <img src={zenoLogo} alt="Zeno" className="h-10 w-auto rounded-md" />
+          <span className="text-lg font-semibold">Zeno CRM</span>
         </div>
         <ThemeToggle />
       </header>

@@ -22,6 +22,7 @@ import {
   Bot,
   Workflow,
 } from "lucide-react";
+import zenoLogo from "@assets/image_1767464880710.png";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -96,9 +97,7 @@ function MobileNavSheet({ user, isAdmin, isOperator, location, logout }: {
       <SheetContent side="left" className="w-64 p-0">
         <div className="flex flex-col h-full bg-sidebar">
           <div className="p-4 border-b">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-              <MessageSquare className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <img src={zenoLogo} alt="Zeno" className="h-10 w-10 rounded-lg object-cover" />
           </div>
           <ScrollArea className="flex-1">
             <nav className="p-2 space-y-1">
@@ -191,9 +190,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         "w-16 border-r flex-col items-center py-4 bg-sidebar shrink-0",
         "hidden md:flex"
       )}>
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary mb-6">
-          <MessageSquare className="h-5 w-5 text-primary-foreground" />
-        </div>
+        <img src={zenoLogo} alt="Zeno" className="h-10 w-10 rounded-lg object-cover mb-6" />
 
         <nav className="flex-1 flex flex-col gap-2">
           {navItems.map((item) => {
