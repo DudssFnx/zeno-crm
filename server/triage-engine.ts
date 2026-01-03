@@ -311,8 +311,13 @@ export class TriageEngine {
   ): Promise<TriageResult> {
     let agentId: string | undefined;
 
-    if (option.departmentId) {
-      agentId = await this.assignNextAgent(option.departmentId);
+    // Treat empty strings as null for foreign key constraints
+    const departmentId = option.departmentId && option.departmentId.trim() !== "" ? option.departmentId : null;
+    const tagId = option.tagId && option.tagId.trim() !== "" ? option.tagId : null;
+    const stageId = option.stageId && option.stageId.trim() !== "" ? option.stageId : null;
+
+    if (departmentId) {
+      agentId = await this.assignNextAgent(departmentId);
     }
 
     const existingSession = await this.getActiveSession(conversationId);
@@ -323,7 +328,7 @@ export class TriageEngine {
         .set({
           state: "routed",
           chosenOption,
-          departmentId: option.departmentId,
+          departmentId: departmentId,
           completedAt: new Date(),
           lastInteractionAt: new Date(),
         })
@@ -334,38 +339,38 @@ export class TriageEngine {
         menuId,
         state: "routed",
         chosenOption,
-        departmentId: option.departmentId,
+        departmentId: departmentId,
         completedAt: new Date(),
       });
     }
 
-    if (option.tagId) {
+    if (tagId) {
       try {
         const [conv] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
         if (conv && conv.contactId) {
           const existingTag = await db.select().from(contactTags)
-            .where(and(eq(contactTags.contactId, conv.contactId), eq(contactTags.tagId, option.tagId)))
+            .where(and(eq(contactTags.contactId, conv.contactId), eq(contactTags.tagId, tagId)))
             .limit(1);
           
           if (existingTag.length === 0) {
             await db.insert(contactTags).values({
               contactId: conv.contactId,
-              tagId: option.tagId,
+              tagId: tagId,
             });
-            logger.info({ conversationId, contactId: conv.contactId, tagId: option.tagId }, "Tag applied to contact");
+            logger.info({ conversationId, contactId: conv.contactId, tagId }, "Tag applied to contact");
           } else {
-            logger.info({ conversationId, tagId: option.tagId }, "Tag already exists on contact");
+            logger.info({ conversationId, tagId }, "Tag already exists on contact");
           }
         }
       } catch (err) {
-        logger.error({ conversationId, tagId: option.tagId, error: err }, "Failed to apply tag");
+        logger.error({ conversationId, tagId, error: err }, "Failed to apply tag");
       }
     }
 
-    if (option.stageId) {
+    if (stageId) {
       await db
         .update(conversations)
-        .set({ stageId: option.stageId, updatedAt: new Date() })
+        .set({ stageId: stageId, updatedAt: new Date() })
         .where(eq(conversations.id, conversationId));
     }
 
