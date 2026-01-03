@@ -1178,7 +1178,7 @@ export async function registerRoutes(
 
   app.post("/api/canned-responses", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { shortcut, content } = req.body;
+      const { shortcut, content, attributes, tagIds } = req.body;
       if (!shortcut || !content) {
         return res.status(400).json({ message: "Shortcut and content are required" });
       }
@@ -1187,6 +1187,8 @@ export async function registerRoutes(
         companyId: req.user!.companyId,
         shortcut,
         content,
+        attributes: attributes || null,
+        tagIds: tagIds || null,
       });
 
       res.json(response);
@@ -1198,11 +1200,13 @@ export async function registerRoutes(
 
   app.put("/api/canned-responses/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { shortcut, content } = req.body;
+      const { shortcut, content, attributes, tagIds } = req.body;
       const updateData: Record<string, any> = {};
       
       if (shortcut !== undefined) updateData.shortcut = shortcut;
       if (content !== undefined) updateData.content = content;
+      if (attributes !== undefined) updateData.attributes = attributes;
+      if (tagIds !== undefined) updateData.tagIds = tagIds;
 
       const response = await storage.updateCannedResponse(req.params.id, updateData);
       if (!response) {
