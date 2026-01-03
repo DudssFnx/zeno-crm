@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Bot, GripVertical, Clock, MessageSquare, Mic, Play, Pause, Tag as TagIcon, UserCircle, Image, FileText, Video, ArrowRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Bot, GripVertical, Clock, MessageSquare, Mic, Play, Pause, Tag as TagIcon, UserCircle, Image, FileText, Video, ArrowRight, Upload, X } from "lucide-react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -221,6 +221,35 @@ export default function RobotsPage() {
   const [selectedActionType, setSelectedActionType] = useState<string>("");
 
   const isAdmin = user?.role === "admin" || user?.role === "master";
+  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+  const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
+
+  const handleFileUpload = async (file: File, index: number) => {
+    setUploadingIndex(index);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await authFetch("/api/upload", {
+        method: "POST",
+        body: formData,
+        headers: {},
+      });
+
+      if (!res.ok) {
+        throw new Error("Falha ao enviar arquivo");
+      }
+
+      const data = await res.json();
+      form.setValue(`actions.${index}.mediaUrl`, data.url);
+      form.setValue(`actions.${index}.fileName`, file.name);
+      toast({ title: "Arquivo enviado com sucesso" });
+    } catch (error: any) {
+      toast({ title: error.message || "Erro ao enviar arquivo", variant: "destructive" });
+    } finally {
+      setUploadingIndex(null);
+    }
+  };
 
   const form = useForm<RobotFormData>({
     resolver: zodResolver(robotFormSchema),
@@ -571,17 +600,93 @@ export default function RobotsPage() {
                               )}
 
                               {["send_image", "send_audio", "send_video", "send_document"].includes(field.type) && (
-                                <FormField
-                                  control={form.control}
-                                  name={`actions.${index}.mediaUrl`}
-                                  render={({ field: inputField }) => (
-                                    <FormItem className="ml-10">
-                                      <FormControl>
-                                        <Input {...inputField} placeholder="URL do arquivo ou caminho local" data-testid={`input-action-media-${index}`} />
-                                      </FormControl>
-                                    </FormItem>
+                                <div className="ml-10 space-y-2">
+                                  <FormField
+                                    control={form.control}
+                                    name={`actions.${index}.mediaUrl`}
+                                    render={({ field: inputField }) => (
+                                      <FormItem>
+                                        <div className="flex gap-2">
+                                          <FormControl>
+                                            <Input 
+                                              {...inputField} 
+                                              placeholder="URL do arquivo ou caminho local" 
+                                              data-testid={`input-action-media-${index}`}
+                                              className="flex-1"
+                                            />
+                                          </FormControl>
+                                          <input
+                                            type="file"
+                                            ref={(el) => { fileInputRefs.current[index] = el; }}
+                                            className="hidden"
+                                            accept={
+                                              field.type === "send_image" ? "image/*" :
+                                              field.type === "send_audio" ? "audio/*" :
+                                              field.type === "send_video" ? "video/*" :
+                                              "*"
+                                            }
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              if (file) {
+                                                handleFileUpload(file, index);
+                                              }
+                                            }}
+                                          />
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="icon"
+                                            onClick={() => fileInputRefs.current[index]?.click()}
+                                            disabled={uploadingIndex === index}
+                                            data-testid={`button-upload-file-${index}`}
+                                          >
+                                            {uploadingIndex === index ? (
+                                              <LoadingSpinner />
+                                            ) : (
+                                              <Upload className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                          {inputField.value && (
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              size="icon"
+                                              onClick={() => {
+                                                form.setValue(`actions.${index}.mediaUrl`, "");
+                                                form.setValue(`actions.${index}.fileName`, "");
+                                              }}
+                                              data-testid={`button-clear-file-${index}`}
+                                            >
+                                              <X className="h-4 w-4" />
+                                            </Button>
+                                          )}
+                                        </div>
+                                        {form.watch(`actions.${index}.fileName`) && (
+                                          <p className="text-xs text-muted-foreground">
+                                            Arquivo: {form.watch(`actions.${index}.fileName`)}
+                                          </p>
+                                        )}
+                                      </FormItem>
+                                    )}
+                                  />
+                                  {["send_image", "send_video"].includes(field.type) && (
+                                    <FormField
+                                      control={form.control}
+                                      name={`actions.${index}.content`}
+                                      render={({ field: inputField }) => (
+                                        <FormItem>
+                                          <FormControl>
+                                            <Input 
+                                              {...inputField} 
+                                              placeholder="Legenda (opcional)" 
+                                              data-testid={`input-action-caption-${index}`}
+                                            />
+                                          </FormControl>
+                                        </FormItem>
+                                      )}
+                                    />
                                   )}
-                                />
+                                </div>
                               )}
 
                               {["simulate_typing", "simulate_recording", "delay"].includes(field.type) && (
