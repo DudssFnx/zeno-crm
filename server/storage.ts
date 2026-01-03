@@ -3,7 +3,7 @@ import { eq, and, desc, sql, asc, lte, or, inArray } from "drizzle-orm";
 import {
   companies, users, whatsappAccounts, contacts, tags, contactTags,
   conversations, messages, webhookConfigs, automationLogs, cannedResponses,
-  macros, macroExecutions, stages, contactAttributes,
+  macros, macroExecutions, stages, contactAttributes, contactAttributeCounts,
   departments, departmentAgents, triageMenus, triageSessions,
   automationRules, automationExecutions, antiSpamLogs, scheduledMessages,
   robots, robotExecutions,
@@ -19,6 +19,7 @@ import {
   type MacroExecution, type InsertMacroExecution,
   type Stage, type InsertStage,
   type ContactAttribute, type InsertContactAttribute,
+  type ContactAttributeCount,
   type Department, type InsertDepartment,
   type DepartmentAgent, type InsertDepartmentAgent,
   type TriageMenu, type InsertTriageMenu,
@@ -143,6 +144,12 @@ export interface IStorage {
   getContactAttributes(companyId: string): Promise<ContactAttribute[]>;
   updateContactAttribute(id: string, data: Partial<InsertContactAttribute>): Promise<ContactAttribute | undefined>;
   deleteContactAttribute(id: string): Promise<void>;
+
+  // Contact Attribute Counts
+  getContactAttributeCounts(contactId: string): Promise<ContactAttributeCount[]>;
+  incrementContactAttributeCount(contactId: string, attributeName: string): Promise<ContactAttributeCount>;
+  resetContactAttributeCount(contactId: string, attributeName: string): Promise<void>;
+  resetAllContactAttributeCounts(contactId: string): Promise<void>;
 
   // Departments
   createDepartment(data: InsertDepartment): Promise<Department>;
@@ -960,6 +967,56 @@ export class DatabaseStorage implements IStorage {
 
   async deleteContactAttribute(id: string): Promise<void> {
     await db.delete(contactAttributes).where(eq(contactAttributes.id, id));
+  }
+
+  // Contact Attribute Counts
+  async getContactAttributeCounts(contactId: string): Promise<ContactAttributeCount[]> {
+    return db.select().from(contactAttributeCounts)
+      .where(eq(contactAttributeCounts.contactId, contactId));
+  }
+
+  async incrementContactAttributeCount(contactId: string, attributeName: string): Promise<ContactAttributeCount> {
+    // Check if count record exists
+    const [existing] = await db.select().from(contactAttributeCounts)
+      .where(and(
+        eq(contactAttributeCounts.contactId, contactId),
+        eq(contactAttributeCounts.attributeName, attributeName)
+      ));
+
+    if (existing) {
+      // Increment existing count
+      const [updated] = await db.update(contactAttributeCounts)
+        .set({ 
+          count: existing.count + 1,
+          updatedAt: new Date()
+        })
+        .where(eq(contactAttributeCounts.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      // Create new count record with count = 1
+      const [created] = await db.insert(contactAttributeCounts)
+        .values({
+          contactId,
+          attributeName,
+          count: 1,
+        })
+        .returning();
+      return created;
+    }
+  }
+
+  async resetContactAttributeCount(contactId: string, attributeName: string): Promise<void> {
+    await db.delete(contactAttributeCounts)
+      .where(and(
+        eq(contactAttributeCounts.contactId, contactId),
+        eq(contactAttributeCounts.attributeName, attributeName)
+      ));
+  }
+
+  async resetAllContactAttributeCounts(contactId: string): Promise<void> {
+    await db.delete(contactAttributeCounts)
+      .where(eq(contactAttributeCounts.contactId, contactId));
   }
 
   // Departments
