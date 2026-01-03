@@ -544,12 +544,24 @@ export async function registerRoutes(
 
       // Find or create contact usando número normalizado
       let contact = await storage.getContactByPhone(req.user!.companyId, phoneNumber);
+      let contactCreated = false;
       if (!contact) {
         contact = await storage.createContact({
           companyId: req.user!.companyId,
           whatsappAccountId,
           name: name || phoneNumber,
           phoneNumber, // Número já normalizado
+        });
+        contactCreated = true;
+      }
+      
+      // Queue avatar fetch for new contacts or contacts without avatar
+      if (contactCreated || !contact.avatarUrl) {
+        messageQueue.queueAvatarFetch({
+          accountId: whatsappAccountId,
+          companyId: req.user!.companyId,
+          contactId: contact.id,
+          phoneNumber,
         });
       }
 
@@ -2139,12 +2151,24 @@ export async function registerRoutes(
       }
 
       let contact = await storage.getContactByPhone(req.user!.companyId, phoneNumber);
+      let contactCreated = false;
       if (!contact) {
         contact = await storage.createContact({
           companyId: req.user!.companyId,
           whatsappAccountId,
           name: phoneNumber,
           phoneNumber, // Número já normalizado
+        });
+        contactCreated = true;
+      }
+      
+      // Queue avatar fetch for new contacts or contacts without avatar
+      if (contactCreated || !contact.avatarUrl) {
+        messageQueue.queueAvatarFetch({
+          accountId: whatsappAccountId,
+          companyId: req.user!.companyId,
+          contactId: contact.id,
+          phoneNumber,
         });
       }
 
