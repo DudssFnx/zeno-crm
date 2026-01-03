@@ -134,6 +134,29 @@ export const contactTagsRelations = relations(contactTags, ({ one }) => ({
   tag: one(tags, { fields: [contactTags.tagId], references: [tags.id] }),
 }));
 
+// Contact Attribute Counts (tracks how many times each attribute was applied)
+export const contactAttributeCounts = pgTable("contact_attribute_counts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
+  attributeName: text("attribute_name").notNull(), // The attribute name (e.g., "CLIENTE ATIVO")
+  count: integer("count").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const contactAttributeCountsRelations = relations(contactAttributeCounts, ({ one }) => ({
+  contact: one(contacts, { fields: [contactAttributeCounts.contactId], references: [contacts.id] }),
+}));
+
+export const insertContactAttributeCountSchema = createInsertSchema(contactAttributeCounts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertContactAttributeCount = z.infer<typeof insertContactAttributeCountSchema>;
+export type ContactAttributeCount = typeof contactAttributeCounts.$inferSelect;
+
 // Conversation
 export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
