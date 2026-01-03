@@ -1343,6 +1343,321 @@ export async function registerRoutes(
     }
   });
 
+  // ================== CHAT FLOW NODES (Novo Sistema) ==================
+
+  // GET /api/chat-flows/:flowId/nodes - Listar todos os nós de um fluxo
+  app.get("/api/chat-flows/:flowId/nodes", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const flow = await storage.getChatFlow(req.params.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const nodes = await storage.getChatFlowNodes(req.params.flowId);
+      res.json(nodes);
+    } catch (error) {
+      console.error("Get chat flow nodes error:", error);
+      res.status(500).json({ message: "Falha ao buscar nós" });
+    }
+  });
+
+  // POST /api/chat-flows/:flowId/nodes - Criar nó
+  app.post("/api/chat-flows/:flowId/nodes", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const flow = await storage.getChatFlow(req.params.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const { type, name, config, positionX, positionY } = req.body;
+      if (!type) {
+        return res.status(400).json({ message: "Tipo do nó é obrigatório" });
+      }
+      const node = await storage.createChatFlowNode({
+        flowId: req.params.flowId,
+        type,
+        name: name || null,
+        config: config || {},
+        positionX: positionX || 0,
+        positionY: positionY || 0,
+      });
+      res.json(node);
+    } catch (error) {
+      console.error("Create chat flow node error:", error);
+      res.status(500).json({ message: "Falha ao criar nó" });
+    }
+  });
+
+  // PUT /api/chat-flow-nodes/:id - Atualizar nó
+  app.put("/api/chat-flow-nodes/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const existingNode = await storage.getChatFlowNode(req.params.id);
+      if (!existingNode) {
+        return res.status(404).json({ message: "Nó não encontrado" });
+      }
+      const flow = await storage.getChatFlow(existingNode.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const { type, name, config, positionX, positionY } = req.body;
+      const node = await storage.updateChatFlowNode(req.params.id, {
+        type: type !== undefined ? type : existingNode.type,
+        name: name !== undefined ? name : existingNode.name,
+        config: config !== undefined ? config : existingNode.config,
+        positionX: positionX !== undefined ? positionX : existingNode.positionX,
+        positionY: positionY !== undefined ? positionY : existingNode.positionY,
+      });
+      res.json(node);
+    } catch (error) {
+      console.error("Update chat flow node error:", error);
+      res.status(500).json({ message: "Falha ao atualizar nó" });
+    }
+  });
+
+  // DELETE /api/chat-flow-nodes/:id - Deletar nó
+  app.delete("/api/chat-flow-nodes/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const existingNode = await storage.getChatFlowNode(req.params.id);
+      if (!existingNode) {
+        return res.status(404).json({ message: "Nó não encontrado" });
+      }
+      const flow = await storage.getChatFlow(existingNode.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      await storage.deleteChatFlowNode(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete chat flow node error:", error);
+      res.status(500).json({ message: "Falha ao deletar nó" });
+    }
+  });
+
+  // ================== CHAT FLOW EDGES ==================
+
+  // GET /api/chat-flows/:flowId/edges - Listar todas as conexões de um fluxo
+  app.get("/api/chat-flows/:flowId/edges", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const flow = await storage.getChatFlow(req.params.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const edges = await storage.getChatFlowEdges(req.params.flowId);
+      res.json(edges);
+    } catch (error) {
+      console.error("Get chat flow edges error:", error);
+      res.status(500).json({ message: "Falha ao buscar conexões" });
+    }
+  });
+
+  // POST /api/chat-flows/:flowId/edges - Criar conexão
+  app.post("/api/chat-flows/:flowId/edges", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const flow = await storage.getChatFlow(req.params.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const { fromNodeId, toNodeId, condition, label, sortOrder } = req.body;
+      if (!fromNodeId || !toNodeId) {
+        return res.status(400).json({ message: "fromNodeId e toNodeId são obrigatórios" });
+      }
+      const edge = await storage.createChatFlowEdge({
+        flowId: req.params.flowId,
+        fromNodeId,
+        toNodeId,
+        condition: condition || {},
+        label: label || null,
+        sortOrder: sortOrder || 0,
+      });
+      res.json(edge);
+    } catch (error) {
+      console.error("Create chat flow edge error:", error);
+      res.status(500).json({ message: "Falha ao criar conexão" });
+    }
+  });
+
+  // PUT /api/chat-flow-edges/:id - Atualizar conexão
+  app.put("/api/chat-flow-edges/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const existingEdge = await storage.getChatFlowEdge(req.params.id);
+      if (!existingEdge) {
+        return res.status(404).json({ message: "Conexão não encontrada" });
+      }
+      const flow = await storage.getChatFlow(existingEdge.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const { fromNodeId, toNodeId, condition, label, sortOrder } = req.body;
+      const edge = await storage.updateChatFlowEdge(req.params.id, {
+        fromNodeId: fromNodeId !== undefined ? fromNodeId : existingEdge.fromNodeId,
+        toNodeId: toNodeId !== undefined ? toNodeId : existingEdge.toNodeId,
+        condition: condition !== undefined ? condition : existingEdge.condition,
+        label: label !== undefined ? label : existingEdge.label,
+        sortOrder: sortOrder !== undefined ? sortOrder : existingEdge.sortOrder,
+      });
+      res.json(edge);
+    } catch (error) {
+      console.error("Update chat flow edge error:", error);
+      res.status(500).json({ message: "Falha ao atualizar conexão" });
+    }
+  });
+
+  // DELETE /api/chat-flow-edges/:id - Deletar conexão
+  app.delete("/api/chat-flow-edges/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const existingEdge = await storage.getChatFlowEdge(req.params.id);
+      if (!existingEdge) {
+        return res.status(404).json({ message: "Conexão não encontrada" });
+      }
+      const flow = await storage.getChatFlow(existingEdge.flowId);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      await storage.deleteChatFlowEdge(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete chat flow edge error:", error);
+      res.status(500).json({ message: "Falha ao deletar conexão" });
+    }
+  });
+
+  // ================== CHAT FLOW FULL SAVE ==================
+
+  // PUT /api/chat-flows/:id/full - Salvar fluxo completo (nós + conexões)
+  app.put("/api/chat-flows/:id/full", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const flow = await storage.getChatFlow(req.params.id);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      
+      const { name, description, status, isActive, startNodeId, triggerKeywords, triggerOnFirstMessage, triggerOnStageNew, triggerOnTagAdded, nodes, edges } = req.body;
+      
+      // Atualizar dados do fluxo
+      const updatedFlow = await storage.updateChatFlow(req.params.id, {
+        name: name !== undefined ? name : flow.name,
+        description: description !== undefined ? description : flow.description,
+        status: status !== undefined ? status : flow.status,
+        isActive: isActive !== undefined ? isActive : flow.isActive,
+        startNodeId: startNodeId !== undefined ? startNodeId : flow.startNodeId,
+        triggerKeywords: triggerKeywords !== undefined ? triggerKeywords : flow.triggerKeywords,
+        triggerOnFirstMessage: triggerOnFirstMessage !== undefined ? triggerOnFirstMessage : flow.triggerOnFirstMessage,
+        triggerOnStageNew: triggerOnStageNew !== undefined ? triggerOnStageNew : flow.triggerOnStageNew,
+        triggerOnTagAdded: triggerOnTagAdded !== undefined ? triggerOnTagAdded : flow.triggerOnTagAdded,
+      });
+      
+      // Recriar nós se fornecidos
+      if (nodes !== undefined) {
+        await storage.deleteChatFlowNodes(req.params.id);
+        for (const node of nodes) {
+          await storage.createChatFlowNode({
+            ...node,
+            flowId: req.params.id,
+          });
+        }
+      }
+      
+      // Recriar conexões se fornecidas
+      if (edges !== undefined) {
+        await storage.deleteChatFlowEdges(req.params.id);
+        for (const edge of edges) {
+          await storage.createChatFlowEdge({
+            ...edge,
+            flowId: req.params.id,
+          });
+        }
+      }
+      
+      // Retornar fluxo com nós e conexões
+      const resultNodes = await storage.getChatFlowNodes(req.params.id);
+      const resultEdges = await storage.getChatFlowEdges(req.params.id);
+      
+      res.json({
+        ...updatedFlow,
+        nodes: resultNodes,
+        edges: resultEdges,
+      });
+    } catch (error) {
+      console.error("Save full chat flow error:", error);
+      res.status(500).json({ message: "Falha ao salvar fluxo" });
+    }
+  });
+
+  // GET /api/chat-flows/:id/full - Obter fluxo completo (com nós + conexões)
+  app.get("/api/chat-flows/:id/full", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const flow = await storage.getChatFlow(req.params.id);
+      if (!flow || flow.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Fluxo não encontrado" });
+      }
+      const nodes = await storage.getChatFlowNodes(req.params.id);
+      const edges = await storage.getChatFlowEdges(req.params.id);
+      res.json({
+        ...flow,
+        nodes,
+        edges,
+      });
+    } catch (error) {
+      console.error("Get full chat flow error:", error);
+      res.status(500).json({ message: "Falha ao buscar fluxo" });
+    }
+  });
+
+  // ================== SCHEDULED MESSAGES ==================
+
+  // GET /api/scheduled-messages - Listar mensagens agendadas
+  app.get("/api/scheduled-messages", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const messages = await storage.getScheduledMessages(req.user!.companyId);
+      res.json(messages);
+    } catch (error) {
+      console.error("Get scheduled messages error:", error);
+      res.status(500).json({ message: "Falha ao buscar mensagens agendadas" });
+    }
+  });
+
+  // POST /api/scheduled-messages - Criar mensagem agendada
+  app.post("/api/scheduled-messages", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { conversationId, contactId, whatsappAccountId, content, mediaUrl, mediaType, scheduledFor } = req.body;
+      if (!content || !scheduledFor) {
+        return res.status(400).json({ message: "Conteúdo e data de agendamento são obrigatórios" });
+      }
+      const message = await storage.createScheduledMessage({
+        companyId: req.user!.companyId,
+        conversationId: conversationId || null,
+        contactId: contactId || null,
+        whatsappAccountId: whatsappAccountId || null,
+        content,
+        mediaUrl: mediaUrl || null,
+        mediaType: mediaType || null,
+        scheduledFor: new Date(scheduledFor),
+        status: "pending",
+        createdBy: req.user!.id,
+      });
+      res.json(message);
+    } catch (error) {
+      console.error("Create scheduled message error:", error);
+      res.status(500).json({ message: "Falha ao criar mensagem agendada" });
+    }
+  });
+
+  // DELETE /api/scheduled-messages/:id - Cancelar mensagem agendada
+  app.delete("/api/scheduled-messages/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const message = await storage.getScheduledMessage(req.params.id);
+      if (!message || message.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Mensagem não encontrada" });
+      }
+      if (message.status !== "pending") {
+        return res.status(400).json({ message: "Apenas mensagens pendentes podem ser canceladas" });
+      }
+      await storage.updateScheduledMessage(req.params.id, { status: "cancelled" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Cancel scheduled message error:", error);
+      res.status(500).json({ message: "Falha ao cancelar mensagem agendada" });
+    }
+  });
+
   // ================== MACROS ==================
   
   // Template engine para variáveis nas mensagens

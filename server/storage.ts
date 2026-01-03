@@ -150,7 +150,7 @@ export interface IStorage {
   createChatFlowSession(data: InsertChatFlowSession): Promise<ChatFlowSession>;
   getChatFlowSession(id: string): Promise<ChatFlowSession | undefined>;
   getActiveSessionByConversation(conversationId: string): Promise<ChatFlowSession | undefined>;
-  updateChatFlowSession(id: string, data: Partial<InsertChatFlowSession>): Promise<ChatFlowSession | undefined>;
+  updateChatFlowSession(id: string, data: Partial<InsertChatFlowSession> & { lastInteractionAt?: Date; completedAt?: Date }): Promise<ChatFlowSession | undefined>;
 
   // Chat Flow Nodes (Novo sistema)
   createChatFlowNode(data: InsertChatFlowNode): Promise<ChatFlowNode>;
@@ -817,10 +817,14 @@ export class DatabaseStorage implements IStorage {
     return session;
   }
 
-  async updateChatFlowSession(id: string, data: Partial<InsertChatFlowSession>): Promise<ChatFlowSession | undefined> {
+  async updateChatFlowSession(id: string, data: Partial<InsertChatFlowSession> & { lastInteractionAt?: Date; completedAt?: Date }): Promise<ChatFlowSession | undefined> {
+    const updateData: Record<string, unknown> = { ...data };
+    if (!data.lastInteractionAt) {
+      updateData.lastInteractionAt = new Date();
+    }
     const [session] = await db
       .update(chatFlowSessions)
-      .set({ ...data, lastInteractionAt: new Date() })
+      .set(updateData)
       .where(eq(chatFlowSessions.id, id))
       .returning();
     return session;
