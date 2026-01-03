@@ -132,10 +132,19 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
     }
   };
 
-  const handleRemoveAttribute = (attrName: string) => {
+  const handleRemoveAttribute = async (attrName: string) => {
     if (!contactWithTags) return;
     const currentAttrs = contactWithTags.attributes || [];
     updateContact.mutate({ attributes: currentAttrs.filter(a => a !== attrName) });
+    // Reset the attribute count when removing
+    try {
+      await authFetch(`/api/contacts/${contactWithTags.id}/attribute-counts/${encodeURIComponent(attrName)}`, {
+        method: "DELETE",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactWithTags.id, "attribute-counts"] });
+    } catch (e) {
+      // Ignore errors - count reset is not critical
+    }
   };
 
   const updateNotes = useMutation({

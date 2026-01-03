@@ -535,6 +535,17 @@ export async function registerRoutes(
     res.json(counts);
   });
 
+  // Reset contact attribute count (when attribute is removed)
+  app.delete("/api/contacts/:id/attribute-counts/:attributeName", authMiddleware(storage), async (req: AuthRequest, res) => {
+    // Verify contact belongs to user's company
+    const contact = await storage.getContact(req.params.id);
+    if (!contact || contact.companyId !== req.user!.companyId) {
+      return res.status(404).json({ message: "Contact not found" });
+    }
+    await storage.resetContactAttributeCount(req.params.id, decodeURIComponent(req.params.attributeName));
+    res.json({ success: true });
+  });
+
   // Start conversation by phone number
   app.post("/api/contacts/start-conversation", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
