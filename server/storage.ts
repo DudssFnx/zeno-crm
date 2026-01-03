@@ -489,6 +489,11 @@ export class DatabaseStorage implements IStorage {
         .where(and(eq(conversations.id, convId), eq(conversations.companyId, companyId)));
       
       if (conv) {
+        // Delete related records first to avoid foreign key constraints
+        await db.delete(antiSpamLogs).where(eq(antiSpamLogs.conversationId, convId));
+        await db.delete(triageSessions).where(eq(triageSessions.conversationId, convId));
+        await db.delete(automationExecutions).where(eq(automationExecutions.conversationId, convId));
+        await db.delete(robotExecutions).where(eq(robotExecutions.conversationId, convId));
         await db.delete(messages).where(eq(messages.conversationId, convId));
         await db.delete(conversations).where(eq(conversations.id, convId));
         deleted++;
