@@ -1160,7 +1160,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
                             msg.mediaUrl && msg.mediaType === "image" && "px-2 py-2"
                           )}
                           style={{
-                            backgroundColor: msg.direction === "incoming" ? "#c4ffd0" : "#008f3c",
+                            backgroundColor: msg.direction === "incoming" ? "#e3f2fd" : "#1565c0",
                             color: msg.direction === "incoming" ? "#1a1a1a" : "#ffffff",
                           }}
                         >
