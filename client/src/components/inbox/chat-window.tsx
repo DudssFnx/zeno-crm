@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Send, StickyNote, Phone, Check, CheckCheck, Zap, Paperclip, UserPlus, Calendar, X, FileIcon, ImageIcon, Search, Download, FileText, Film, Music, AlertCircle, Smile, Mic, Square, ArrowLeft, UserCircle, ArrowDown, Pencil, Loader2, CheckCircle } from "lucide-react";
+import { Send, StickyNote, Phone, Check, CheckCheck, Zap, Paperclip, UserPlus, Calendar, X, FileIcon, ImageIcon, Search, Download, FileText, Film, Music, AlertCircle, Smile, Mic, Square, ArrowLeft, UserCircle, ArrowDown, Pencil, Loader2, CheckCircle, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,6 +24,14 @@ interface Macro {
   description: string | null;
   messageTemplate: string | null;
   actions: Array<{ type: string; tagId?: string; status?: string; agentId?: string }>;
+}
+
+interface Robot {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  actions: Array<{ id: string; type: string }>;
 }
 
 interface ChatWindowProps {
@@ -265,6 +273,17 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     },
   });
 
+  const { data: robots = [] } = useQuery<Robot[]>({
+    queryKey: ["/api/robots"],
+    queryFn: async () => {
+      const res = await authFetch("/api/robots");
+      if (!res.ok) throw new Error("Failed to fetch robots");
+      return res.json();
+    },
+  });
+
+  const activeRobots = useMemo(() => robots.filter(r => r.isActive), [robots]);
+
   const filteredCannedResponses = useMemo(() => {
     if (!cannedSearchTerm) return cannedResponses;
     const searchLower = cannedSearchTerm.toLowerCase();
@@ -423,6 +442,29 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     },
     onSuccess: () => {
       toast({ title: "Macro executada com sucesso" });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: "destructive" });
+    },
+  });
+
+  const executeRobot = useMutation({
+    mutationFn: async (robotId: string) => {
+      const res = await authFetch("/api/robots/execute", {
+        method: "POST",
+        body: JSON.stringify({ robotId, conversationId }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: "Falha ao executar robo" }));
+        throw new Error(error.message || "Falha ao executar robo");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Robo iniciado com sucesso" });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
@@ -1279,6 +1321,61 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
                               {macro.description}
                             </span>
                           )}
+                        </Button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  data-testid="button-robots"
+                >
+                  <Bot className="h-4 w-4 text-emerald-500" />
+                  <span className="hidden sm:inline">Robos</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Executar Robo</DialogTitle>
+                </DialogHeader>
+                <div className="py-4">
+                  <div className="space-y-2">
+                    {activeRobots.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Nenhum robo ativo disponivel.
+                      </p>
+                    ) : (
+                      activeRobots.map((robot) => (
+                        <Button
+                          key={robot.id}
+                          variant="ghost"
+                          className="w-full justify-start text-left h-auto p-3 flex flex-col items-start gap-1"
+                          onClick={() => executeRobot.mutate(robot.id)}
+                          disabled={executeRobot.isPending}
+                          data-testid={`button-robot-${robot.id}`}
+                        >
+                          <div className="flex items-center gap-2 w-full">
+                            <Bot className="h-4 w-4 text-emerald-500" />
+                            <span className="font-medium text-sm">{robot.name}</span>
+                            {executeRobot.isPending && (
+                              <LoadingSpinner size="sm" className="ml-auto" />
+                            )}
+                          </div>
+                          {robot.description && (
+                            <span className="text-xs text-muted-foreground line-clamp-2">
+                              {robot.description}
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {robot.actions.length} acoes
+                          </span>
                         </Button>
                       ))
                     )}

@@ -17,6 +17,7 @@ import CannedResponsesPage from "@/pages/settings/canned-responses";
 import ContactsPage from "@/pages/settings/contacts";
 import KanbanPage from "@/pages/kanban";
 import MacrosPage from "@/pages/settings/macros";
+import RobotsPage from "@/pages/settings/robots";
 import ProfilePage from "@/pages/settings/profile";
 import StagesPage from "@/pages/settings/stages";
 import AttributesPage from "@/pages/settings/attributes";
@@ -94,6 +95,9 @@ function Router() {
       </Route>
       <Route path="/settings/macros">
         <AdminRoute component={MacrosPage} />
+      </Route>
+      <Route path="/settings/robots">
+        <AdminRoute component={RobotsPage} />
       </Route>
       <Route path="/settings/profile">
         <ProtectedRoute component={ProfilePage} />
