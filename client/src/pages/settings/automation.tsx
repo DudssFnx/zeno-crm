@@ -672,14 +672,14 @@ function TriageMenusTab({
                 <div className="space-y-2">
                   <Label>Conta WhatsApp (opcional)</Label>
                   <Select
-                    value={formData.whatsappAccountId}
-                    onValueChange={(v) => setFormData({ ...formData, whatsappAccountId: v })}
+                    value={formData.whatsappAccountId || "all"}
+                    onValueChange={(v) => setFormData({ ...formData, whatsappAccountId: v === "all" ? "" : v })}
                   >
                     <SelectTrigger data-testid="select-whatsapp-account">
                       <SelectValue placeholder="Todas as contas" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Todas as contas</SelectItem>
+                      <SelectItem value="all">Todas as contas</SelectItem>
                       {whatsappAccounts.map((acc) => (
                         <SelectItem key={acc.id} value={acc.id}>
                           {acc.name}
@@ -801,14 +801,14 @@ function TriageMenusTab({
                     <div className="space-y-1">
                       <Label className="text-sm">Departamento</Label>
                       <Select
-                        value={newOption.departmentId || ""}
-                        onValueChange={(v) => setNewOption({ ...newOption, departmentId: v })}
+                        value={newOption.departmentId || "none"}
+                        onValueChange={(v) => setNewOption({ ...newOption, departmentId: v === "none" ? undefined : v })}
                       >
                         <SelectTrigger data-testid="select-option-department">
                           <SelectValue placeholder="Nenhum" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Nenhum</SelectItem>
+                          <SelectItem value="none">Nenhum</SelectItem>
                           {departments.map((d) => (
                             <SelectItem key={d.id} value={d.id}>
                               {d.name}
@@ -820,14 +820,14 @@ function TriageMenusTab({
                     <div className="space-y-1">
                       <Label className="text-sm">Tag</Label>
                       <Select
-                        value={newOption.tagId || ""}
-                        onValueChange={(v) => setNewOption({ ...newOption, tagId: v })}
+                        value={newOption.tagId || "none"}
+                        onValueChange={(v) => setNewOption({ ...newOption, tagId: v === "none" ? undefined : v })}
                       >
                         <SelectTrigger data-testid="select-option-tag">
                           <SelectValue placeholder="Nenhum" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Nenhum</SelectItem>
+                          <SelectItem value="none">Nenhum</SelectItem>
                           {tags.map((t) => (
                             <SelectItem key={t.id} value={t.id}>
                               {t.name}
@@ -839,14 +839,14 @@ function TriageMenusTab({
                     <div className="space-y-1">
                       <Label className="text-sm">Estagio</Label>
                       <Select
-                        value={newOption.stageId || ""}
-                        onValueChange={(v) => setNewOption({ ...newOption, stageId: v })}
+                        value={newOption.stageId || "none"}
+                        onValueChange={(v) => setNewOption({ ...newOption, stageId: v === "none" ? undefined : v })}
                       >
                         <SelectTrigger data-testid="select-option-stage">
                           <SelectValue placeholder="Nenhum" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Nenhum</SelectItem>
+                          <SelectItem value="none">Nenhum</SelectItem>
                           {stages.map((s) => (
                             <SelectItem key={s.id} value={s.id}>
                               {s.name}
