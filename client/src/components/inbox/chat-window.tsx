@@ -1133,6 +1133,58 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
         </div>
       </header>
 
+      {/* Robot Progress Indicator */}
+      {robotProgress && (
+        <div className="shrink-0 border-b bg-primary/5 px-3 md:px-4 py-2" data-testid="robot-progress-bar">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <Bot className={cn(
+                "h-5 w-5 shrink-0",
+                robotProgress.status === "running" && "text-primary animate-pulse",
+                robotProgress.status === "completed" && "text-green-500",
+                robotProgress.status === "failed" && "text-destructive",
+                robotProgress.status === "cancelled" && "text-muted-foreground"
+              )} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium truncate">
+                    {robotProgress.robotName || "Robot"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    ({robotProgress.currentStep}/{robotProgress.totalSteps})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    "text-xs truncate",
+                    robotProgress.status === "running" && "text-primary",
+                    robotProgress.status === "completed" && "text-green-600",
+                    robotProgress.status === "failed" && "text-destructive",
+                    robotProgress.status === "cancelled" && "text-muted-foreground"
+                  )}>
+                    {robotProgress.status === "running" && robotProgress.currentActionLabel}
+                    {robotProgress.status === "completed" && "Concluido com sucesso"}
+                    {robotProgress.status === "failed" && "Falha na execucao"}
+                    {robotProgress.status === "cancelled" && "Cancelado"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="w-32 shrink-0">
+              <Progress 
+                value={(robotProgress.currentStep / robotProgress.totalSteps) * 100} 
+                className={cn(
+                  "h-2",
+                  robotProgress.status === "completed" && "[&>div]:bg-green-500",
+                  robotProgress.status === "failed" && "[&>div]:bg-destructive",
+                  robotProgress.status === "cancelled" && "[&>div]:bg-muted-foreground"
+                )}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <div 
         ref={scrollAreaRef}
         className="flex-1 relative min-h-0 overflow-y-auto scrollbar-always-visible"
