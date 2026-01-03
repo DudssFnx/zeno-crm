@@ -496,82 +496,106 @@ export default function RobotsPage() {
         )}
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
+          <DialogContent className="max-w-5xl w-[95vw] h-[85vh] flex flex-col">
+            <DialogHeader className="shrink-0">
               <DialogTitle>{editingRobot ? "Editar Robo" : "Novo Robo"}</DialogTitle>
               <DialogDescription>
                 Configure a sequencia de acoes do robo. Use variaveis como {"{{nome}}"}, {"{{telefone}}"}, {"{{primeiro_nome}}"}.
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nome</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="Ex: Boas-vindas" data-testid="input-robot-name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <form onSubmit={form.handleSubmit(handleSubmit)} className="flex-1 flex flex-col min-h-0">
+                <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0 overflow-hidden">
+                  {/* Left column - Basic info */}
+                  <div className="space-y-4 lg:col-span-1 overflow-y-auto pr-2">
+                    <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                      <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Configuracoes</h3>
+                      
+                      <FormField
+                        control={form.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Nome</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Ex: Boas-vindas" data-testid="input-robot-name" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Descricao</FormLabel>
-                      <FormControl>
-                        <Textarea {...field} placeholder="Descricao opcional do robo" rows={2} data-testid="input-robot-description" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                      <FormField
+                        control={form.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Descricao</FormLabel>
+                            <FormControl>
+                              <Textarea {...field} placeholder="Descricao opcional do robo" rows={3} data-testid="input-robot-description" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                <FormField
-                  control={form.control}
-                  name="isActive"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-base">Ativo</FormLabel>
-                        <FormDescription>Robo disponivel para execucao</FormDescription>
-                      </div>
-                      <FormControl>
-                        <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-robot-active" />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <div className="space-y-3">
-                  <FormLabel>Acoes ({fields.length})</FormLabel>
-                  
-                  <div className="flex gap-2">
-                    <Select value={selectedActionType} onValueChange={setSelectedActionType}>
-                      <SelectTrigger className="flex-1" data-testid="select-action-type">
-                        <SelectValue placeholder="Selecione uma acao" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {actionTypes.map((type) => (
-                          <SelectItem key={type.value} value={type.value}>
-                            <div className="flex items-center gap-2">
-                              <type.icon className="h-4 w-4" />
-                              {type.label}
+                      <FormField
+                        control={form.control}
+                        name="isActive"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center justify-between gap-2 rounded-lg border p-3 bg-background">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-sm">Ativo</FormLabel>
+                              <FormDescription className="text-xs">Robo disponivel para execucao</FormDescription>
                             </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button type="button" onClick={handleAddAction} disabled={!selectedActionType} data-testid="button-add-action">
-                      <Plus className="h-4 w-4" />
-                    </Button>
+                            <FormControl>
+                              <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-robot-active" />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    
+                    <div className="p-4 border rounded-lg bg-muted/30">
+                      <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide mb-3">Variaveis disponiveis</h3>
+                      <div className="space-y-1 text-xs">
+                        <p><code className="px-1 py-0.5 bg-muted rounded">{"{{nome}}"}</code> - Nome completo</p>
+                        <p><code className="px-1 py-0.5 bg-muted rounded">{"{{primeiro_nome}}"}</code> - Primeiro nome</p>
+                        <p><code className="px-1 py-0.5 bg-muted rounded">{"{{telefone}}"}</code> - Telefone</p>
+                        <p><code className="px-1 py-0.5 bg-muted rounded">{"{{empresa}}"}</code> - Empresa</p>
+                        <p><code className="px-1 py-0.5 bg-muted rounded">{"{{atendente}}"}</code> - Atendente</p>
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Right column - Actions */}
+                  <div className="lg:col-span-2 flex flex-col min-h-0 overflow-hidden">
+                    <div className="flex items-center justify-between gap-2 mb-3 shrink-0">
+                      <FormLabel className="text-base">Acoes ({fields.length})</FormLabel>
+                      <div className="flex gap-2 flex-1 max-w-md">
+                        <Select value={selectedActionType} onValueChange={setSelectedActionType}>
+                          <SelectTrigger className="flex-1" data-testid="select-action-type">
+                            <SelectValue placeholder="Selecione uma acao" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {actionTypes.map((type) => (
+                              <SelectItem key={type.value} value={type.value}>
+                                <div className="flex items-center gap-2">
+                                  <type.icon className="h-4 w-4" />
+                                  {type.label}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" onClick={handleAddAction} disabled={!selectedActionType} data-testid="button-add-action">
+                          <Plus className="h-4 w-4 mr-1" />
+                          Adicionar
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto border rounded-lg p-3 bg-muted/20 min-h-[300px]">
 
                   {fields.length > 0 && (
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -796,13 +820,15 @@ export default function RobotsPage() {
                   )}
 
                   {fields.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4 border rounded-md border-dashed">
+                    <p className="text-sm text-muted-foreground text-center py-8 border rounded-md border-dashed">
                       Nenhuma acao adicionada. Selecione uma acao acima para comecar.
                     </p>
                   )}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-4">
+                <div className="flex justify-end gap-2 pt-4 mt-4 border-t shrink-0">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} data-testid="button-cancel">
                     Cancelar
                   </Button>
