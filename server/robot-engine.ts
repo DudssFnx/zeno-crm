@@ -36,7 +36,7 @@ class RobotEngine {
     robotId: string,
     context: ExecutionContext,
     sendMessage: (conversationId: string, content: string, mediaType?: string, mediaUrl?: string) => Promise<void>,
-    sendPresence: (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording") => Promise<void>
+    sendPresence: (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording" | "paused") => Promise<void>
   ): Promise<{ success: boolean; error?: string }> {
     const robot = await db.select().from(robots).where(eq(robots.id, robotId)).limit(1);
     
@@ -111,7 +111,7 @@ class RobotEngine {
     action: RobotAction,
     context: ExecutionContext,
     sendMessage: (conversationId: string, content: string, mediaType?: string, mediaUrl?: string) => Promise<void>,
-    sendPresence: (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording") => Promise<void>
+    sendPresence: (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording" | "paused") => Promise<void>
   ): Promise<void> {
     const { type } = action;
     
@@ -122,6 +122,7 @@ class RobotEngine {
         const duration = action.delayMs || this.generateHumanizedDelay(3000);
         await sendPresence(context.whatsappAccountId, context.contactPhone, "composing");
         await this.sleep(duration);
+        await sendPresence(context.whatsappAccountId, context.contactPhone, "paused");
         break;
       }
 
@@ -129,6 +130,7 @@ class RobotEngine {
         const duration = action.delayMs || this.generateHumanizedDelay(5000);
         await sendPresence(context.whatsappAccountId, context.contactPhone, "recording");
         await this.sleep(duration);
+        await sendPresence(context.whatsappAccountId, context.contactPhone, "paused");
         break;
       }
 
@@ -149,7 +151,8 @@ class RobotEngine {
 
       case "send_image": {
         if (action.mediaUrl) {
-          await sendMessage(context.conversationId, action.content || "", "image", action.mediaUrl);
+          const caption = action.content ? this.processTemplateVariables(action.content, context) : "";
+          await sendMessage(context.conversationId, caption, "image", action.mediaUrl);
           await this.sleep(this.generateHumanizedDelay(1000));
         }
         break;
@@ -165,7 +168,8 @@ class RobotEngine {
 
       case "send_video": {
         if (action.mediaUrl) {
-          await sendMessage(context.conversationId, action.content || "", "video", action.mediaUrl);
+          const caption = action.content ? this.processTemplateVariables(action.content, context) : "";
+          await sendMessage(context.conversationId, caption, "video", action.mediaUrl);
           await this.sleep(this.generateHumanizedDelay(1000));
         }
         break;
@@ -173,7 +177,8 @@ class RobotEngine {
 
       case "send_document": {
         if (action.mediaUrl) {
-          await sendMessage(context.conversationId, action.fileName || "document", "document", action.mediaUrl);
+          const fileName = action.fileName ? this.processTemplateVariables(action.fileName, context) : "document";
+          await sendMessage(context.conversationId, fileName, "document", action.mediaUrl);
           await this.sleep(this.generateHumanizedDelay(1000));
         }
         break;
