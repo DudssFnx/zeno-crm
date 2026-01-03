@@ -965,9 +965,6 @@ function TriageMenusTab({
                       {opt.key} - {opt.label}
                     </Badge>
                   ))}
-                  <Badge variant="outline">
-                    {menu.humanOptionKey} - Atendente
-                  </Badge>
                 </div>
               </CardContent>
             </Card>
