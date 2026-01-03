@@ -351,9 +351,19 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-0.5">
-                      <span className="font-medium text-[15px] truncate">
-                        {conv.contact.name}
-                      </span>
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <span className="font-medium text-[15px] truncate">
+                          {conv.contact.name}
+                        </span>
+                        {conv.contact.attributes && conv.contact.attributes.slice(0, 2).map((attr, idx) => (
+                          <AttributeChip key={`${conv.id}-attr-${idx}`} name={attr} size="xs" />
+                        ))}
+                        {conv.contact.attributes && conv.contact.attributes.length > 2 && (
+                          <span className="text-[9px] text-muted-foreground shrink-0" title={conv.contact.attributes.slice(2).join(", ")}>
+                            +{conv.contact.attributes.length - 2}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-xs text-muted-foreground shrink-0">
                         {formatTime(conv.lastMessageAt)}
                       </span>
@@ -381,14 +391,6 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                           conv.lastMessage?.direction
                         )}
                       />
-                      {conv.contact.attributes && conv.contact.attributes.slice(0, 2).map((attr, idx) => (
-                        <AttributeChip key={`${conv.id}-attr-${idx}`} name={attr} size="xs" />
-                      ))}
-                      {conv.contact.attributes && conv.contact.attributes.length > 2 && (
-                        <span className="text-[9px] text-muted-foreground" title={conv.contact.attributes.slice(2).join(", ")}>
-                          +{conv.contact.attributes.length - 2}
-                        </span>
-                      )}
                       {conv.tags && conv.tags.slice(0, 2).map((tag) => (
                         <TagChip key={tag.id} tag={tag} size="sm" />
                       ))}
