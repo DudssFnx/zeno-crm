@@ -26,9 +26,12 @@ import {
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
+  horizontalListSortingStrategy,
+  arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { GripVertical } from "lucide-react";
 import { formatPhoneNumber } from "@/lib/utils";
 import type { Tag, ConversationWithDetails } from "@shared/schema";
 
@@ -139,17 +142,37 @@ interface TagColumnProps {
   onConversationClick: (conv: ConversationWithDetails) => void;
 }
 
-function TagColumn({ tag, conversations, onConversationClick }: TagColumnProps) {
+function SortableTagColumn({ tag, conversations, onConversationClick }: TagColumnProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `column-${tag.id}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
   return (
     <div
+      ref={setNodeRef}
+      style={style}
       className="w-72 shrink-0 flex flex-col bg-muted/50 rounded-lg"
       data-testid={`column-${tag.id}`}
     >
       <div 
-        className="p-3 border-b flex items-center justify-between gap-2"
+        className="p-3 border-b flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing"
         style={{ borderBottomColor: tag.color, borderBottomWidth: '2px' }}
+        {...attributes}
+        {...listeners}
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
+          <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
           <div
             className="w-3 h-3 rounded-full shrink-0"
             style={{ backgroundColor: tag.color }}
@@ -195,6 +218,8 @@ export default function KanbanPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [activeConversation, setActiveConversation] = useState<ConversationWithDetails | null>(null);
+  const [orderedTags, setOrderedTags] = useState<Tag[]>([]);
+  const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -222,6 +247,20 @@ export default function KanbanPage() {
     },
   });
 
+  useEffect(() => {
+    if (tags.length > 0 && orderedTags.length === 0) {
+      setOrderedTags(tags);
+    } else if (tags.length > 0) {
+      const newTagIds = new Set(tags.map(t => t.id));
+      const existingIds = new Set(orderedTags.map(t => t.id));
+      const newTags = tags.filter(t => !existingIds.has(t.id));
+      const stillValidTags = orderedTags.filter(t => newTagIds.has(t.id));
+      if (newTags.length > 0 || stillValidTags.length !== orderedTags.length) {
+        setOrderedTags([...stillValidTags, ...newTags]);
+      }
+    }
+  }, [tags]);
+
   const isLoading = tagsLoading || conversationsLoading;
 
   const getConversationsForTag = (tagId: string): ConversationWithDetails[] => {
@@ -240,6 +279,12 @@ export default function KanbanPage() {
 
   const handleDragStart = (event: DragStartEvent) => {
     const dragId = event.active.id as string;
+    
+    if (dragId.startsWith("column-")) {
+      setActiveColumnId(dragId);
+      return;
+    }
+    
     const conversationId = dragId.includes("_") ? dragId.split("_")[0] : dragId;
     const conv = conversations.find(c => c.id === conversationId);
     setActiveConversation(conv || null);
@@ -248,32 +293,50 @@ export default function KanbanPage() {
   const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveConversation(null);
+    setActiveColumnId(null);
     if (!over || active.id === over.id) return;
 
     const dragId = active.id as string;
-    const conversationId = dragId.includes("_") ? dragId.split("_")[0] : dragId;
-    let newTagId = over.id as string; // pode ser "no-tag"
+    const overId = over.id as string;
 
-    // Se o over.id for de um card, precisamos extrair a tag dele
+    if (dragId.startsWith("column-") && overId.startsWith("column-")) {
+      const activeTagId = dragId.replace("column-", "");
+      const overTagId = overId.replace("column-", "");
+      
+      const oldIndex = orderedTags.findIndex(t => t.id === activeTagId);
+      const newIndex = orderedTags.findIndex(t => t.id === overTagId);
+      
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newOrder = arrayMove(orderedTags, oldIndex, newIndex);
+        setOrderedTags(newOrder);
+        toast({ title: "Colunas reordenadas" });
+      }
+      return;
+    }
+
+    const conversationId = dragId.includes("_") ? dragId.split("_")[0] : dragId;
+    let newTagId = overId;
+
     if (newTagId.includes("_")) {
       newTagId = newTagId.split("_")[1];
     }
+    
+    if (newTagId.startsWith("column-")) {
+      newTagId = newTagId.replace("column-", "");
+    }
 
-    // Encontrar conversa atual
     const conversation = conversations?.find(c => c.id === conversationId);
     if (!conversation) return;
 
-    const oldTagId = conversation.tags?.[0]?.id; // pode ser undefined
+    const oldTagId = conversation.tags?.[0]?.id;
 
     if (oldTagId === newTagId) return;
 
     try {
-      // Remover tag antiga (se existir)
       if (oldTagId && oldTagId !== "no-tag") {
         await apiRequest("DELETE", `/api/contacts/${conversation.contactId}/tags/${oldTagId}`);
       }
 
-      // Adicionar nova tag (se não for "sem etiqueta")
       if (newTagId !== "no-tag") {
         await apiRequest("POST", `/api/contacts/${conversation.contactId}/tags`, { tagId: newTagId });
       }
@@ -331,58 +394,67 @@ export default function KanbanPage() {
             onDragStart={handleDragStart}
             onDragEnd={onDragEnd}
           >
-            <div className="flex gap-4 h-[calc(100vh-180px)] overflow-x-auto pb-4">
-              <div className="w-72 shrink-0 flex flex-col bg-muted/30 rounded-lg">
-                <div className="p-3 border-b flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-medium text-sm text-muted-foreground">Sem Etiqueta</span>
-                  </div>
-                  <Badge variant="outline" className="text-xs shrink-0">
-                    {noTagConversations.length}
-                  </Badge>
-                </div>
-                <ScrollArea className="flex-1 p-2">
-                  <SortableContext
-                    id="no-tag"
-                    items={noTagConversations.map(c => `${c.id}_no-tag`)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="space-y-2 min-h-[100px]" data-tag-id="no-tag">
-                      {noTagConversations.map((conv) => (
-                        <SortableConversationCard
-                          key={`${conv.id}_no-tag`}
-                          uniqueId={`${conv.id}_no-tag`}
-                          conversation={conv}
-                          onClick={() => handleConversationClick(conv)}
-                        />
-                      ))}
-                      {noTagConversations.length === 0 && (
-                        <div 
-                          className="text-center py-8 text-muted-foreground text-sm border-2 border-dashed rounded-lg"
-                          data-testid="tag-drop-no-tag"
-                        >
-                          Arraste conversas aqui
-                        </div>
-                      )}
+            <SortableContext
+              items={orderedTags.map(t => `column-${t.id}`)}
+              strategy={horizontalListSortingStrategy}
+            >
+              <div className="flex gap-4 h-[calc(100vh-180px)] overflow-x-auto pb-4">
+                <div className="w-72 shrink-0 flex flex-col bg-muted/30 rounded-lg">
+                  <div className="p-3 border-b flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                      <span className="font-medium text-sm text-muted-foreground">Sem Etiqueta</span>
                     </div>
-                  </SortableContext>
-                </ScrollArea>
-              </div>
+                    <Badge variant="outline" className="text-xs shrink-0">
+                      {noTagConversations.length}
+                    </Badge>
+                  </div>
+                  <ScrollArea className="flex-1 p-2">
+                    <SortableContext
+                      id="no-tag"
+                      items={noTagConversations.map(c => `${c.id}_no-tag`)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2 min-h-[100px]" data-tag-id="no-tag">
+                        {noTagConversations.map((conv) => (
+                          <SortableConversationCard
+                            key={`${conv.id}_no-tag`}
+                            uniqueId={`${conv.id}_no-tag`}
+                            conversation={conv}
+                            onClick={() => handleConversationClick(conv)}
+                          />
+                        ))}
+                        {noTagConversations.length === 0 && (
+                          <div 
+                            className="text-center py-8 text-muted-foreground text-sm border-2 border-dashed rounded-lg"
+                            data-testid="tag-drop-no-tag"
+                          >
+                            Arraste conversas aqui
+                          </div>
+                        )}
+                      </div>
+                    </SortableContext>
+                  </ScrollArea>
+                </div>
 
-              {tags.map((tag) => (
-                <TagColumn
-                  key={tag.id}
-                  tag={tag}
-                  conversations={getConversationsForTag(tag.id)}
-                  onConversationClick={handleConversationClick}
-                />
-              ))}
-            </div>
+                {orderedTags.map((tag) => (
+                  <SortableTagColumn
+                    key={tag.id}
+                    tag={tag}
+                    conversations={getConversationsForTag(tag.id)}
+                    onConversationClick={handleConversationClick}
+                  />
+                ))}
+              </div>
+            </SortableContext>
 
             <DragOverlay>
               {activeConversation ? (
                 <ConversationCard conversation={activeConversation} />
+              ) : activeColumnId ? (
+                <div className="w-72 h-20 bg-muted/50 rounded-lg border-2 border-dashed border-primary/50 flex items-center justify-center">
+                  <span className="text-sm text-muted-foreground">Movendo coluna...</span>
+                </div>
               ) : null}
             </DragOverlay>
           </DndContext>
