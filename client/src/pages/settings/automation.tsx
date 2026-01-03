@@ -43,6 +43,7 @@ import {
   Menu,
   AlertTriangle,
   Pencil,
+  X,
 } from "lucide-react";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1209,6 +1210,38 @@ function AutomationRulesTab({
   users: User[];
 }) {
   const { toast } = useToast();
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    triggerEvent: "message_received",
+    triggerFilters: {} as Record<string, string | number>,
+    actions: [] as Array<{ type: string; value?: string }>,
+    priority: 0,
+  });
+  const [newAction, setNewAction] = useState({ type: "add_tag", value: "" });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      return apiRequest("POST", "/api/automation-rules", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/automation-rules"] });
+      toast({ title: "Regra criada com sucesso!" });
+      setShowCreateDialog(false);
+      setFormData({
+        name: "",
+        description: "",
+        triggerEvent: "message_received",
+        triggerFilters: {},
+        actions: [],
+        priority: 0,
+      });
+    },
+    onError: () => {
+      toast({ title: "Erro ao criar regra", variant: "destructive" });
+    },
+  });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -1229,6 +1262,57 @@ function AutomationRulesTab({
     },
   });
 
+  const triggerEventLabels: Record<string, string> = {
+    message_received: "Mensagem Recebida",
+    conversation_created: "Conversa Criada",
+    tag_added: "Tag Adicionada",
+    stage_changed: "Estagio Alterado",
+    inactivity: "Inatividade",
+  };
+
+  const actionTypeLabels: Record<string, string> = {
+    add_tag: "Adicionar Tag",
+    remove_tag: "Remover Tag",
+    set_stage: "Definir Estagio",
+    assign_user: "Atribuir Atendente",
+    assign_department: "Atribuir Departamento",
+    send_message: "Enviar Mensagem",
+  };
+
+  const addAction = () => {
+    if (!newAction.type) return;
+    const actionValue = newAction.value === "none" ? undefined : newAction.value;
+    setFormData({
+      ...formData,
+      actions: [...formData.actions, { type: newAction.type, value: actionValue }],
+    });
+    setNewAction({ type: "add_tag", value: "" });
+  };
+
+  const removeAction = (index: number) => {
+    setFormData({
+      ...formData,
+      actions: formData.actions.filter((_, i) => i !== index),
+    });
+  };
+
+  const getActionValueLabel = (action: { type: string; value?: string }) => {
+    if (!action.value) return "";
+    if (action.type === "add_tag" || action.type === "remove_tag") {
+      return tags.find((t) => t.id === action.value)?.name || action.value;
+    }
+    if (action.type === "set_stage") {
+      return stages.find((s) => s.id === action.value)?.name || action.value;
+    }
+    if (action.type === "assign_user") {
+      return users.find((u) => u.id === action.value)?.name || action.value;
+    }
+    if (action.type === "assign_department") {
+      return departments.find((d) => d.id === action.value)?.name || action.value;
+    }
+    return action.value;
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1238,11 +1322,230 @@ function AutomationRulesTab({
             Regras baseadas em eventos (estilo Zoho) para automacao avancada
           </p>
         </div>
-        <Button disabled data-testid="button-create-rule">
+        <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-rule">
           <Plus className="h-4 w-4 mr-2" />
-          Nova Regra (Em breve)
+          Nova Regra
         </Button>
       </div>
+
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nova Regra de Automacao</DialogTitle>
+            <DialogDescription>
+              Configure uma regra para executar acoes automaticamente
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nome da Regra *</Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Ex: Marcar cliente ativo"
+                  data-testid="input-rule-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Prioridade</Label>
+                <Input
+                  type="number"
+                  value={formData.priority}
+                  onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) || 0 })}
+                  placeholder="0"
+                  data-testid="input-rule-priority"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Descricao</Label>
+              <Textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Descreva o que esta regra faz..."
+                data-testid="input-rule-description"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Evento Gatilho *</Label>
+              <Select
+                value={formData.triggerEvent}
+                onValueChange={(v) => setFormData({ ...formData, triggerEvent: v })}
+              >
+                <SelectTrigger data-testid="select-rule-trigger">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(triggerEventLabels).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {formData.triggerEvent === "inactivity" && (
+              <div className="space-y-2">
+                <Label>Dias de Inatividade</Label>
+                <Input
+                  type="number"
+                  value={(formData.triggerFilters.inactivityDays as number) || 3}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      triggerFilters: { ...formData.triggerFilters, inactivityDays: parseInt(e.target.value) || 3 },
+                    })
+                  }
+                  placeholder="3"
+                  data-testid="input-inactivity-days"
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Acoes</Label>
+              <div className="space-y-2">
+                {formData.actions.map((action, index) => (
+                  <div key={index} className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                    <Badge variant="outline">{actionTypeLabels[action.type]}</Badge>
+                    {action.value && (
+                      <span className="text-sm">{getActionValueLabel(action)}</span>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-auto"
+                      onClick={() => removeAction(index)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Select
+                  value={newAction.type}
+                  onValueChange={(v) => setNewAction({ ...newAction, type: v, value: "" })}
+                >
+                  <SelectTrigger className="flex-1" data-testid="select-action-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(actionTypeLabels).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(newAction.type === "add_tag" || newAction.type === "remove_tag") && (
+                  <Select
+                    value={newAction.value || "none"}
+                    onValueChange={(v) => setNewAction({ ...newAction, value: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger className="flex-1" data-testid="select-action-tag">
+                      <SelectValue placeholder="Selecione a tag" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Selecione...</SelectItem>
+                      {tags.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {newAction.type === "set_stage" && (
+                  <Select
+                    value={newAction.value || "none"}
+                    onValueChange={(v) => setNewAction({ ...newAction, value: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger className="flex-1" data-testid="select-action-stage">
+                      <SelectValue placeholder="Selecione o estagio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Selecione...</SelectItem>
+                      {stages.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {newAction.type === "assign_user" && (
+                  <Select
+                    value={newAction.value || "none"}
+                    onValueChange={(v) => setNewAction({ ...newAction, value: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger className="flex-1" data-testid="select-action-user">
+                      <SelectValue placeholder="Selecione o atendente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Selecione...</SelectItem>
+                      {users.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {newAction.type === "assign_department" && (
+                  <Select
+                    value={newAction.value || "none"}
+                    onValueChange={(v) => setNewAction({ ...newAction, value: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger className="flex-1" data-testid="select-action-department">
+                      <SelectValue placeholder="Selecione o departamento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Selecione...</SelectItem>
+                      {departments.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {newAction.type === "send_message" && (
+                  <Input
+                    value={newAction.value}
+                    onChange={(e) => setNewAction({ ...newAction, value: e.target.value })}
+                    placeholder="Mensagem a enviar..."
+                    className="flex-1"
+                    data-testid="input-action-message"
+                  />
+                )}
+                <Button
+                  variant="outline"
+                  onClick={addAction}
+                  disabled={!newAction.type || (newAction.type !== "send_message" && !newAction.value)}
+                  data-testid="button-add-action"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => createMutation.mutate(formData)}
+              disabled={createMutation.isPending || !formData.name || formData.actions.length === 0}
+              data-testid="button-save-rule"
+            >
+              Criar Regra
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {rules.length === 0 ? (
         <Card>
