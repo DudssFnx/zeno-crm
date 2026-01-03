@@ -1,10 +1,11 @@
 import { db } from "./db";
-import { eq, and, desc, sql, asc } from "drizzle-orm";
+import { eq, and, desc, sql, asc, lte, or, inArray } from "drizzle-orm";
 import {
   companies, users, whatsappAccounts, contacts, tags, contactTags,
   conversations, messages, webhookConfigs, automationLogs, cannedResponses,
   macros, macroExecutions, stages, contactAttributes,
   chatFlows, chatFlowSteps, chatFlowSessions,
+  chatFlowNodes, chatFlowEdges, scheduledMessages,
   type Company, type InsertCompany, type User, type InsertUser,
   type WhatsappAccount, type InsertWhatsappAccount,
   type Contact, type InsertContact, type Tag, type InsertTag,
@@ -20,6 +21,9 @@ import {
   type ChatFlow, type InsertChatFlow,
   type ChatFlowStep, type InsertChatFlowStep,
   type ChatFlowSession, type InsertChatFlowSession,
+  type ChatFlowNode, type InsertChatFlowNode,
+  type ChatFlowEdge, type InsertChatFlowEdge,
+  type ScheduledMessage, type InsertScheduledMessage,
   type ConversationWithDetails, type ContactWithTags, type MessageWithSender,
 } from "@shared/schema";
 import { normalizePhone } from "./jid-utils";
@@ -147,6 +151,31 @@ export interface IStorage {
   getChatFlowSession(id: string): Promise<ChatFlowSession | undefined>;
   getActiveSessionByConversation(conversationId: string): Promise<ChatFlowSession | undefined>;
   updateChatFlowSession(id: string, data: Partial<InsertChatFlowSession>): Promise<ChatFlowSession | undefined>;
+
+  // Chat Flow Nodes (Novo sistema)
+  createChatFlowNode(data: InsertChatFlowNode): Promise<ChatFlowNode>;
+  getChatFlowNode(id: string): Promise<ChatFlowNode | undefined>;
+  getChatFlowNodes(flowId: string): Promise<ChatFlowNode[]>;
+  updateChatFlowNode(id: string, data: Partial<InsertChatFlowNode>): Promise<ChatFlowNode | undefined>;
+  deleteChatFlowNode(id: string): Promise<void>;
+  deleteChatFlowNodes(flowId: string): Promise<void>;
+
+  // Chat Flow Edges (Novo sistema)
+  createChatFlowEdge(data: InsertChatFlowEdge): Promise<ChatFlowEdge>;
+  getChatFlowEdge(id: string): Promise<ChatFlowEdge | undefined>;
+  getChatFlowEdges(flowId: string): Promise<ChatFlowEdge[]>;
+  getOutgoingEdges(nodeId: string): Promise<ChatFlowEdge[]>;
+  updateChatFlowEdge(id: string, data: Partial<InsertChatFlowEdge>): Promise<ChatFlowEdge | undefined>;
+  deleteChatFlowEdge(id: string): Promise<void>;
+  deleteChatFlowEdges(flowId: string): Promise<void>;
+
+  // Scheduled Messages
+  createScheduledMessage(data: InsertScheduledMessage): Promise<ScheduledMessage>;
+  getScheduledMessage(id: string): Promise<ScheduledMessage | undefined>;
+  getScheduledMessages(companyId: string): Promise<ScheduledMessage[]>;
+  getPendingScheduledMessages(): Promise<ScheduledMessage[]>;
+  updateScheduledMessage(id: string, data: Partial<InsertScheduledMessage>): Promise<ScheduledMessage | undefined>;
+  deleteScheduledMessage(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -795,6 +824,117 @@ export class DatabaseStorage implements IStorage {
       .where(eq(chatFlowSessions.id, id))
       .returning();
     return session;
+  }
+
+  // Chat Flow Nodes (Novo sistema)
+  async createChatFlowNode(data: InsertChatFlowNode): Promise<ChatFlowNode> {
+    const [node] = await db.insert(chatFlowNodes).values(data).returning();
+    return node;
+  }
+
+  async getChatFlowNode(id: string): Promise<ChatFlowNode | undefined> {
+    const [node] = await db.select().from(chatFlowNodes).where(eq(chatFlowNodes.id, id));
+    return node;
+  }
+
+  async getChatFlowNodes(flowId: string): Promise<ChatFlowNode[]> {
+    return db.select().from(chatFlowNodes).where(eq(chatFlowNodes.flowId, flowId));
+  }
+
+  async updateChatFlowNode(id: string, data: Partial<InsertChatFlowNode>): Promise<ChatFlowNode | undefined> {
+    const [node] = await db
+      .update(chatFlowNodes)
+      .set(data)
+      .where(eq(chatFlowNodes.id, id))
+      .returning();
+    return node;
+  }
+
+  async deleteChatFlowNode(id: string): Promise<void> {
+    await db.delete(chatFlowNodes).where(eq(chatFlowNodes.id, id));
+  }
+
+  async deleteChatFlowNodes(flowId: string): Promise<void> {
+    await db.delete(chatFlowNodes).where(eq(chatFlowNodes.flowId, flowId));
+  }
+
+  // Chat Flow Edges (Novo sistema)
+  async createChatFlowEdge(data: InsertChatFlowEdge): Promise<ChatFlowEdge> {
+    const [edge] = await db.insert(chatFlowEdges).values(data).returning();
+    return edge;
+  }
+
+  async getChatFlowEdge(id: string): Promise<ChatFlowEdge | undefined> {
+    const [edge] = await db.select().from(chatFlowEdges).where(eq(chatFlowEdges.id, id));
+    return edge;
+  }
+
+  async getChatFlowEdges(flowId: string): Promise<ChatFlowEdge[]> {
+    return db.select().from(chatFlowEdges)
+      .where(eq(chatFlowEdges.flowId, flowId))
+      .orderBy(asc(chatFlowEdges.sortOrder));
+  }
+
+  async getOutgoingEdges(nodeId: string): Promise<ChatFlowEdge[]> {
+    return db.select().from(chatFlowEdges)
+      .where(eq(chatFlowEdges.fromNodeId, nodeId))
+      .orderBy(asc(chatFlowEdges.sortOrder));
+  }
+
+  async updateChatFlowEdge(id: string, data: Partial<InsertChatFlowEdge>): Promise<ChatFlowEdge | undefined> {
+    const [edge] = await db
+      .update(chatFlowEdges)
+      .set(data)
+      .where(eq(chatFlowEdges.id, id))
+      .returning();
+    return edge;
+  }
+
+  async deleteChatFlowEdge(id: string): Promise<void> {
+    await db.delete(chatFlowEdges).where(eq(chatFlowEdges.id, id));
+  }
+
+  async deleteChatFlowEdges(flowId: string): Promise<void> {
+    await db.delete(chatFlowEdges).where(eq(chatFlowEdges.flowId, flowId));
+  }
+
+  // Scheduled Messages
+  async createScheduledMessage(data: InsertScheduledMessage): Promise<ScheduledMessage> {
+    const [msg] = await db.insert(scheduledMessages).values(data).returning();
+    return msg;
+  }
+
+  async getScheduledMessage(id: string): Promise<ScheduledMessage | undefined> {
+    const [msg] = await db.select().from(scheduledMessages).where(eq(scheduledMessages.id, id));
+    return msg;
+  }
+
+  async getScheduledMessages(companyId: string): Promise<ScheduledMessage[]> {
+    return db.select().from(scheduledMessages)
+      .where(eq(scheduledMessages.companyId, companyId))
+      .orderBy(asc(scheduledMessages.scheduledFor));
+  }
+
+  async getPendingScheduledMessages(): Promise<ScheduledMessage[]> {
+    return db.select().from(scheduledMessages)
+      .where(and(
+        eq(scheduledMessages.status, "pending"),
+        lte(scheduledMessages.scheduledFor, new Date())
+      ))
+      .orderBy(asc(scheduledMessages.scheduledFor));
+  }
+
+  async updateScheduledMessage(id: string, data: Partial<InsertScheduledMessage>): Promise<ScheduledMessage | undefined> {
+    const [msg] = await db
+      .update(scheduledMessages)
+      .set(data)
+      .where(eq(scheduledMessages.id, id))
+      .returning();
+    return msg;
+  }
+
+  async deleteScheduledMessage(id: string): Promise<void> {
+    await db.delete(scheduledMessages).where(eq(scheduledMessages.id, id));
   }
 }
 
