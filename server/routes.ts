@@ -526,6 +526,11 @@ export async function registerRoutes(
 
   // Get contact attribute counts
   app.get("/api/contacts/:id/attribute-counts", authMiddleware(storage), async (req: AuthRequest, res) => {
+    // Verify contact belongs to user's company
+    const contact = await storage.getContact(req.params.id);
+    if (!contact || contact.companyId !== req.user!.companyId) {
+      return res.status(404).json({ message: "Contact not found" });
+    }
     const counts = await storage.getContactAttributeCounts(req.params.id);
     res.json(counts);
   });

@@ -442,7 +442,7 @@ export default function ContactsPage() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-medium truncate">{contact.name}</span>
                               {contact.attributes && contact.attributes.slice(0, 2).map((attr, idx) => (
-                                <AttributeChip key={`${contact.id}-attr-${idx}`} name={attr} size="xs" />
+                                <AttributeChip key={`${contact.id}-attr-${idx}`} name={attr} contactId={contact.id} size="xs" />
                               ))}
                             </div>
                             <div className="flex items-center gap-2">

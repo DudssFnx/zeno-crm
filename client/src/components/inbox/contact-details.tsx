@@ -297,7 +297,7 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
             {contactWithTags.attributes && contactWithTags.attributes.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-2 justify-center">
                 {contactWithTags.attributes.map((attr, idx) => (
-                  <AttributeChip key={`${attr}-${idx}`} name={attr} size="sm" />
+                  <AttributeChip key={`${attr}-${idx}`} name={attr} contactId={contactWithTags.id} size="sm" />
                 ))}
               </div>
             )}
