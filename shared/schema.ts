@@ -540,6 +540,7 @@ export type AutomationActionType = typeof automationActionTypes[number];
 export const triageOptionSchema = z.object({
   key: z.string(), // "1", "2", "3", etc.
   label: z.string(), // "Vendas", "Financeiro", etc.
+  response: z.string().optional(), // Mensagem automática enviada quando o cliente escolhe essa opção
   departmentId: z.string().optional(),
   keywords: z.array(z.string()).optional(), // Palavras-chave alternativas
   stageId: z.string().optional(), // Move para stage específico

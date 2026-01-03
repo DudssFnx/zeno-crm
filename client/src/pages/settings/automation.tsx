@@ -499,6 +499,7 @@ function TriageMenusTab({
   const [newOption, setNewOption] = useState<Partial<TriageOption>>({
     key: "",
     label: "",
+    response: "",
     departmentId: "",
     tagId: "",
     stageId: "",
@@ -756,22 +757,34 @@ function TriageMenusTab({
                   {formData.options.map((opt, idx) => (
                     <div
                       key={idx}
-                      className="flex items-center gap-2 p-2 border rounded-md"
+                      className="p-2 border rounded-md space-y-2"
                     >
-                      <Badge>{opt.key}</Badge>
-                      <span className="flex-1">{opt.label}</span>
-                      {opt.departmentId && (
-                        <Badge variant="outline">
-                          {departments.find((d) => d.id === opt.departmentId)?.name}
-                        </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge>{opt.key}</Badge>
+                        <span className="flex-1 font-medium">{opt.label}</span>
+                        {opt.tagId && (
+                          <Badge variant="secondary" style={{ backgroundColor: tags.find((t) => t.id === opt.tagId)?.color }}>
+                            {tags.find((t) => t.id === opt.tagId)?.name}
+                          </Badge>
+                        )}
+                        {opt.departmentId && (
+                          <Badge variant="outline">
+                            {departments.find((d) => d.id === opt.departmentId)?.name}
+                          </Badge>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeOption(idx)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                      {opt.response && (
+                        <p className="text-sm text-muted-foreground pl-7 italic">
+                          Resposta: {opt.response}
+                        </p>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeOption(idx)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
                     </div>
                   ))}
                 </div>
@@ -788,7 +801,7 @@ function TriageMenusTab({
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-sm">Texto</Label>
+                      <Label className="text-sm">Texto do Menu</Label>
                       <Input
                         value={newOption.label}
                         onChange={(e) => setNewOption({ ...newOption, label: e.target.value })}
@@ -796,6 +809,16 @@ function TriageMenusTab({
                         data-testid="input-option-label"
                       />
                     </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-sm">Mensagem de Resposta (enviada quando o cliente escolher esta opção)</Label>
+                    <Textarea
+                      value={newOption.response || ""}
+                      onChange={(e) => setNewOption({ ...newOption, response: e.target.value })}
+                      placeholder="Voce escolheu Vendas. Em breve um atendente ira te ajudar!"
+                      rows={2}
+                      data-testid="input-option-response"
+                    />
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1">
@@ -1060,27 +1083,34 @@ function TriageMenusTab({
                 {formData.options.map((opt, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center gap-2 p-2 border rounded-md"
+                    className="p-2 border rounded-md space-y-2"
                   >
-                    <Badge>{opt.key}</Badge>
-                    <span className="flex-1">{opt.label}</span>
-                    {opt.tagId && (
-                      <Badge variant="outline" style={{ backgroundColor: tags.find((t) => t.id === opt.tagId)?.color }}>
-                        {tags.find((t) => t.id === opt.tagId)?.name}
-                      </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge>{opt.key}</Badge>
+                      <span className="flex-1 font-medium">{opt.label}</span>
+                      {opt.tagId && (
+                        <Badge variant="secondary" style={{ backgroundColor: tags.find((t) => t.id === opt.tagId)?.color }}>
+                          {tags.find((t) => t.id === opt.tagId)?.name}
+                        </Badge>
+                      )}
+                      {opt.departmentId && (
+                        <Badge variant="outline">
+                          {departments.find((d) => d.id === opt.departmentId)?.name}
+                        </Badge>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeOption(idx)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                    {opt.response && (
+                      <p className="text-sm text-muted-foreground pl-7 italic">
+                        Resposta: {opt.response}
+                      </p>
                     )}
-                    {opt.departmentId && (
-                      <Badge variant="outline">
-                        {departments.find((d) => d.id === opt.departmentId)?.name}
-                      </Badge>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeOption(idx)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
                   </div>
                 ))}
               </div>
@@ -1097,7 +1127,7 @@ function TriageMenusTab({
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-sm">Texto</Label>
+                    <Label className="text-sm">Texto do Menu</Label>
                     <Input
                       value={newOption.label}
                       onChange={(e) => setNewOption({ ...newOption, label: e.target.value })}
@@ -1105,6 +1135,16 @@ function TriageMenusTab({
                       data-testid="input-edit-option-label"
                     />
                   </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm">Mensagem de Resposta (enviada quando o cliente escolher esta opção)</Label>
+                  <Textarea
+                    value={newOption.response || ""}
+                    onChange={(e) => setNewOption({ ...newOption, response: e.target.value })}
+                    placeholder="Voce escolheu Vendas. Em breve um atendente ira te ajudar!"
+                    rows={2}
+                    data-testid="input-edit-option-response"
+                  />
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1">
