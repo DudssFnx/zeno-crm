@@ -12,6 +12,7 @@ import { TagChip } from "@/components/tag-chip";
 import { AttributeChip } from "@/components/attribute-chip";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
+import { PriorityBadge, getPriorityLevel } from "@/components/priority-badge";
 import { useAuthFetch } from "@/lib/auth";
 import { cn, formatPhoneNumber } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -373,6 +374,13 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                     )}
                     <div className="flex items-center gap-1 mt-1.5 flex-wrap">
                       <StatusBadge status={conv.status as "open" | "pending" | "resolved" | "closed"} />
+                      <PriorityBadge 
+                        level={getPriorityLevel(
+                          conv.lastInboundAt,
+                          conv.lastOutboundAt,
+                          conv.lastMessage?.direction
+                        )}
+                      />
                       {conv.contact.attributes && conv.contact.attributes.slice(0, 2).map((attr, idx) => (
                         <AttributeChip key={`${conv.id}-attr-${idx}`} name={attr} size="xs" />
                       ))}
