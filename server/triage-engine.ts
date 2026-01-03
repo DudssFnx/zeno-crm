@@ -7,6 +7,7 @@ import {
   antiSpamLogs,
   conversations,
   contacts,
+  contactTags,
   users,
   type TriageMenu,
   type TriageSession,
@@ -339,7 +340,26 @@ export class TriageEngine {
     }
 
     if (option.tagId) {
-      logger.info({ conversationId, tagId: option.tagId }, "Would add tag to contact");
+      try {
+        const [conv] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+        if (conv && conv.contactId) {
+          const existingTag = await db.select().from(contactTags)
+            .where(and(eq(contactTags.contactId, conv.contactId), eq(contactTags.tagId, option.tagId)))
+            .limit(1);
+          
+          if (existingTag.length === 0) {
+            await db.insert(contactTags).values({
+              contactId: conv.contactId,
+              tagId: option.tagId,
+            });
+            logger.info({ conversationId, contactId: conv.contactId, tagId: option.tagId }, "Tag applied to contact");
+          } else {
+            logger.info({ conversationId, tagId: option.tagId }, "Tag already exists on contact");
+          }
+        }
+      } catch (err) {
+        logger.error({ conversationId, tagId: option.tagId, error: err }, "Failed to apply tag");
+      }
     }
 
     if (option.stageId) {

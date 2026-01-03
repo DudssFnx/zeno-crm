@@ -5,6 +5,7 @@ import { normalizePhone } from "./jid-utils";
 import { dispatchWebhook } from "./webhook-dispatcher";
 import { whatsappBaileys, MediaInfo } from "./whatsapp-baileys";
 import { processFlowMessage } from "./flow-processor";
+import { triageEngine } from "./triage-engine";
 import fs from "fs";
 import path from "path";
 import { proto } from "@whiskeysockets/baileys";
@@ -537,18 +538,54 @@ async function processMessageInBackground(msg: QueuedMessage) {
         mediaType: mediaInfo?.mediaType,
       }).catch(err => console.error("[Webhook] Error:", err));
       
-      // Processar fluxos conversacionais (auto-atendimento)
+      // Processar triagem automática (menu numérico)
+      let triageHandled = false;
       try {
-        const flowResult = await processFlowMessage(storage, conversation, savedMessage, accountId);
-        if (flowResult.processed && flowResult.responses.length > 0) {
-          console.log(`[FlowProcessor] Sending ${flowResult.responses.length} flow responses`);
-          for (const responseText of flowResult.responses) {
-            // Enviar mensagem via WhatsApp
-            await whatsappBaileys.sendMessage(accountId, phoneNumber, responseText);
+        const isFirstMessage = conversationCreated;
+        const triageResult = await triageEngine.processIncomingMessage(
+          conversation.id,
+          companyId,
+          accountId,
+          content,
+          isFirstMessage
+        );
+        
+        if (triageResult.action !== "no_menu" && triageResult.action !== "already_routed") {
+          triageHandled = true;
+          console.log(`[TriageEngine] Action: ${triageResult.action} for conversation ${conversation.id}`);
+          
+          if (triageResult.message) {
+            // Usar delay humanizado antes de enviar
+            const delay = 1500 + Math.floor(Math.random() * 2000);
+            console.log(`[TriageEngine] Sending response after ${delay}ms delay`);
+            
+            await new Promise(resolve => setTimeout(resolve, delay));
+            await whatsappBaileys.sendMessage(accountId, phoneNumber, triageResult.message);
+            console.log(`[TriageEngine] Sent: "${triageResult.message.substring(0, 50)}..."`);
+          }
+          
+          if (triageResult.action === "route_to_department" && triageResult.departmentId) {
+            console.log(`[TriageEngine] Routed to department: ${triageResult.departmentId}, agent: ${triageResult.agentId || 'none'}`);
           }
         }
-      } catch (flowErr) {
-        console.error("[FlowProcessor] Error processing flow:", flowErr);
+      } catch (triageErr) {
+        console.error("[TriageEngine] Error processing triage:", triageErr);
+      }
+      
+      // Processar fluxos conversacionais (auto-atendimento) apenas se triagem não tratou
+      if (!triageHandled) {
+        try {
+          const flowResult = await processFlowMessage(storage, conversation, savedMessage, accountId);
+          if (flowResult.processed && flowResult.responses.length > 0) {
+            console.log(`[FlowProcessor] Sending ${flowResult.responses.length} flow responses`);
+            for (const responseText of flowResult.responses) {
+              // Enviar mensagem via WhatsApp
+              await whatsappBaileys.sendMessage(accountId, phoneNumber, responseText);
+            }
+          }
+        } catch (flowErr) {
+          console.error("[FlowProcessor] Error processing flow:", flowErr);
+        }
       }
     }
     
