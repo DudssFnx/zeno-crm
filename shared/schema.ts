@@ -712,6 +712,7 @@ export const robotActionSchema = z.object({
     "delay",            // Aguardar tempo
     "add_tag",          // Adicionar tag
     "remove_tag",       // Remover tag
+    "remove_all_tags",  // Remover todas as tags
     "set_status",       // Alterar status da conversa
     "assign_agent",     // Atribuir atendente
     "transfer",         // Transferir atendimento

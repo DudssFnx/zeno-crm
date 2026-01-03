@@ -36,6 +36,7 @@ const actionTypes = [
   { value: "delay", label: "Aguardar", icon: Clock },
   { value: "add_tag", label: "Adicionar Etiqueta", icon: TagIcon },
   { value: "remove_tag", label: "Remover Etiqueta", icon: TagIcon },
+  { value: "remove_all_tags", label: "Remover Todas Etiquetas", icon: TagIcon },
   { value: "set_status", label: "Alterar Status", icon: Play },
   { value: "assign_agent", label: "Atribuir Atendente", icon: UserCircle },
   { value: "transfer", label: "Transferir", icon: ArrowRight },
@@ -52,7 +53,7 @@ const robotActionSchema = z.object({
   type: z.enum([
     "send_text", "send_image", "send_audio", "send_video", "send_document",
     "simulate_typing", "simulate_recording", "delay",
-    "add_tag", "remove_tag", "set_status", "assign_agent", "transfer"
+    "add_tag", "remove_tag", "remove_all_tags", "set_status", "assign_agent", "transfer"
   ]),
   content: z.string().optional(),
   mediaUrl: z.string().optional(),
@@ -111,6 +112,8 @@ function SortableActionItem({ action, index, onRemove, tags, users }: SortableAc
       case "remove_tag":
         const tag = tags.find(t => t.id === action.tagId);
         return tag?.name || "Etiqueta nao selecionada";
+      case "remove_all_tags":
+        return "Remove todas as etiquetas do contato";
       case "set_status":
         return statusOptions.find(s => s.value === action.status)?.label || "Status nao selecionado";
       case "assign_agent":

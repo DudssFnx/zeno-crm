@@ -218,6 +218,15 @@ class RobotEngine {
         break;
       }
 
+      case "remove_all_tags": {
+        const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
+        if (conv) {
+          await db.delete(contactTags).where(eq(contactTags.contactId, conv.contactId));
+          logger.info({ contactId: conv.contactId }, "Todas as etiquetas removidas do contato");
+        }
+        break;
+      }
+
       case "set_status": {
         if (action.status) {
           await db.update(conversations)
