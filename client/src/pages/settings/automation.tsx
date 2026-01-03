@@ -42,6 +42,7 @@ import {
   Building2,
   Menu,
   AlertTriangle,
+  Pencil,
 } from "lucide-react";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -481,6 +482,7 @@ function TriageMenusTab({
 }) {
   const { toast } = useToast();
   const [isCreating, setIsCreating] = useState(false);
+  const [editingMenu, setEditingMenu] = useState<TriageMenu | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     welcomeMessage: "",
@@ -537,6 +539,20 @@ function TriageMenusTab({
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      return apiRequest("PUT", `/api/triage-menus/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/triage-menus"] });
+      setEditingMenu(null);
+      toast({ title: "Menu atualizado" });
+    },
+    onError: () => {
+      toast({ title: "Erro ao atualizar menu", variant: "destructive" });
+    },
+  });
+
   const toggleMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
       return apiRequest("PUT", `/api/triage-menus/${id}`, { isActive });
@@ -545,6 +561,51 @@ function TriageMenusTab({
       queryClient.invalidateQueries({ queryKey: ["/api/triage-menus"] });
     },
   });
+
+  const openEditDialog = (menu: TriageMenu) => {
+    setFormData({
+      name: menu.name,
+      welcomeMessage: menu.welcomeMessage,
+      humanOptionKey: menu.humanOptionKey || "0",
+      invalidMessage: menu.invalidMessage || "Desculpe, nao entendi. Por favor, escolha uma opcao valida.",
+      timeoutMinutes: menu.timeoutMinutes || 30,
+      isActive: menu.isActive,
+      triggerOnFirstMessage: menu.triggerOnFirstMessage,
+      whatsappAccountId: menu.whatsappAccountId || "",
+      options: (menu.options as TriageOption[]) || [],
+    });
+    setEditingMenu(menu);
+  };
+
+  const handleUpdate = () => {
+    if (!editingMenu) return;
+    if (!formData.name.trim() || !formData.welcomeMessage.trim() || formData.options.length === 0) {
+      toast({ title: "Preencha todos os campos obrigatorios", variant: "destructive" });
+      return;
+    }
+    updateMutation.mutate({
+      id: editingMenu.id,
+      data: {
+        ...formData,
+        whatsappAccountId: formData.whatsappAccountId || null,
+      },
+    });
+  };
+
+  const closeEditDialog = () => {
+    setEditingMenu(null);
+    setFormData({
+      name: "",
+      welcomeMessage: "",
+      humanOptionKey: "0",
+      invalidMessage: "Desculpe, nao entendi. Por favor, escolha uma opcao valida.",
+      timeoutMinutes: 30,
+      isActive: true,
+      triggerOnFirstMessage: true,
+      whatsappAccountId: "",
+      options: [],
+    });
+  };
 
   const addOption = () => {
     if (!newOption.key || !newOption.label) return;
@@ -854,6 +915,14 @@ function TriageMenusTab({
                     <Button
                       variant="ghost"
                       size="icon"
+                      onClick={() => openEditDialog(menu)}
+                      data-testid={`button-edit-menu-${menu.id}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => deleteMutation.mutate(menu.id)}
                       data-testid={`button-delete-menu-${menu.id}`}
                     >
@@ -881,6 +950,247 @@ function TriageMenusTab({
           ))}
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingMenu} onOpenChange={(open) => !open && closeEditDialog()}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Menu de Triagem</DialogTitle>
+            <DialogDescription>
+              Modifique as configuracoes do menu
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nome do Menu</Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Menu Principal"
+                  data-testid="input-edit-menu-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Conta WhatsApp (opcional)</Label>
+                <Select
+                  value={formData.whatsappAccountId}
+                  onValueChange={(v) => setFormData({ ...formData, whatsappAccountId: v })}
+                >
+                  <SelectTrigger data-testid="select-edit-whatsapp-account">
+                    <SelectValue placeholder="Todas as contas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Todas as contas</SelectItem>
+                    {whatsappAccounts.map((acc) => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        {acc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Mensagem de Boas-vindas</Label>
+              <Textarea
+                value={formData.welcomeMessage}
+                onChange={(e) => setFormData({ ...formData, welcomeMessage: e.target.value })}
+                placeholder="Ola! Bem-vindo ao nosso atendimento. Como posso ajudar?"
+                rows={4}
+                data-testid="input-edit-welcome-message"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tecla para Atendente</Label>
+                <Input
+                  value={formData.humanOptionKey}
+                  onChange={(e) => setFormData({ ...formData, humanOptionKey: e.target.value })}
+                  placeholder="0"
+                  data-testid="input-edit-human-key"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Timeout (minutos)</Label>
+                <Input
+                  type="number"
+                  value={formData.timeoutMinutes}
+                  onChange={(e) => setFormData({ ...formData, timeoutMinutes: parseInt(e.target.value) || 30 })}
+                  data-testid="input-edit-timeout"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Mensagem de Opcao Invalida</Label>
+              <Input
+                value={formData.invalidMessage}
+                onChange={(e) => setFormData({ ...formData, invalidMessage: e.target.value })}
+                placeholder="Opcao invalida. Tente novamente."
+                data-testid="input-edit-invalid-message"
+              />
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={formData.isActive}
+                  onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                  data-testid="switch-edit-active"
+                />
+                <Label>Menu Ativo</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={formData.triggerOnFirstMessage}
+                  onCheckedChange={(checked) => setFormData({ ...formData, triggerOnFirstMessage: checked })}
+                  data-testid="switch-edit-trigger-first"
+                />
+                <Label>Disparar na primeira mensagem</Label>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Opcoes do Menu</Label>
+              <div className="space-y-2">
+                {formData.options.map((opt, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2 p-2 border rounded-md"
+                  >
+                    <Badge>{opt.key}</Badge>
+                    <span className="flex-1">{opt.label}</span>
+                    {opt.tagId && (
+                      <Badge variant="outline" style={{ backgroundColor: tags.find((t) => t.id === opt.tagId)?.color }}>
+                        {tags.find((t) => t.id === opt.tagId)?.name}
+                      </Badge>
+                    )}
+                    {opt.departmentId && (
+                      <Badge variant="outline">
+                        {departments.find((d) => d.id === opt.departmentId)?.name}
+                      </Badge>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeOption(idx)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 p-3 border rounded-md space-y-3 bg-muted/50">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-sm">Tecla</Label>
+                    <Input
+                      value={newOption.key}
+                      onChange={(e) => setNewOption({ ...newOption, key: e.target.value })}
+                      placeholder="1"
+                      data-testid="input-edit-option-key"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-sm">Texto</Label>
+                    <Input
+                      value={newOption.label}
+                      onChange={(e) => setNewOption({ ...newOption, label: e.target.value })}
+                      placeholder="Vendas"
+                      data-testid="input-edit-option-label"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-sm">Departamento</Label>
+                    <Select
+                      value={newOption.departmentId || ""}
+                      onValueChange={(v) => setNewOption({ ...newOption, departmentId: v })}
+                    >
+                      <SelectTrigger data-testid="select-edit-option-department">
+                        <SelectValue placeholder="Nenhum" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Nenhum</SelectItem>
+                        {departments.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-sm">Tag</Label>
+                    <Select
+                      value={newOption.tagId || ""}
+                      onValueChange={(v) => setNewOption({ ...newOption, tagId: v })}
+                    >
+                      <SelectTrigger data-testid="select-edit-option-tag">
+                        <SelectValue placeholder="Nenhum" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Nenhum</SelectItem>
+                        {tags.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-sm">Estagio</Label>
+                    <Select
+                      value={newOption.stageId || ""}
+                      onValueChange={(v) => setNewOption({ ...newOption, stageId: v })}
+                    >
+                      <SelectTrigger data-testid="select-edit-option-stage">
+                        <SelectValue placeholder="Nenhum" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Nenhum</SelectItem>
+                        {stages.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={addOption}
+                  disabled={!newOption.key || !newOption.label}
+                  data-testid="button-edit-add-option"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar Opcao
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeEditDialog}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleUpdate}
+              disabled={updateMutation.isPending}
+              data-testid="button-update-menu"
+            >
+              Salvar Alteracoes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
