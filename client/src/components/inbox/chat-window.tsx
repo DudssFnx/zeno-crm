@@ -1050,8 +1050,8 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
         </div>
       </header>
 
-      <div className="flex-1 relative overflow-hidden">
-        <ScrollArea className="h-full" ref={scrollAreaRef}>
+      <div className="flex-1 relative min-h-0">
+        <ScrollArea className="h-full" ref={scrollAreaRef} scrollbarAlwaysVisible>
           <div 
             className="p-4"
             style={{
@@ -1224,129 +1224,132 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
           onChange={handleFileInputChange}
           data-testid="input-file"
         />
-        <div className="flex items-end gap-2">
-          <div className="flex items-center gap-1">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-1 flex-wrap">
             <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              data-testid="button-attach-file"
-              title="Anexar arquivo"
+              variant={isInternalNote ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsInternalNote(!isInternalNote)}
+              data-testid="button-toggle-internal-note"
             >
-              <Paperclip className="h-4 w-4" />
+              <StickyNote className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Nota Interna</span>
+              <span className="sm:hidden">Nota</span>
             </Button>
-            <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-              <PopoverTrigger asChild>
+
+            <Dialog>
+              <DialogTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  data-testid="button-emoji-picker"
-                  title="Inserir emoji"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  data-testid="button-macros"
                 >
-                  <Smile className="h-4 w-4" />
+                  <Zap className="h-4 w-4 text-amber-500" />
+                  Macros
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent 
-                className="w-auto p-0 border-0" 
-                side="top" 
-                align="start"
-                sideOffset={8}
-              >
-                <EmojiPicker
-                  onEmojiClick={handleEmojiSelect}
-                  theme={document.documentElement.classList.contains("dark") ? Theme.DARK : Theme.LIGHT}
-                  width={320}
-                  height={400}
-                  searchPlaceholder="Buscar emoji..."
-                  previewConfig={{ showPreview: false }}
-                />
-              </PopoverContent>
-            </Popover>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onContactClick}
-              data-testid="button-save-contact"
-              title="Ver/Editar Contato"
-            >
-              <UserPlus className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="flex-1 relative">
-            <div className="flex items-center gap-2 mb-2">
-              <Button
-                variant={isInternalNote ? "default" : "outline"}
-                size="sm"
-                onClick={() => setIsInternalNote(!isInternalNote)}
-                data-testid="button-toggle-internal-note"
-              >
-                <StickyNote className="h-4 w-4 mr-1" />
-                Nota Interna
-              </Button>
-
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    data-testid="button-macros"
-                  >
-                    <Zap className="h-4 w-4 text-amber-500" />
-                    Macros
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle>Executar Macro</DialogTitle>
-                  </DialogHeader>
-                  <div className="py-4">
-                    <div className="space-y-2">
-                      {macros.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          Nenhuma macro disponível.
-                        </p>
-                      ) : (
-                        macros.map((macro) => (
-                          <Button
-                            key={macro.id}
-                            variant="ghost"
-                            className="w-full justify-start text-left h-auto p-3 flex flex-col items-start gap-1"
-                            onClick={() => executeMacro.mutate(macro.id)}
-                            disabled={executeMacro.isPending}
-                            data-testid={`button-macro-${macro.id}`}
-                          >
-                            <div className="flex items-center gap-2 w-full">
-                              <span className="font-medium text-sm">{macro.name}</span>
-                              {executeMacro.isPending && executeMacro.variables === macro.id && (
-                                <LoadingSpinner size="sm" className="ml-auto" />
-                              )}
-                            </div>
-                            {macro.description && (
-                              <span className="text-xs text-muted-foreground line-clamp-2">
-                                {macro.description}
-                              </span>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Executar Macro</DialogTitle>
+                </DialogHeader>
+                <div className="py-4">
+                  <div className="space-y-2">
+                    {macros.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Nenhuma macro disponível.
+                      </p>
+                    ) : (
+                      macros.map((macro) => (
+                        <Button
+                          key={macro.id}
+                          variant="ghost"
+                          className="w-full justify-start text-left h-auto p-3 flex flex-col items-start gap-1"
+                          onClick={() => executeMacro.mutate(macro.id)}
+                          disabled={executeMacro.isPending}
+                          data-testid={`button-macro-${macro.id}`}
+                        >
+                          <div className="flex items-center gap-2 w-full">
+                            <span className="font-medium text-sm">{macro.name}</span>
+                            {executeMacro.isPending && executeMacro.variables === macro.id && (
+                              <LoadingSpinner size="sm" className="ml-auto" />
                             )}
-                          </Button>
-                        ))
-                      )}
-                    </div>
+                          </div>
+                          {macro.description && (
+                            <span className="text-xs text-muted-foreground line-clamp-2">
+                              {macro.description}
+                            </span>
+                          )}
+                        </Button>
+                      ))
+                    )}
                   </div>
-                </DialogContent>
-              </Dialog>
+                </div>
+              </DialogContent>
+            </Dialog>
 
-              {isInternalNote && (
-                <span className="text-xs text-muted-foreground">
-                  Esta nota é visível apenas para sua equipe
-                </span>
-              )}
-              {!isInternalNote && cannedResponses.length > 0 && (
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Zap className="h-3 w-3" />
-                  Digite "/" para respostas rápidas
-                </span>
-              )}
+            {isInternalNote && (
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                Esta nota é visível apenas para sua equipe
+              </span>
+            )}
+            {!isInternalNote && cannedResponses.length > 0 && (
+              <span className="text-xs text-muted-foreground items-center gap-1 hidden sm:flex">
+                <Zap className="h-3 w-3" />
+                Digite "/" para respostas rápidas
+              </span>
+            )}
+          </div>
+          <div className="flex items-end gap-2">
+            <div className="flex items-center shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="button-attach-file"
+                title="Anexar arquivo"
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+              <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    data-testid="button-emoji-picker"
+                    title="Inserir emoji"
+                  >
+                    <Smile className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent 
+                  className="w-auto p-0 border-0" 
+                  side="top" 
+                  align="start"
+                  sideOffset={8}
+                >
+                  <EmojiPicker
+                    onEmojiClick={handleEmojiSelect}
+                    theme={document.documentElement.classList.contains("dark") ? Theme.DARK : Theme.LIGHT}
+                    width={320}
+                    height={400}
+                    searchPlaceholder="Buscar emoji..."
+                    previewConfig={{ showPreview: false }}
+                  />
+                </PopoverContent>
+              </Popover>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onContactClick}
+                data-testid="button-save-contact"
+                title="Ver/Editar Contato"
+                className="hidden sm:flex"
+              >
+                <UserPlus className="h-4 w-4" />
+              </Button>
             </div>
+            <div className="flex-1 min-w-0 relative">
             {showCannedResponses && filteredCannedResponses.length > 0 && (
               <div
                 ref={cannedDropdownRef}
@@ -1436,7 +1439,8 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
                 )}
               </Button>
             </>
-          )}
+            )}
+          </div>
         </div>
       </footer>
     </div>
