@@ -701,14 +701,15 @@ export default function RobotsPage() {
                                       <FormControl>
                                         <Input
                                           type="number"
-                                          {...inputField}
-                                          value={inputField.value || 3000}
-                                          onChange={(e) => inputField.onChange(parseInt(e.target.value) || 0)}
-                                          placeholder="Duracao em milissegundos"
+                                          step="0.1"
+                                          min="0.1"
+                                          value={Math.round((inputField.value || 3000) / 100) / 10}
+                                          onChange={(e) => inputField.onChange(Math.round(parseFloat(e.target.value || "0") * 1000))}
+                                          placeholder="Duracao em segundos"
                                           data-testid={`input-action-delay-${index}`}
                                         />
                                       </FormControl>
-                                      <FormDescription>Duracao em ms (3000 = 3 segundos)</FormDescription>
+                                      <FormDescription>Duracao em segundos</FormDescription>
                                     </FormItem>
                                   )}
                                 />

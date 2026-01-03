@@ -20,6 +20,20 @@ interface ExecutionContext {
   executedBy?: string;
 }
 
+interface RobotProgressData {
+  executionId: string;
+  robotId: string;
+  robotName: string;
+  conversationId: string;
+  currentStep: number;
+  totalSteps: number;
+  currentActionType: string;
+  currentActionLabel: string;
+  status: "running" | "completed" | "failed" | "cancelled";
+}
+
+type OnProgressCallback = (data: RobotProgressData) => void;
+
 class RobotEngine {
   private activeExecutions: Map<string, { cancelled: boolean }> = new Map();
 
@@ -32,11 +46,32 @@ class RobotEngine {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  private getActionLabel(type: string): string {
+    const labels: Record<string, string> = {
+      "send_text": "Enviando texto",
+      "send_image": "Enviando imagem",
+      "send_audio": "Enviando audio",
+      "send_video": "Enviando video",
+      "send_document": "Enviando documento",
+      "simulate_typing": "Digitando...",
+      "simulate_recording": "Gravando...",
+      "delay": "Aguardando",
+      "add_tag": "Adicionando etiqueta",
+      "remove_tag": "Removendo etiqueta",
+      "remove_all_tags": "Removendo todas etiquetas",
+      "set_status": "Alterando status",
+      "assign_agent": "Atribuindo atendente",
+      "transfer": "Transferindo",
+    };
+    return labels[type] || type;
+  }
+
   async executeRobot(
     robotId: string,
     context: ExecutionContext,
     sendMessage: (conversationId: string, content: string, mediaType?: string, mediaUrl?: string) => Promise<void>,
-    sendPresence: (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording" | "paused") => Promise<void>
+    sendPresence: (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording" | "paused") => Promise<void>,
+    onProgress?: OnProgressCallback
   ): Promise<{ success: boolean; error?: string }> {
     const robot = await db.select().from(robots).where(eq(robots.id, robotId)).limit(1);
     
@@ -67,6 +102,22 @@ class RobotEngine {
 
     logger.info({ robotId, executionId, conversationId: context.conversationId }, "Iniciando execução do robô");
 
+    const emitProgress = (currentStep: number, actionType: string, status: "running" | "completed" | "failed" | "cancelled") => {
+      if (onProgress) {
+        onProgress({
+          executionId,
+          robotId,
+          robotName: robot[0].name,
+          conversationId: context.conversationId,
+          currentStep,
+          totalSteps: actions.length,
+          currentActionType: actionType,
+          currentActionLabel: this.getActionLabel(actionType),
+          status,
+        });
+      }
+    };
+
     try {
       for (let i = 0; i < actions.length; i++) {
         const controlState = this.activeExecutions.get(executionId);
@@ -76,6 +127,7 @@ class RobotEngine {
             .where(eq(robotExecutions.id, executionId));
           
           this.activeExecutions.delete(executionId);
+          emitProgress(i + 1, actions[i].type, "cancelled");
           return { success: false, error: "Execução cancelada" };
         }
 
@@ -84,6 +136,7 @@ class RobotEngine {
           .where(eq(robotExecutions.id, executionId));
 
         const action = actions[i];
+        emitProgress(i + 1, action.type, "running");
         await this.executeAction(action, context, sendMessage, sendPresence);
       }
 
@@ -92,6 +145,7 @@ class RobotEngine {
         .where(eq(robotExecutions.id, executionId));
 
       this.activeExecutions.delete(executionId);
+      emitProgress(actions.length, actions[actions.length - 1].type, "completed");
       logger.info({ robotId, executionId }, "Robô executado com sucesso");
       
       return { success: true };
@@ -101,6 +155,7 @@ class RobotEngine {
         .where(eq(robotExecutions.id, executionId));
 
       this.activeExecutions.delete(executionId);
+      emitProgress(0, "", "failed");
       logger.error({ robotId, executionId, error: error.message }, "Erro ao executar robô");
       
       return { success: false, error: error.message };

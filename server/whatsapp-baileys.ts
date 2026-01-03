@@ -811,10 +811,62 @@ class WhatsAppBaileysGateway {
     mediaType: string,
     caption?: string
   ): Promise<{ success: boolean; error?: string; messageId?: string }> {
+    const fileName = mediaUrl.split("/").pop() || "file";
+    const ext = fileName.split(".").pop()?.toLowerCase() || "";
+    
+    // Detect mimetype based on file extension
+    let mimetype = "application/octet-stream";
+    if (mediaType === "audio") {
+      if (ext === "ogg") {
+        mimetype = "audio/ogg; codecs=opus";
+      } else if (ext === "mp3") {
+        mimetype = "audio/mpeg";
+      } else if (ext === "m4a") {
+        mimetype = "audio/mp4";
+      } else if (ext === "wav") {
+        mimetype = "audio/wav";
+      } else if (ext === "webm") {
+        mimetype = "audio/webm";
+      }
+    } else if (mediaType === "image") {
+      if (ext === "jpg" || ext === "jpeg") {
+        mimetype = "image/jpeg";
+      } else if (ext === "png") {
+        mimetype = "image/png";
+      } else if (ext === "gif") {
+        mimetype = "image/gif";
+      } else if (ext === "webp") {
+        mimetype = "image/webp";
+      }
+    } else if (mediaType === "video") {
+      if (ext === "mp4") {
+        mimetype = "video/mp4";
+      } else if (ext === "webm") {
+        mimetype = "video/webm";
+      } else if (ext === "avi") {
+        mimetype = "video/x-msvideo";
+      }
+    } else if (mediaType === "document") {
+      if (ext === "pdf") {
+        mimetype = "application/pdf";
+      } else if (ext === "doc") {
+        mimetype = "application/msword";
+      } else if (ext === "docx") {
+        mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      } else if (ext === "xls") {
+        mimetype = "application/vnd.ms-excel";
+      } else if (ext === "xlsx") {
+        mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      }
+    }
+    
+    console.log(`[Baileys] sendMedia: type=${mediaType}, file=${fileName}, mimetype=${mimetype}`);
+    
     return this.sendMessage(accountId, phoneNumber, caption || "", undefined, {
       mediaUrl,
       mediaType: mediaType as "image" | "audio" | "document" | "video",
-      fileName: mediaUrl.split("/").pop() || "file",
+      fileName,
+      mimetype,
     });
   }
 

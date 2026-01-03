@@ -1,7 +1,59 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+
+// Global state for robot progress (accessible across components)
+interface RobotProgressData {
+  executionId: string;
+  robotId: string;
+  robotName: string;
+  conversationId: string;
+  currentStep: number;
+  totalSteps: number;
+  currentActionType: string;
+  currentActionLabel: string;
+  status: "running" | "completed" | "failed" | "cancelled";
+}
+
+type RobotProgressListener = (data: RobotProgressData | null) => void;
+const robotProgressListeners: Set<RobotProgressListener> = new Set();
+let currentRobotProgress: RobotProgressData | null = null;
+
+export function subscribeToRobotProgress(listener: RobotProgressListener) {
+  robotProgressListeners.add(listener);
+  // Send current state immediately
+  listener(currentRobotProgress);
+  return () => {
+    robotProgressListeners.delete(listener);
+  };
+}
+
+function notifyRobotProgress(data: RobotProgressData | null) {
+  currentRobotProgress = data;
+  robotProgressListeners.forEach(listener => listener(data));
+}
+
+export function useRobotProgress(conversationId: string | null) {
+  const [progress, setProgress] = useState<RobotProgressData | null>(null);
+  
+  useEffect(() => {
+    const unsubscribe = subscribeToRobotProgress((data) => {
+      if (data && data.conversationId === conversationId) {
+        setProgress(data);
+        // Clear after completion
+        if (data.status === "completed" || data.status === "failed" || data.status === "cancelled") {
+          setTimeout(() => setProgress(null), 3000);
+        }
+      } else if (!data) {
+        setProgress(null);
+      }
+    });
+    return unsubscribe;
+  }, [conversationId]);
+  
+  return progress;
+}
 
 interface MessageCreatedEvent {
   companyId: string;
@@ -186,6 +238,16 @@ export function useRealtime() {
           queryKey: ["/api/conversations"],
           refetchType: 'all'
         });
+      }
+    });
+
+    socket.on("robot:progress", (data: RobotProgressData) => {
+      console.log("[Realtime] robot:progress received:", data.robotName, data.currentStep, "/", data.totalSteps, data.status);
+      notifyRobotProgress(data);
+      
+      // Clear progress after completion
+      if (data.status === "completed" || data.status === "failed" || data.status === "cancelled") {
+        setTimeout(() => notifyRobotProgress(null), 5000);
       }
     });
 

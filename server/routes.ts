@@ -1879,6 +1879,11 @@ export async function registerRoutes(
         await whatsappBaileys.sendPresenceUpdate(whatsappAccountId, chatId, type);
       };
 
+      // Define progress callback
+      const onProgress = (data: any) => {
+        io.to(`company:${req.user!.companyId}`).emit("robot:progress", data);
+      };
+
       // Execute robot asynchronously
       robotEngine.executeRobot(
         robotId,
@@ -1892,7 +1897,8 @@ export async function registerRoutes(
           executedBy: req.user!.id,
         },
         sendMessage,
-        sendPresence
+        sendPresence,
+        onProgress
       ).catch(err => {
         console.error("[Robot] Execution error:", err);
       });

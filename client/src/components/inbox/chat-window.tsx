@@ -14,7 +14,9 @@ import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { useRobotProgress } from "@/hooks/use-realtime";
 import { queryClient } from "@/lib/queryClient";
+import { Progress } from "@/components/ui/progress";
 import { cn, formatPhoneNumber } from "@/lib/utils";
 import type { ConversationWithDetails, MessageWithSender, User, CannedResponse } from "@shared/schema";
 
@@ -227,6 +229,9 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Robot execution progress
+  const robotProgress = useRobotProgress(conversationId);
 
   const { data: conversation, isLoading: convLoading } = useQuery<ConversationWithDetails>({
     queryKey: ["/api/conversations", conversationId],
