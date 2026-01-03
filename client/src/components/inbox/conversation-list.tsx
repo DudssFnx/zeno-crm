@@ -382,18 +382,24 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                       {conv.assignedToUserId === currentUserId && (
                         <span className="w-2 h-2 rounded-full bg-primary shrink-0" title="Atribuído a você" />
                       )}
-                      <span 
-                        className={cn(
-                          "text-[10px] shrink-0",
-                          getInactivityColor((conv as { lastInboundAt?: string | null }).lastInboundAt) === "ok" && "text-green-600 dark:text-green-400",
-                          getInactivityColor((conv as { lastInboundAt?: string | null }).lastInboundAt) === "attention" && "text-yellow-600 dark:text-yellow-400",
-                          getInactivityColor((conv as { lastInboundAt?: string | null }).lastInboundAt) === "critical" && "text-red-600 dark:text-red-400",
-                          getInactivityColor((conv as { lastInboundAt?: string | null }).lastInboundAt) === "never" && "text-muted-foreground"
-                        )}
-                        title="Tempo desde última mensagem do cliente"
-                      >
-                        {formatTimeAgo((conv as { lastInboundAt?: string | null }).lastInboundAt)}
-                      </span>
+                      {(() => {
+                        const lastInbound = (conv as { lastInboundAt?: string | null }).lastInboundAt;
+                        const colorClass = getInactivityColor(lastInbound);
+                        return (
+                          <span 
+                            className={cn(
+                              "text-[10px] shrink-0",
+                              colorClass === "ok" && "text-green-600 dark:text-green-400",
+                              colorClass === "attention" && "text-yellow-600 dark:text-yellow-400",
+                              colorClass === "critical" && "text-red-600 dark:text-red-400",
+                              colorClass === "never" && "text-muted-foreground"
+                            )}
+                            title="Tempo desde última mensagem do cliente"
+                          >
+                            {formatTimeAgo(lastInbound)}
+                          </span>
+                        );
+                      })()}
                     </div>
                     {conv.lastMessage && (
                       <p className="text-sm text-muted-foreground truncate">

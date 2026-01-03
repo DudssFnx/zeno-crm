@@ -44,6 +44,11 @@ export function formatTimeAgo(dateInput: Date | string | null | undefined): stri
   }
   
   const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  
+  if (isNaN(date.getTime())) {
+    return "Nunca enviou mensagem";
+  }
+  
   const now = Date.now();
   const diffMs = now - date.getTime();
   
@@ -76,6 +81,11 @@ export function getInactivityColor(dateInput: Date | string | null | undefined):
   }
   
   const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  
+  if (isNaN(date.getTime())) {
+    return "never";
+  }
+  
   const diffMs = Date.now() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   
