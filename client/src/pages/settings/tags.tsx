@@ -28,10 +28,36 @@ const tagFormSchema = z.object({
 type TagFormData = z.infer<typeof tagFormSchema>;
 
 const presetColors = [
-  "#EF4444", "#F97316", "#F59E0B", "#EAB308",
-  "#84CC16", "#22C55E", "#14B8A6", "#06B6D4",
-  "#0EA5E9", "#3B82F6", "#6366F1", "#8B5CF6",
-  "#A855F7", "#D946EF", "#EC4899", "#F43F5E",
+  // Vermelhos e Rosas
+  "#FF0000", "#DC2626", "#E11D48", "#BE185D", "#9D174D",
+  // Laranjas
+  "#FF6B00", "#EA580C", "#D97706", "#B45309",
+  // Amarelos e Dourados
+  "#FFC107", "#FACC15", "#CA8A04", "#A16207",
+  // Verdes Claros
+  "#84CC16", "#65A30D", "#4D7C0F", "#BEF264",
+  // Verdes
+  "#22C55E", "#16A34A", "#15803D", "#166534", "#00FF7F",
+  // Teals e Cyans
+  "#14B8A6", "#0D9488", "#0F766E", "#06B6D4", "#00CED1",
+  // Azuis Claros
+  "#0EA5E9", "#0284C7", "#0369A1", "#7DD3FC",
+  // Azuis
+  "#3B82F6", "#2563EB", "#1D4ED8", "#1E40AF", "#1565C0",
+  // Indigos
+  "#6366F1", "#4F46E5", "#4338CA", "#3730A3",
+  // Roxos
+  "#8B5CF6", "#7C3AED", "#6D28D9", "#5B21B6",
+  // Magentas e Fúcsias
+  "#A855F7", "#9333EA", "#D946EF", "#C026D3", "#A21CAF",
+  // Rosas
+  "#EC4899", "#DB2777", "#BE185D", "#F472B6",
+  // Marrons
+  "#92400E", "#78350F", "#A3623A", "#8B4513",
+  // Cinzas
+  "#6B7280", "#4B5563", "#374151", "#9CA3AF",
+  // Especiais
+  "#000000", "#1E293B", "#334155", "#475569",
 ];
 
 export default function TagsPage() {
