@@ -301,6 +301,7 @@ export const insertStageSchema = createInsertSchema(stages).omit({ id: true, cre
 export const macroActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ADD_TAG"), tagId: z.string() }),
   z.object({ type: z.literal("REMOVE_TAG"), tagId: z.string() }),
+  z.object({ type: z.literal("REMOVE_ALL_TAGS") }),
   z.object({ type: z.literal("SET_STATUS"), status: z.enum(["open", "pending", "resolved", "closed"]) }),
   z.object({ type: z.literal("ASSIGN_AGENT"), agentId: z.string().optional() }),
   z.object({ type: z.literal("SEND_MESSAGE"), message: z.string() }),

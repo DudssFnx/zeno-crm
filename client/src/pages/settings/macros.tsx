@@ -27,6 +27,7 @@ import type { Macro, Tag, User, ContactAttribute } from "@shared/schema";
 const actionTypes = [
   { value: "ADD_TAG", label: "Adicionar Etiqueta" },
   { value: "REMOVE_TAG", label: "Remover Etiqueta" },
+  { value: "REMOVE_ALL_TAGS", label: "Remover Todas Etiquetas" },
   { value: "SET_STATUS", label: "Alterar Status" },
   { value: "ASSIGN_AGENT", label: "Atribuir Atendente" },
   { value: "SEND_MESSAGE", label: "Enviar Mensagem" },
@@ -42,7 +43,7 @@ const statusOptions = [
 ];
 
 const macroActionSchema = z.object({
-  type: z.enum(["ADD_TAG", "REMOVE_TAG", "SET_STATUS", "ASSIGN_AGENT", "SEND_MESSAGE", "SET_ATTRIBUTE"]),
+  type: z.enum(["ADD_TAG", "REMOVE_TAG", "REMOVE_ALL_TAGS", "SET_STATUS", "ASSIGN_AGENT", "SEND_MESSAGE", "SET_ATTRIBUTE"]),
   tagId: z.string().optional(),
   status: z.enum(["open", "pending", "resolved"]).optional(),
   agentId: z.string().optional(),
@@ -334,7 +335,7 @@ export default function MacrosPage() {
         description: macro.description || "",
         messageTemplate: macro.messageTemplate || "",
         actions: actions.map((a) => ({
-          type: a.type as "ADD_TAG" | "REMOVE_TAG" | "SET_STATUS" | "ASSIGN_AGENT" | "SEND_MESSAGE" | "SET_ATTRIBUTE",
+          type: a.type as "ADD_TAG" | "REMOVE_TAG" | "REMOVE_ALL_TAGS" | "SET_STATUS" | "ASSIGN_AGENT" | "SEND_MESSAGE" | "SET_ATTRIBUTE",
           tagId: a.tagId,
           status: a.status as "open" | "pending" | "resolved" | undefined,
           agentId: a.agentId,
@@ -366,6 +367,8 @@ export default function MacrosPage() {
         return `Adicionar etiqueta: ${tag?.name || "?"}`;
       case "REMOVE_TAG":
         return `Remover etiqueta: ${tag?.name || "?"}`;
+      case "REMOVE_ALL_TAGS":
+        return "Remover todas etiquetas";
       case "SET_STATUS":
         return `Alterar status: ${statusOptions.find((s) => s.value === action.status)?.label || "?"}`;
       case "ASSIGN_AGENT":
@@ -383,6 +386,7 @@ export default function MacrosPage() {
     switch (type) {
       case "ADD_TAG":
       case "REMOVE_TAG":
+      case "REMOVE_ALL_TAGS":
         return TagIcon;
       case "SET_STATUS":
         return CircleDot;

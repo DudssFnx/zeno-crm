@@ -1459,6 +1459,19 @@ export async function registerRoutes(
               }
               break;
               
+            case "REMOVE_ALL_TAGS":
+              // Remove all tags from contact
+              for (const existingTag of contactTags) {
+                await storage.removeContactTag(contact.id, existingTag.id);
+              }
+              actionsApplied.push({ type: "REMOVE_ALL_TAGS", success: true, tagsRemoved: contactTags.length });
+              
+              io.to(`company:${req.user!.companyId}`).emit("contact:tags_updated", {
+                contactId: contact.id,
+                action: "all_removed",
+              });
+              break;
+              
             case "SET_STATUS":
               if (action.status) {
                 await storage.updateConversation(conversationId, { status: action.status });
