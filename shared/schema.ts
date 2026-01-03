@@ -402,6 +402,7 @@ export const triageSessions = pgTable("triage_sessions", {
   state: text("state").notNull().default("awaiting_choice"), // awaiting_choice | routed | human_handoff | expired
   chosenOption: text("chosen_option"),
   departmentId: varchar("department_id").references(() => departments.id),
+  invalidAttempts: integer("invalid_attempts").notNull().default(0), // Count of invalid option attempts
   menuSentAt: timestamp("menu_sent_at").defaultNow().notNull(),
   lastInteractionAt: timestamp("last_interaction_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),

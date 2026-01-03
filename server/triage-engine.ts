@@ -161,18 +161,29 @@ export class TriageEngine {
       return this.processChoice(existingSession, messageContent, companyId, conversationId);
     }
 
-    const completedSessions = await db
+    // Check for any session in the last 24 hours (menu only once per day)
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentSessions = await db
       .select()
       .from(triageSessions)
       .where(
         and(
           eq(triageSessions.conversationId, conversationId),
-          sql`${triageSessions.state} IN ('routed', 'human_handoff')`
+          sql`${triageSessions.menuSentAt} > ${twentyFourHoursAgo}`
         )
       )
+      .orderBy(desc(triageSessions.menuSentAt))
       .limit(1);
 
-    if (completedSessions.length > 0) {
+    if (recentSessions.length > 0) {
+      const recentSession = recentSessions[0];
+      // If already routed or handed off, skip automation
+      if (recentSession.state === "routed" || recentSession.state === "human_handoff") {
+        logger.info({ conversationId }, "Session already completed in last 24h, skipping menu");
+        return { action: "already_routed" };
+      }
+      // If awaiting choice but session exists, skip sending menu again
+      logger.info({ conversationId }, "Menu already sent in last 24h, skipping");
       return { action: "already_routed" };
     }
 
@@ -211,6 +222,7 @@ export class TriageEngine {
       conversationId,
       menuId: menu.id,
       state: "awaiting_choice",
+      invalidAttempts: 0,
     });
 
     const delay = this.generateHumanizedDelay();
@@ -257,6 +269,7 @@ export class TriageEngine {
     const options = menu[0].options as TriageOption[];
     const userChoice = messageContent.trim();
 
+    // Human option selected
     if (menu[0].humanOptionKey && userChoice === menu[0].humanOptionKey) {
       await db
         .update(triageSessions)
@@ -277,12 +290,45 @@ export class TriageEngine {
     const matchedOption = options.find(opt => opt.key === userChoice);
     
     if (!matchedOption) {
+      // Try keyword match first
       const keywordMatch = this.findKeywordMatch(messageContent, options);
       if (keywordMatch) {
         return this.routeToDepartment(conversationId, companyId, menu[0].id, keywordMatch, userChoice);
       }
 
-      const invalidMessage = menu[0].invalidMessage || "Desculpe, não entendi. Por favor, escolha uma opção válida.";
+      // Invalid choice - increment counter
+      const currentAttempts = (session.invalidAttempts || 0) + 1;
+      
+      // After 2 invalid attempts, auto-route to human
+      if (currentAttempts >= 2) {
+        await db
+          .update(triageSessions)
+          .set({ 
+            state: "human_handoff", 
+            invalidAttempts: currentAttempts,
+            completedAt: new Date(),
+            lastInteractionAt: new Date(),
+          })
+          .where(eq(triageSessions.id, session.id));
+
+        logger.info({ conversationId, invalidAttempts: currentAttempts }, "Auto-routing to human after 2 invalid attempts");
+
+        return {
+          action: "human_handoff",
+          message: "Percebi que você está com dificuldades. Vou te direcionar para um atendente que poderá te ajudar melhor. Aguarde um momento.",
+        };
+      }
+
+      // First invalid attempt - show warning and update counter
+      await db
+        .update(triageSessions)
+        .set({ 
+          invalidAttempts: currentAttempts,
+          lastInteractionAt: new Date(),
+        })
+        .where(eq(triageSessions.id, session.id));
+
+      const invalidMessage = menu[0].invalidMessage || "Desculpe, não entendi. Por favor, digite apenas o número da opção desejada.";
       const messageHash = this.hashMessage(invalidMessage);
       
       const canSend = await this.checkAntiSpam(companyId, conversationId, messageHash);
