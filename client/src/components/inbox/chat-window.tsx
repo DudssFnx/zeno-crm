@@ -210,6 +210,8 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [noteValue, setNoteValue] = useState("");
   const [noteSaveStatus, setNoteSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [isMacroDialogOpen, setIsMacroDialogOpen] = useState(false);
+  const [isRobotDialogOpen, setIsRobotDialogOpen] = useState(false);
   const pendingAttributesRef = useRef<string[]>([]);
   const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const noteInputRef = useRef<HTMLInputElement>(null);
@@ -441,6 +443,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
       return res.json();
     },
     onSuccess: () => {
+      setIsMacroDialogOpen(false);
       toast({ title: "Macro executada com sucesso" });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
@@ -464,6 +467,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
       return res.json();
     },
     onSuccess: () => {
+      setIsRobotDialogOpen(false);
       toast({ title: "Robo iniciado com sucesso" });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
@@ -1278,7 +1282,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
               <span className="sm:hidden">Nota</span>
             </Button>
 
-            <Dialog>
+            <Dialog open={isMacroDialogOpen} onOpenChange={setIsMacroDialogOpen}>
               <DialogTrigger asChild>
                 <Button
                   variant="outline"
@@ -1329,7 +1333,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
               </DialogContent>
             </Dialog>
 
-            <Dialog>
+            <Dialog open={isRobotDialogOpen} onOpenChange={setIsRobotDialogOpen}>
               <DialogTrigger asChild>
                 <Button
                   variant="outline"
