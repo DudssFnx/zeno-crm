@@ -165,7 +165,7 @@ export const conversations = pgTable("conversations", {
   contactId: varchar("contact_id").notNull().references(() => contacts.id),
   assignedToUserId: varchar("assigned_to_user_id").references(() => users.id),
   stageId: varchar("stage_id"), // Kanban stage (references stages.id)
-  status: text("status").notNull().default("open"), // open | pending | resolved | closed
+  status: text("status").notNull().default("pending"), // pending | open | resolved | closed
   inbox: text("inbox").notNull().default("whatsapp"),
   isUnread: boolean("is_unread").notNull().default(false), // Marcado como não lido (fica no topo)
   lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),

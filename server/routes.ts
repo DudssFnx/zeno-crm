@@ -973,6 +973,43 @@ export async function registerRoutes(
     }
   });
 
+  // Mark conversation as opened (pending -> open)
+  app.post("/api/conversations/:id/open", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const conversation = await storage.getConversation(req.params.id);
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+
+      // Only change from pending to open
+      if (conversation.status === "pending") {
+        const updated = await storage.updateConversation(req.params.id, { 
+          status: "open" 
+        });
+        
+        // Emit real-time event
+        io.to(`company:${req.user!.companyId}`).emit("conversation:updated", {
+          conversationId: req.params.id,
+          status: "open"
+        });
+
+        await dispatchWebhook(req.user!.companyId, "conversation.status.changed", {
+          conversationId: req.params.id,
+          oldStatus: "pending",
+          newStatus: "open",
+          userId: req.user!.id,
+        });
+
+        return res.json(updated);
+      }
+
+      res.json(conversation);
+    } catch (error) {
+      console.error("Open conversation error:", error);
+      res.status(500).json({ message: "Failed to open conversation" });
+    }
+  });
+
   // Toggle unread status
   app.post("/api/conversations/:id/toggle-unread", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
@@ -2255,7 +2292,7 @@ export async function registerRoutes(
           companyId: req.user!.companyId,
           whatsappAccountId,
           contactId: contact.id,
-          status: "open",
+          status: "pending",
           inbox: "whatsapp",
         });
       }

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { apiRequest } from "@/lib/queryClient";
 import { useLocation, Link } from "wouter";
 import {
   MessageSquare,
@@ -289,13 +290,20 @@ export default function InboxPage() {
 
   if (!user) return null;
 
-  const handleSelectConversation = (id: string) => {
+  const handleSelectConversation = useCallback(async (id: string) => {
     setSelectedConversationId(id);
     setShowContactDetails(false);
     if (isMobile) {
       setMobileView('chat');
     }
-  };
+    
+    // Mark conversation as opened (pending -> open)
+    try {
+      await apiRequest("POST", `/api/conversations/${id}/open`);
+    } catch (error) {
+      console.error("Failed to mark conversation as open:", error);
+    }
+  }, [isMobile]);
 
   const handleBackToList = () => {
     setMobileView('list');

@@ -448,7 +448,7 @@ async function processMessageInBackground(msg: QueuedMessage) {
         companyId,
         whatsappAccountId: accountId,
         contactId: contact.id,
-        status: "open",
+        status: "pending",
         inbox: "whatsapp",
       });
       conversation = result.conversation;
