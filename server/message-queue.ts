@@ -466,10 +466,17 @@ async function processMessageInBackground(msg: QueuedMessage) {
       console.log(`[Queue] Queued media download for message ${savedMessage.id}`);
     }
     
-    // Atualizar timestamp da conversa
-    await storage.updateConversation(conversation.id, {
-      lastMessageAt: new Date(),
-    });
+    // Atualizar timestamp da conversa e campos de inatividade
+    const now = new Date();
+    const updateData: { lastMessageAt: Date; lastInboundAt?: Date; lastOutboundAt?: Date } = {
+      lastMessageAt: now,
+    };
+    if (direction === "incoming") {
+      updateData.lastInboundAt = now;
+    } else if (direction === "outgoing") {
+      updateData.lastOutboundAt = now;
+    }
+    await storage.updateConversation(conversation.id, updateData);
     
     // Invalidar cache da conversa
     invalidateConversationCache(contact.id);

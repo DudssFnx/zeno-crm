@@ -81,6 +81,9 @@ export interface IStorage {
     status?: string;
     whatsappAccountId?: string;
     assignedToUserId?: string;
+    inactiveMinDays?: number;
+    inactiveMaxDays?: number;
+    inactivePreset?: string; // "0_1" | "2_3" | "4_7" | "8_15" | "16_30" | "30_plus" | "never_inbound"
   }): Promise<ConversationWithDetails[]>;
   getOpenConversationByContact(contactId: string): Promise<Conversation | undefined>;
   updateConversation(id: string, data: Partial<InsertConversation> & { updatedAt?: Date; lastMessageAt?: Date }): Promise<Conversation | undefined>;
@@ -454,6 +457,9 @@ export class DatabaseStorage implements IStorage {
     status?: string;
     whatsappAccountId?: string;
     assignedToUserId?: string;
+    inactiveMinDays?: number;
+    inactiveMaxDays?: number;
+    inactivePreset?: string;
   }): Promise<ConversationWithDetails[]> {
     let query = db
       .select()
@@ -463,10 +469,43 @@ export class DatabaseStorage implements IStorage {
 
     const allConvs = await query;
 
+    // Parse preset to min/max days
+    let minDays = filters?.inactiveMinDays;
+    let maxDays = filters?.inactiveMaxDays;
+    let neverInbound = false;
+    
+    if (filters?.inactivePreset) {
+      switch (filters.inactivePreset) {
+        case "0_1": minDays = 0; maxDays = 1; break;
+        case "2_3": minDays = 2; maxDays = 3; break;
+        case "4_7": minDays = 4; maxDays = 7; break;
+        case "8_15": minDays = 8; maxDays = 15; break;
+        case "16_30": minDays = 16; maxDays = 30; break;
+        case "30_plus": minDays = 30; maxDays = undefined; break;
+        case "never_inbound": neverInbound = true; break;
+      }
+    }
+
+    const now = Date.now();
+    const msPerDay = 24 * 60 * 60 * 1000;
+
     const filtered = allConvs.filter((conv) => {
       if (filters?.status && conv.status !== filters.status) return false;
       if (filters?.whatsappAccountId && conv.whatsappAccountId !== filters.whatsappAccountId) return false;
       if (filters?.assignedToUserId && conv.assignedToUserId !== filters.assignedToUserId) return false;
+      
+      // Filtro de inatividade
+      if (neverInbound) {
+        return conv.lastInboundAt === null;
+      }
+      
+      if (minDays !== undefined || maxDays !== undefined) {
+        if (!conv.lastInboundAt) return false; // Sem msg recebida = não entra no filtro de dias
+        const inactiveDays = (now - new Date(conv.lastInboundAt).getTime()) / msPerDay;
+        if (minDays !== undefined && inactiveDays < minDays) return false;
+        if (maxDays !== undefined && inactiveDays > maxDays) return false;
+      }
+      
       return true;
     });
 

@@ -841,11 +841,14 @@ export async function registerRoutes(
   });
 
   app.get("/api/conversations", authMiddleware(storage), async (req: AuthRequest, res) => {
-    const { status, whatsappAccountId, assignedToUserId } = req.query;
+    const { status, whatsappAccountId, assignedToUserId, inactiveMinDays, inactiveMaxDays, inactivePreset } = req.query;
     const conversations = await storage.getConversations(req.user!.companyId, {
       status: status as string | undefined,
       whatsappAccountId: whatsappAccountId as string | undefined,
       assignedToUserId: assignedToUserId as string | undefined,
+      inactiveMinDays: inactiveMinDays ? parseInt(inactiveMinDays as string) : undefined,
+      inactiveMaxDays: inactiveMaxDays ? parseInt(inactiveMaxDays as string) : undefined,
+      inactivePreset: inactivePreset as string | undefined,
     });
     res.json(conversations);
   });

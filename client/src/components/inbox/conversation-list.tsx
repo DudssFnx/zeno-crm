@@ -13,7 +13,7 @@ import { AttributeChip } from "@/components/attribute-chip";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch } from "@/lib/auth";
-import { cn, formatPhoneNumber } from "@/lib/utils";
+import { cn, formatPhoneNumber, formatTimeAgo, getInactivityColor } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -45,6 +45,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
   const [accountFilter, setAccountFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
+  const [inactivityFilter, setInactivityFilter] = useState<string>("all");
   const [unreadFilter, setUnreadFilter] = useState<boolean>(false);
   const [selectedConversations, setSelectedConversations] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -94,12 +95,13 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
   };
 
   const { data: conversations = [], isLoading } = useQuery<ConversationWithDetails[]>({
-    queryKey: ["/api/conversations", statusFilter, accountFilter, assigneeFilter],
+    queryKey: ["/api/conversations", statusFilter, accountFilter, assigneeFilter, inactivityFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (accountFilter !== "all") params.set("whatsappAccountId", accountFilter);
       if (assigneeFilter === "mine") params.set("assignedToUserId", currentUserId);
+      if (inactivityFilter !== "all") params.set("inactivePreset", inactivityFilter);
       const res = await authFetch(`/api/conversations?${params}`);
       if (!res.ok) throw new Error("Failed to fetch conversations");
       return res.json();
@@ -239,6 +241,22 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
             </SelectContent>
           </Select>
 
+          <Select value={inactivityFilter} onValueChange={setInactivityFilter}>
+            <SelectTrigger className="flex-1 min-w-[100px]" data-testid="select-inactivity-filter">
+              <SelectValue placeholder="Inatividade" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              <SelectItem value="0_1">Hoje/Ontem</SelectItem>
+              <SelectItem value="2_3">2-3 dias</SelectItem>
+              <SelectItem value="4_7">4-7 dias</SelectItem>
+              <SelectItem value="8_15">8-15 dias</SelectItem>
+              <SelectItem value="16_30">16-30 dias</SelectItem>
+              <SelectItem value="30_plus">+30 dias</SelectItem>
+              <SelectItem value="never_inbound">Nunca respondeu</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Button 
             variant={unreadFilter ? "default" : "outline"} 
             size="sm"
@@ -364,6 +382,18 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                       {conv.assignedToUserId === currentUserId && (
                         <span className="w-2 h-2 rounded-full bg-primary shrink-0" title="Atribuído a você" />
                       )}
+                      <span 
+                        className={cn(
+                          "text-[10px] shrink-0",
+                          getInactivityColor((conv as { lastInboundAt?: string | null }).lastInboundAt) === "ok" && "text-green-600 dark:text-green-400",
+                          getInactivityColor((conv as { lastInboundAt?: string | null }).lastInboundAt) === "attention" && "text-yellow-600 dark:text-yellow-400",
+                          getInactivityColor((conv as { lastInboundAt?: string | null }).lastInboundAt) === "critical" && "text-red-600 dark:text-red-400",
+                          getInactivityColor((conv as { lastInboundAt?: string | null }).lastInboundAt) === "never" && "text-muted-foreground"
+                        )}
+                        title="Tempo desde última mensagem do cliente"
+                      >
+                        {formatTimeAgo((conv as { lastInboundAt?: string | null }).lastInboundAt)}
+                      </span>
                     </div>
                     {conv.lastMessage && (
                       <p className="text-sm text-muted-foreground truncate">

@@ -145,6 +145,8 @@ export const conversations = pgTable("conversations", {
   status: text("status").notNull().default("open"), // open | pending | resolved | closed
   inbox: text("inbox").notNull().default("whatsapp"),
   lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
+  lastInboundAt: timestamp("last_inbound_at"), // Última msg RECEBIDA do cliente (para follow-up)
+  lastOutboundAt: timestamp("last_outbound_at"), // Última msg ENVIADA por nós
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
