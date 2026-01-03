@@ -804,6 +804,41 @@ class WhatsAppBaileysGateway {
     }
   }
 
+  async sendMedia(
+    accountId: string,
+    phoneNumber: string,
+    mediaUrl: string,
+    mediaType: string,
+    caption?: string
+  ): Promise<{ success: boolean; error?: string; messageId?: string }> {
+    return this.sendMessage(accountId, phoneNumber, caption || "", undefined, {
+      mediaUrl,
+      mediaType: mediaType as "image" | "audio" | "document" | "video",
+      fileName: mediaUrl.split("/").pop() || "file",
+    });
+  }
+
+  async sendPresenceUpdate(
+    accountId: string,
+    jid: string,
+    type: "composing" | "recording" | "paused"
+  ): Promise<{ success: boolean; error?: string }> {
+    const session = this.sessions.get(accountId);
+    if (!session?.socket) {
+      return { success: false, error: "Not connected" };
+    }
+
+    try {
+      await session.socket.sendPresenceUpdate(type, jid);
+      console.log(`[Baileys] Presence update sent: ${type} to ${jid}`);
+      return { success: true };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[Baileys] Error sending presence update:`, errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  }
+
   async disconnect(accountId: string): Promise<void> {
     const session = this.sessions.get(accountId);
     if (!session) return;

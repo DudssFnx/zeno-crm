@@ -1629,6 +1629,197 @@ export async function registerRoutes(
     }
   });
 
+  // ============ ROBOTS (Auto Atendimento) ============
+  app.get("/api/robots", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const robotsList = await storage.getRobots(req.user!.companyId);
+      res.json(robotsList);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch robots" });
+    }
+  });
+
+  app.get("/api/robots/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const robot = await storage.getRobot(req.params.id);
+      if (!robot || robot.companyId !== req.user!.companyId) {
+        return res.status(404).json({ error: "Robot not found" });
+      }
+      res.json(robot);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch robot" });
+    }
+  });
+
+  app.post("/api/robots", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name, description, actions, isActive } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: "Robot name is required" });
+      }
+      const robot = await storage.createRobot({
+        companyId: req.user!.companyId,
+        name,
+        description,
+        actions: actions || [],
+        isActive: isActive !== false,
+      });
+      res.status(201).json(robot);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create robot" });
+    }
+  });
+
+  app.put("/api/robots/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name, description, actions, isActive } = req.body;
+      const existing = await storage.getRobot(req.params.id);
+      if (!existing || existing.companyId !== req.user!.companyId) {
+        return res.status(404).json({ error: "Robot not found" });
+      }
+      const updated = await storage.updateRobot(req.params.id, { name, description, actions, isActive });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update robot" });
+    }
+  });
+
+  app.delete("/api/robots/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const existing = await storage.getRobot(req.params.id);
+      if (!existing || existing.companyId !== req.user!.companyId) {
+        return res.status(404).json({ error: "Robot not found" });
+      }
+      await storage.deleteRobot(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete robot" });
+    }
+  });
+
+  // Execute robot on conversation
+  app.post("/api/robots/execute", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { robotId, conversationId } = req.body;
+      
+      if (!robotId || !conversationId) {
+        return res.status(400).json({ error: "robotId and conversationId are required" });
+      }
+
+      const robot = await storage.getRobot(robotId);
+      if (!robot || robot.companyId !== req.user!.companyId) {
+        return res.status(404).json({ error: "Robot not found" });
+      }
+
+      const conversation = await storage.getConversation(conversationId);
+      if (!conversation || conversation.companyId !== req.user!.companyId) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      const contact = await storage.getContact(conversation.contactId);
+      if (!contact) {
+        return res.status(404).json({ error: "Contact not found" });
+      }
+
+      // Import robot engine
+      const { robotEngine } = await import("./robot-engine");
+
+      // Define message sender function
+      const sendMessage = async (convId: string, content: string, mediaType?: string, mediaUrl?: string) => {
+        const chatId = normalizeJid(contact.phoneNumber);
+        
+        if (mediaType && mediaUrl) {
+          // Send media
+          const sent = await whatsappBaileys.sendMedia(
+            conversation.whatsappAccountId,
+            chatId,
+            mediaUrl,
+            mediaType,
+            content || undefined
+          );
+          
+          if (sent.success && sent.messageId) {
+            messageQueue.markMessageSentByCrm(sent.messageId);
+          }
+          
+          // Save message
+          const msg = await storage.createMessage({
+            conversationId: convId,
+            direction: "outgoing",
+            content: content || "",
+            mediaType,
+            mediaUrl,
+            senderUserId: req.user!.id,
+            senderDisplayName: req.user!.displayName || req.user!.name,
+          });
+          
+          io.to(`company:${req.user!.companyId}`).emit("message:created", {
+            companyId: req.user!.companyId,
+            conversationId: convId,
+            contactId: contact.id,
+            message: msg,
+          });
+        } else {
+          // Send text
+          const sent = await whatsappBaileys.sendMessage(
+            conversation.whatsappAccountId,
+            chatId,
+            content
+          );
+          
+          if (sent.success && sent.messageId) {
+            messageQueue.markMessageSentByCrm(sent.messageId);
+          }
+          
+          // Save message
+          const msg = await storage.createMessage({
+            conversationId: convId,
+            direction: "outgoing",
+            content,
+            senderUserId: req.user!.id,
+            senderDisplayName: req.user!.displayName || req.user!.name,
+          });
+          
+          io.to(`company:${req.user!.companyId}`).emit("message:created", {
+            companyId: req.user!.companyId,
+            conversationId: convId,
+            contactId: contact.id,
+            message: msg,
+          });
+        }
+      };
+
+      // Define presence sender function
+      const sendPresence = async (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording") => {
+        const chatId = normalizeJid(contactPhone);
+        await whatsappBaileys.sendPresenceUpdate(whatsappAccountId, chatId, type);
+      };
+
+      // Execute robot asynchronously
+      robotEngine.executeRobot(
+        robotId,
+        {
+          conversationId,
+          contactId: contact.id,
+          contactName: contact.name,
+          contactPhone: contact.phoneNumber,
+          whatsappAccountId: conversation.whatsappAccountId,
+          companyId: req.user!.companyId,
+          executedBy: req.user!.id,
+        },
+        sendMessage,
+        sendPresence
+      ).catch(err => {
+        console.error("[Robot] Execution error:", err);
+      });
+
+      res.json({ success: true, message: "Robot execution started" });
+    } catch (error) {
+      console.error("Execute robot error:", error);
+      res.status(500).json({ error: "Failed to execute robot" });
+    }
+  });
+
   // ============ DEPARTMENTS ============
   app.get("/api/departments", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {

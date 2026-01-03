@@ -6,6 +6,7 @@ import {
   macros, macroExecutions, stages, contactAttributes,
   departments, departmentAgents, triageMenus, triageSessions,
   automationRules, automationExecutions, antiSpamLogs, scheduledMessages,
+  robots,
   type Company, type InsertCompany, type User, type InsertUser,
   type WhatsappAccount, type InsertWhatsappAccount,
   type Contact, type InsertContact, type Tag, type InsertTag,
@@ -26,6 +27,7 @@ import {
   type AutomationExecution, type InsertAutomationExecution,
   type AntiSpamLog, type InsertAntiSpamLog,
   type ScheduledMessage, type InsertScheduledMessage,
+  type Robot, type InsertRobot,
   type ConversationWithDetails, type ContactWithTags, type MessageWithSender,
 } from "@shared/schema";
 import { normalizePhone } from "./jid-utils";
@@ -185,6 +187,13 @@ export interface IStorage {
   getPendingScheduledMessages(): Promise<ScheduledMessage[]>;
   updateScheduledMessage(id: string, data: Partial<InsertScheduledMessage>): Promise<ScheduledMessage | undefined>;
   deleteScheduledMessage(id: string): Promise<void>;
+
+  // Robots (Auto Atendimento)
+  createRobot(data: InsertRobot): Promise<Robot>;
+  getRobot(id: string): Promise<Robot | undefined>;
+  getRobots(companyId: string): Promise<Robot[]>;
+  updateRobot(id: string, data: Partial<InsertRobot>): Promise<Robot | undefined>;
+  deleteRobot(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1147,6 +1156,36 @@ export class DatabaseStorage implements IStorage {
 
   async deleteScheduledMessage(id: string): Promise<void> {
     await db.delete(scheduledMessages).where(eq(scheduledMessages.id, id));
+  }
+
+  // Robots (Auto Atendimento)
+  async createRobot(data: InsertRobot): Promise<Robot> {
+    const [robot] = await db.insert(robots).values(data).returning();
+    return robot;
+  }
+
+  async getRobot(id: string): Promise<Robot | undefined> {
+    const [robot] = await db.select().from(robots).where(eq(robots.id, id));
+    return robot;
+  }
+
+  async getRobots(companyId: string): Promise<Robot[]> {
+    return db.select().from(robots)
+      .where(eq(robots.companyId, companyId))
+      .orderBy(desc(robots.createdAt));
+  }
+
+  async updateRobot(id: string, data: Partial<InsertRobot>): Promise<Robot | undefined> {
+    const [robot] = await db
+      .update(robots)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(robots.id, id))
+      .returning();
+    return robot;
+  }
+
+  async deleteRobot(id: string): Promise<void> {
+    await db.delete(robots).where(eq(robots.id, id));
   }
 }
 
