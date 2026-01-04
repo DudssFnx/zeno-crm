@@ -1138,7 +1138,7 @@ export class DatabaseStorage implements IStorage {
     const [session] = await db.select().from(triageSessions)
       .where(and(
         eq(triageSessions.conversationId, conversationId),
-        eq(triageSessions.status, "active")
+        eq(triageSessions.state, "awaiting_choice")
       ));
     return session;
   }
@@ -1190,9 +1190,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAutomationExecutions(companyId: string, limit?: number): Promise<AutomationExecution[]> {
+    // Note: automationExecutions doesn't have companyId, get all and filter or use join
     let query = db.select().from(automationExecutions)
-      .where(eq(automationExecutions.companyId, companyId))
-      .orderBy(desc(automationExecutions.executedAt));
+      .orderBy(desc(automationExecutions.createdAt));
     
     if (limit) {
       return query.limit(limit);

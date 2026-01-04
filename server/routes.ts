@@ -9,6 +9,7 @@ import { dispatchWebhook } from "./webhook-dispatcher";
 import { loginSchema, insertTagSchema, insertWebhookConfigSchema } from "@shared/schema";
 import { normalizePhone, normalizeJid, isValidPhoneNumber } from "./jid-utils";
 import * as messageQueue from "./message-queue";
+import { initScheduledMessageProcessor } from "./scheduled-message-processor";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -203,6 +204,9 @@ export async function registerRoutes(
 
   // Seed master user
   await seedMasterUser();
+  
+  // Initialize scheduled message processor
+  initScheduledMessageProcessor();
   
   // Auto-reconnect WhatsApp sessions that were connected before restart
   setTimeout(async () => {

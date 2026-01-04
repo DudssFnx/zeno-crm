@@ -22,6 +22,7 @@ import {
   GripVertical,
   Bot,
   Workflow,
+  CalendarClock,
 } from "lucide-react";
 import zenoLogo from "@assets/image_1767464880710.png";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,7 @@ const settingsItems = [
   { icon: PlaySquare, label: "Macros", path: "/settings/macros", adminOnly: true },
   { icon: Bot, label: "Robos", path: "/settings/robots", adminOnly: true },
   { icon: Workflow, label: "Automacao", path: "/settings/automation", adminOnly: true },
+  { icon: CalendarClock, label: "Agendador", path: "/settings/scheduler" },
   { icon: Webhook, label: "Webhooks", path: "/settings/webhooks", adminOnly: true },
   { icon: Settings, label: "Meu Perfil", path: "/settings/profile" },
 ];

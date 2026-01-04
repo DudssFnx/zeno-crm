@@ -22,6 +22,7 @@ import ProfilePage from "@/pages/settings/profile";
 import StagesPage from "@/pages/settings/stages";
 import AttributesPage from "@/pages/settings/attributes";
 import AutomationPage from "@/pages/settings/automation";
+import SchedulerPage from "@/pages/settings/scheduler";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -116,6 +117,9 @@ function Router() {
       </Route>
       <Route path="/settings/automation">
         <AdminRoute component={AutomationPage} />
+      </Route>
+      <Route path="/settings/scheduler">
+        <ProtectedRoute component={SchedulerPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>
