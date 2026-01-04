@@ -244,6 +244,146 @@ export async function registerRoutes(
     res.json({ user: { ...req.user, passwordHash: undefined } });
   });
 
+  // Rate limiting for registration endpoints
+  const registrationAttempts = new Map<string, { count: number; lastAttempt: number }>();
+  const MAX_ATTEMPTS = 5;
+  const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+  function checkRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const record = registrationAttempts.get(ip);
+    
+    if (!record) {
+      registrationAttempts.set(ip, { count: 1, lastAttempt: now });
+      return true;
+    }
+    
+    if (now - record.lastAttempt > WINDOW_MS) {
+      registrationAttempts.set(ip, { count: 1, lastAttempt: now });
+      return true;
+    }
+    
+    if (record.count >= MAX_ATTEMPTS) {
+      return false;
+    }
+    
+    record.count++;
+    record.lastAttempt = now;
+    return true;
+  }
+
+  // Validate registration secret (without creating user)
+  app.post("/api/auth/validate-secret", async (req, res) => {
+    try {
+      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      
+      if (!checkRateLimit(ip)) {
+        console.log(`[Security] Rate limit exceeded for IP: ${ip}`);
+        return res.status(429).json({ message: "Too many attempts. Try again later." });
+      }
+      
+      const { validationSecret } = req.body;
+      
+      if (!validationSecret || typeof validationSecret !== "string") {
+        return res.status(400).json({ valid: false, message: "Validation secret required" });
+      }
+      
+      const registrationSecret = process.env.REGISTRATION_SECRET;
+      if (!registrationSecret) {
+        return res.status(500).json({ message: "Registration not configured" });
+      }
+      
+      if (validationSecret !== registrationSecret) {
+        console.log(`[Security] Invalid registration secret attempt from IP: ${ip}`);
+        return res.status(403).json({ valid: false, message: "Invalid validation password" });
+      }
+      
+      res.json({ valid: true });
+    } catch (error) {
+      console.error("Validation error:", error);
+      res.status(500).json({ message: "Validation failed" });
+    }
+  });
+
+  // Public registration with validation secret
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      
+      if (!checkRateLimit(ip)) {
+        console.log(`[Security] Rate limit exceeded for registration from IP: ${ip}`);
+        return res.status(429).json({ message: "Too many attempts. Try again later." });
+      }
+      
+      const { validationSecret, companyName, name, email, password, role } = req.body;
+      
+      // Validate the registration secret
+      const registrationSecret = process.env.REGISTRATION_SECRET;
+      if (!registrationSecret) {
+        return res.status(500).json({ message: "Registration not configured" });
+      }
+      
+      if (!validationSecret || validationSecret !== registrationSecret) {
+        console.log(`[Security] Invalid registration secret during registration from IP: ${ip}`);
+        return res.status(403).json({ message: "Invalid validation password" });
+      }
+      
+      // Validate required fields with strict checks
+      if (!companyName || typeof companyName !== "string" || companyName.trim().length < 2) {
+        return res.status(400).json({ message: "Company name must be at least 2 characters" });
+      }
+      
+      if (!name || typeof name !== "string" || name.trim().length < 2) {
+        return res.status(400).json({ message: "Name must be at least 2 characters" });
+      }
+      
+      if (!email || typeof email !== "string" || !email.includes("@")) {
+        return res.status(400).json({ message: "Valid email is required" });
+      }
+      
+      if (!password || typeof password !== "string" || password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+      
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(email.toLowerCase().trim());
+      if (existingUser) {
+        return res.status(400).json({ message: "Email already registered" });
+      }
+      
+      // Create company
+      const company = await storage.createCompany({ name: companyName.trim() });
+      
+      // Validate role - default to operator for security
+      const validRoles = ["admin", "operator"];
+      const userRole = validRoles.includes(role) ? role : "operator";
+      
+      // Create user
+      const passwordHash = await hashPassword(password);
+      const user = await storage.createUser({
+        companyId: company.id,
+        name: name.trim(),
+        email: email.toLowerCase().trim(),
+        passwordHash,
+        role: userRole,
+        displayName: name.trim(),
+      });
+      
+      console.log(`[Registration] New user registered: ${email} (${userRole}) for company: ${companyName}`);
+      
+      // Generate token and return
+      const token = generateToken(user);
+      res.json({ 
+        token, 
+        user: { ...user, passwordHash: undefined },
+        company 
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+      res.status(500).json({ message: "Registration failed" });
+    }
+  });
+
   // Media upload endpoint
   app.post("/api/upload", authMiddleware(storage), upload.single("file"), async (req: AuthRequest, res) => {
     try {
