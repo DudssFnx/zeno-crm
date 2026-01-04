@@ -2017,7 +2017,7 @@ export async function registerRoutes(
       };
 
       // Define presence sender function
-      const sendPresence = async (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording") => {
+      const sendPresence = async (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording" | "paused") => {
         const chatId = normalizeJid(contactPhone);
         await whatsappBaileys.sendPresenceUpdate(whatsappAccountId, chatId, type);
       };
@@ -2509,7 +2509,7 @@ export async function registerRoutes(
 
       // Helper to remap IDs in JSON actions/options
       // Comprehensive remapping for all known ID field patterns
-      function remapIds(obj: unknown): unknown {
+      const remapIds = (obj: unknown): unknown => {
         if (!obj) return obj;
         if (Array.isArray(obj)) {
           return obj.map(item => remapIds(item));
@@ -2620,7 +2620,7 @@ export async function registerRoutes(
               companyId,
               name: stage.name,
               color: stage.color,
-              displayOrder: stage.displayOrder,
+              order: String(stage.displayOrder ?? 0),
             });
             if (stage.id) {
               idMap.stages[stage.id] = newStage.id;
@@ -2649,7 +2649,6 @@ export async function registerRoutes(
               name: dept.name,
               description: dept.description,
               keywords: dept.keywords,
-              isActive: dept.isActive,
             });
             if (dept.id) {
               idMap.departments[dept.id] = newDept.id;
@@ -2767,7 +2766,7 @@ export async function registerRoutes(
           await storage.deleteTriageMenusByCompany(companyId);
         }
         // Get first WhatsApp account for this company as default
-        const accounts = await storage.getWhatsappAccountsByCompany(companyId);
+        const accounts = await storage.getWhatsappAccounts(companyId);
         const defaultAccountId = accounts.length > 0 ? accounts[0].id : null;
         
         for (const menu of data.triageMenus) {

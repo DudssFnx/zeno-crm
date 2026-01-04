@@ -174,6 +174,7 @@ export interface IStorage {
   createTriageSession(data: InsertTriageSession): Promise<TriageSession>;
   getTriageSession(id: string): Promise<TriageSession | undefined>;
   getActiveTriageSession(conversationId: string): Promise<TriageSession | undefined>;
+  getActiveSessionByConversation(conversationId: string): Promise<TriageSession | undefined>;
   updateTriageSession(id: string, data: Partial<TriageSession>): Promise<TriageSession | undefined>;
 
   // Automation Rules
@@ -1157,6 +1158,10 @@ export class DatabaseStorage implements IStorage {
         eq(triageSessions.state, "awaiting_choice")
       ));
     return session;
+  }
+
+  async getActiveSessionByConversation(conversationId: string): Promise<TriageSession | undefined> {
+    return this.getActiveTriageSession(conversationId);
   }
 
   async updateTriageSession(id: string, data: Partial<TriageSession>): Promise<TriageSession | undefined> {
