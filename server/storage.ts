@@ -37,6 +37,11 @@ export interface IStorage {
   // Companies
   createCompany(data: InsertCompany): Promise<Company>;
   getCompany(id: string): Promise<Company | undefined>;
+  getCompanyByDomain(domain: string): Promise<Company | undefined>;
+  getAllCompanies(): Promise<Company[]>;
+  updateCompany(id: string, data: Partial<InsertCompany>): Promise<Company | undefined>;
+  deleteCompany(id: string): Promise<void>;
+  getCompanyStats(id: string): Promise<{ userCount: number; whatsappAccountCount: number; contactCount: number }>;
 
   // Users
   createUser(data: InsertUser): Promise<User>;
@@ -227,6 +232,39 @@ export class DatabaseStorage implements IStorage {
   async getCompany(id: string): Promise<Company | undefined> {
     const [company] = await db.select().from(companies).where(eq(companies.id, id));
     return company;
+  }
+
+  async getCompanyByDomain(domain: string): Promise<Company | undefined> {
+    const [company] = await db.select().from(companies).where(eq(companies.domain, domain));
+    return company;
+  }
+
+  async getAllCompanies(): Promise<Company[]> {
+    return db.select().from(companies).orderBy(desc(companies.createdAt));
+  }
+
+  async updateCompany(id: string, data: Partial<InsertCompany>): Promise<Company | undefined> {
+    const [company] = await db
+      .update(companies)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(companies.id, id))
+      .returning();
+    return company;
+  }
+
+  async deleteCompany(id: string): Promise<void> {
+    await db.delete(companies).where(eq(companies.id, id));
+  }
+
+  async getCompanyStats(id: string): Promise<{ userCount: number; whatsappAccountCount: number; contactCount: number }> {
+    const [userResult] = await db.select({ count: sql<string>`count(*)::int` }).from(users).where(eq(users.companyId, id));
+    const [accountResult] = await db.select({ count: sql<string>`count(*)::int` }).from(whatsappAccounts).where(eq(whatsappAccounts.companyId, id));
+    const [contactResult] = await db.select({ count: sql<string>`count(*)::int` }).from(contacts).where(eq(contacts.companyId, id));
+    return {
+      userCount: parseInt(String(userResult?.count || 0), 10),
+      whatsappAccountCount: parseInt(String(accountResult?.count || 0), 10),
+      contactCount: parseInt(String(contactResult?.count || 0), 10),
+    };
   }
 
   // Users

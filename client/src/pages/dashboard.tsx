@@ -23,6 +23,7 @@ import {
   Workflow,
   CalendarClock,
   Database,
+  Building2,
 } from "lucide-react";
 import zenoLogo from "@assets/image_1767464880710.png";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,10 @@ const settingsItems = [
   { icon: Webhook, label: "Webhooks", path: "/settings/webhooks", adminOnly: true },
   { icon: Database, label: "Backup", path: "/settings/backup", adminOnly: true },
   { icon: Settings, label: "Meu Perfil", path: "/settings/profile" },
+];
+
+const masterItems = [
+  { icon: Building2, label: "Empresas", path: "/master/companies" },
 ];
 
 interface DashboardLayoutProps {
@@ -130,6 +135,32 @@ function MobileNavSheet({ user, isAdmin, isOperator, location, logout }: {
                   </p>
                   {visibleSettingsItems.map((item) => {
                     const isActive = location === item.path;
+                    return (
+                      <Link key={item.path} href={item.path} onClick={() => setOpen(false)}>
+                        <Button
+                          variant="ghost"
+                          className={cn(
+                            "w-full justify-start gap-3 min-h-[44px]",
+                            isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
+                          )}
+                        >
+                          <item.icon className="h-5 w-5" />
+                          <span>{item.label}</span>
+                        </Button>
+                      </Link>
+                    );
+                  })}
+                </>
+              )}
+
+              {user.role === "master" && (
+                <>
+                  <Separator className="my-2" />
+                  <p className="px-3 py-1 text-xs font-medium text-muted-foreground uppercase">
+                    Painel Master
+                  </p>
+                  {masterItems.map((item) => {
+                    const isActive = location === item.path || location.startsWith(item.path);
                     return (
                       <Link key={item.path} href={item.path} onClick={() => setOpen(false)}>
                         <Button
@@ -237,6 +268,31 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </Link>
             );
           })}
+
+          {user.role === "master" && (
+            <>
+              <Separator className="my-1" />
+              {masterItems.map((item) => {
+                const isActive = location === item.path || location.startsWith(item.path);
+                return (
+                  <Link key={item.path} href={item.path}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        "w-10 h-10",
+                        isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
+                      )}
+                      title={item.label}
+                      data-testid={`nav-master-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      <item.icon className="h-5 w-5" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         <div className="flex flex-col gap-2">

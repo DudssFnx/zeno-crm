@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { Server as SocketServer } from "socket.io";
 import { storage } from "./storage";
-import { authMiddleware, adminMiddleware, notOperatorMiddleware, generateToken, hashPassword, comparePassword, type AuthRequest } from "./auth";
+import { authMiddleware, adminMiddleware, masterMiddleware, notOperatorMiddleware, generateToken, hashPassword, comparePassword, type AuthRequest } from "./auth";
 import { whatsappGateway } from "./whatsapp-gateway";
 import { whatsappBaileys } from "./whatsapp-baileys";
 import { dispatchWebhook } from "./webhook-dispatcher";
@@ -325,6 +325,195 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Upload error:", error);
       res.status(500).json({ message: "Failed to upload file" });
+    }
+  });
+
+  // ==========================================
+  // MASTER PANEL - Company Management Routes
+  // ==========================================
+  
+  // List all companies (master only)
+  app.get("/api/master/companies", authMiddleware(storage), masterMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const companies = await storage.getAllCompanies();
+      // Enrich with stats
+      const companiesWithStats = await Promise.all(
+        companies.map(async (company) => {
+          const stats = await storage.getCompanyStats(company.id);
+          return { ...company, ...stats };
+        })
+      );
+      res.json(companiesWithStats);
+    } catch (error) {
+      console.error("Error fetching companies:", error);
+      res.status(500).json({ message: "Failed to fetch companies" });
+    }
+  });
+
+  // Get single company with stats (master only)
+  app.get("/api/master/companies/:id", authMiddleware(storage), masterMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const company = await storage.getCompany(req.params.id);
+      if (!company) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+      const stats = await storage.getCompanyStats(company.id);
+      res.json({ ...company, ...stats });
+    } catch (error) {
+      console.error("Error fetching company:", error);
+      res.status(500).json({ message: "Failed to fetch company" });
+    }
+  });
+
+  // Create new company with admin user (master only)
+  app.post("/api/master/companies", authMiddleware(storage), masterMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name, domain, plan, maxUsers, maxWhatsappAccounts, expiresAt, adminEmail, adminName, adminPassword } = req.body;
+      
+      // Validate required fields
+      if (!name || typeof name !== "string" || name.length < 2) {
+        return res.status(400).json({ message: "Company name must have at least 2 characters" });
+      }
+
+      // Validate plan
+      const validPlans = ["basic", "pro", "enterprise"];
+      if (plan && !validPlans.includes(plan)) {
+        return res.status(400).json({ message: "Invalid plan" });
+      }
+
+      // Check if domain is already in use
+      if (domain) {
+        const existingDomain = await storage.getCompanyByDomain(domain);
+        if (existingDomain) {
+          return res.status(400).json({ message: "Domain is already in use" });
+        }
+      }
+
+      // Check if admin email is already in use
+      if (adminEmail) {
+        const existingUser = await storage.getUserByEmail(adminEmail);
+        if (existingUser) {
+          return res.status(400).json({ message: "Admin email is already registered" });
+        }
+      }
+
+      // Parse expiresAt safely
+      let parsedExpiresAt: Date | null = null;
+      if (expiresAt && expiresAt !== "") {
+        const dateObj = new Date(expiresAt);
+        if (!isNaN(dateObj.getTime())) {
+          parsedExpiresAt = dateObj;
+        }
+      }
+
+      // Create company
+      const company = await storage.createCompany({
+        name,
+        domain: domain || null,
+        plan: plan || "basic",
+        maxUsers: typeof maxUsers === "number" ? maxUsers : parseInt(maxUsers) || 5,
+        maxWhatsappAccounts: typeof maxWhatsappAccounts === "number" ? maxWhatsappAccounts : parseInt(maxWhatsappAccounts) || 2,
+        expiresAt: parsedExpiresAt,
+        isActive: true,
+      });
+
+      // Create admin user if provided
+      let adminUser = null;
+      if (adminEmail && adminName && adminPassword) {
+        const passwordHash = await hashPassword(adminPassword);
+        adminUser = await storage.createUser({
+          companyId: company.id,
+          name: adminName,
+          email: adminEmail,
+          passwordHash,
+          role: "admin",
+          displayName: adminName,
+        });
+      }
+
+      res.json({ 
+        company, 
+        adminUser: adminUser ? { ...adminUser, passwordHash: undefined } : null 
+      });
+    } catch (error) {
+      console.error("Error creating company:", error);
+      res.status(500).json({ message: "Failed to create company" });
+    }
+  });
+
+  // Update company (master only)
+  app.put("/api/master/companies/:id", authMiddleware(storage), masterMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { name, domain, plan, maxUsers, maxWhatsappAccounts, expiresAt, isActive } = req.body;
+
+      // Validate required fields
+      if (!name || typeof name !== "string" || name.length < 2) {
+        return res.status(400).json({ message: "Company name must have at least 2 characters" });
+      }
+
+      // Validate plan
+      const validPlans = ["basic", "pro", "enterprise"];
+      if (plan && !validPlans.includes(plan)) {
+        return res.status(400).json({ message: "Invalid plan" });
+      }
+
+      // Check if domain is already in use by another company
+      if (domain) {
+        const existingDomain = await storage.getCompanyByDomain(domain);
+        if (existingDomain && existingDomain.id !== req.params.id) {
+          return res.status(400).json({ message: "Domain is already in use" });
+        }
+      }
+
+      // Parse expiresAt safely
+      let parsedExpiresAt: Date | null = null;
+      if (expiresAt && expiresAt !== "") {
+        const dateObj = new Date(expiresAt);
+        if (!isNaN(dateObj.getTime())) {
+          parsedExpiresAt = dateObj;
+        }
+      }
+
+      const company = await storage.updateCompany(req.params.id, {
+        name,
+        domain: domain || null,
+        plan: plan || "basic",
+        maxUsers: typeof maxUsers === "number" ? maxUsers : parseInt(maxUsers) || 5,
+        maxWhatsappAccounts: typeof maxWhatsappAccounts === "number" ? maxWhatsappAccounts : parseInt(maxWhatsappAccounts) || 2,
+        expiresAt: parsedExpiresAt,
+        isActive: typeof isActive === "boolean" ? isActive : true,
+      });
+
+      if (!company) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+
+      const stats = await storage.getCompanyStats(company.id);
+      res.json({ ...company, ...stats });
+    } catch (error) {
+      console.error("Error updating company:", error);
+      res.status(500).json({ message: "Failed to update company" });
+    }
+  });
+
+  // Delete company (master only)
+  app.delete("/api/master/companies/:id", authMiddleware(storage), masterMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const company = await storage.getCompany(req.params.id);
+      if (!company) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+
+      // Check if trying to delete own company
+      if (company.id === req.user!.companyId) {
+        return res.status(400).json({ message: "Cannot delete your own company" });
+      }
+
+      await storage.deleteCompany(req.params.id);
+      res.json({ message: "Company deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting company:", error);
+      res.status(500).json({ message: "Failed to delete company" });
     }
   });
 

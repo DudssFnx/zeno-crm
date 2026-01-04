@@ -7,6 +7,12 @@ import { z } from "zod";
 export const companies = pgTable("companies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  domain: text("domain"), // Custom domain (e.g., "empresa.zeno.com.br")
+  isActive: boolean("is_active").notNull().default(true),
+  plan: text("plan").notNull().default("basic"), // basic | pro | enterprise
+  maxUsers: integer("max_users").notNull().default(5),
+  maxWhatsappAccounts: integer("max_whatsapp_accounts").notNull().default(2),
+  expiresAt: timestamp("expires_at"), // Plan expiration date
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

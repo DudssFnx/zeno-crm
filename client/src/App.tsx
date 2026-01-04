@@ -24,6 +24,7 @@ import AttributesPage from "@/pages/settings/attributes";
 import AutomationPage from "@/pages/settings/automation";
 import SchedulerPage from "@/pages/settings/scheduler";
 import BackupPage from "@/pages/settings/backup";
+import MasterCompaniesPage from "@/pages/master/companies";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -51,6 +52,24 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
   }
 
   if (user.role !== "admin" && user.role !== "master") {
+    return <Redirect to="/" />;
+  }
+
+  return <Component />;
+}
+
+function MasterRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingPage />;
+  }
+
+  if (!user) {
+    return <Redirect to="/login" />;
+  }
+
+  if (user.role !== "master") {
     return <Redirect to="/" />;
   }
 
@@ -124,6 +143,9 @@ function Router() {
       </Route>
       <Route path="/settings/backup">
         <AdminRoute component={BackupPage} />
+      </Route>
+      <Route path="/master/companies">
+        <MasterRoute component={MasterCompaniesPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>
