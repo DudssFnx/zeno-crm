@@ -804,6 +804,24 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          handleFileSelect(file);
+          toast({ title: "Imagem colada", description: "Pressione enviar para mandar a imagem" });
+        }
+        return;
+      }
+    }
+  }, [toast]);
+
   const handleEmojiSelect = (emojiData: EmojiClickData) => {
     const textarea = textareaRef.current;
     if (!textarea) {
@@ -1578,6 +1596,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
               value={message}
               onChange={(e) => handleMessageChange(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder={isInternalNote ? "Escreva uma nota interna..." : "Digite uma mensagem..."}
               className={cn(
                 "min-h-[48px] max-h-32 resize-none",
