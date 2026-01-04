@@ -1103,8 +1103,12 @@ export async function registerRoutes(
         fileSize: req.body.fileSize || req.body.size, // Supporting both common field names
       });
 
-      // Update conversation lastMessageAt
-      await storage.updateConversation(req.params.id, {});
+      // Update conversation lastMessageAt and lastOutboundAt
+      const now = new Date();
+      await storage.updateConversation(req.params.id, {
+        lastMessageAt: now,
+        lastOutboundAt: now,
+      });
 
       // Respond immediately to the client
       res.json(message);
@@ -1660,6 +1664,13 @@ export async function registerRoutes(
                     content: messageToSend,
                   });
                   
+                  // Atualizar lastOutboundAt para limpar badge de prioridade
+                  const msgNow = new Date();
+                  await storage.updateConversation(conversationId, {
+                    lastMessageAt: msgNow,
+                    lastOutboundAt: msgNow,
+                  });
+                  
                   actionsApplied.push({ type: "SEND_MESSAGE", message: messageToSend, success: true });
                 } else {
                   actionsApplied.push({ type: "SEND_MESSAGE", success: false, error: msgSent.error || "Failed to send" });
@@ -1722,6 +1733,13 @@ export async function registerRoutes(
             conversationId,
             contactId: contact.id,
             message: sentMessage,
+          });
+          
+          // Atualizar lastOutboundAt para limpar badge de prioridade
+          const macroNow = new Date();
+          await storage.updateConversation(conversationId, {
+            lastMessageAt: macroNow,
+            lastOutboundAt: macroNow,
           });
         }
       }
@@ -1880,6 +1898,13 @@ export async function registerRoutes(
             contactId: contact.id,
             message: msg,
           });
+          
+          // Atualizar lastOutboundAt para limpar badge de prioridade
+          const robotMediaNow = new Date();
+          await storage.updateConversation(convId, {
+            lastMessageAt: robotMediaNow,
+            lastOutboundAt: robotMediaNow,
+          });
         } else {
           // Send text
           console.log(`[Robot] Sending text message to ${chatId}: "${content.substring(0, 50)}..."`);
@@ -1911,6 +1936,13 @@ export async function registerRoutes(
             conversationId: convId,
             contactId: contact.id,
             message: msg,
+          });
+          
+          // Atualizar lastOutboundAt para limpar badge de prioridade
+          const robotTextNow = new Date();
+          await storage.updateConversation(convId, {
+            lastMessageAt: robotTextNow,
+            lastOutboundAt: robotTextNow,
           });
         }
       };
