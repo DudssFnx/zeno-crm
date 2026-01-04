@@ -30,6 +30,7 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("operator"), // master | admin | operator
   displayName: text("display_name"), // Name shown in messages
   prefixMode: text("prefix_mode").notNull().default("prefix"), // prefix | firstLine | none
+  avatarUrl: text("avatar_url"), // User profile photo
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

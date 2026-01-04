@@ -1,6 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Trash2, Calendar, Clock, MessageSquare, Mic, Image, Video, FileText, Upload, X, Send, User, Phone } from "lucide-react";
+import { Plus, Trash2, Calendar, Clock, MessageSquare, Mic, Image, Video, FileText, Upload, X, Send, User, Phone, Search, Check, ChevronsUpDown } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -14,6 +14,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { DashboardLayout } from "../dashboard";
 import { LoadingSpinner, LoadingCard } from "@/components/loading-spinner";
@@ -37,7 +40,18 @@ const schedulerFormSchema = z.object({
   messageType: z.string().default("text"),
   content: z.string().optional(),
   mediaUrl: z.string().optional(),
-  scheduledFor: z.string().min(1, "Selecione a data/hora"),
+  scheduledFor: z.string().min(1, "Selecione a data/hora").refine((val) => {
+    const date = new Date(val);
+    return !isNaN(date.getTime()) && date > new Date();
+  }, "Data/hora invalida ou no passado"),
+}).refine((data) => {
+  if (data.messageType === "text") {
+    return data.content && data.content.trim().length > 0;
+  }
+  return data.mediaUrl && data.mediaUrl.trim().length > 0;
+}, {
+  message: "Texto e obrigatorio para mensagens de texto, ou arquivo para midia",
+  path: ["content"],
 });
 
 type SchedulerFormData = z.infer<typeof schedulerFormSchema>;
@@ -74,6 +88,8 @@ export default function SchedulerPage() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [contactSearchOpen, setContactSearchOpen] = useState(false);
+  const [contactSearchQuery, setContactSearchQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<SchedulerFormData>({
@@ -117,12 +133,17 @@ export default function SchedulerPage() {
 
   const createScheduledMessage = useMutation({
     mutationFn: async (data: SchedulerFormData) => {
+      const payload = {
+        contactId: data.contactId,
+        whatsappAccountId: data.whatsappAccountId,
+        content: data.content || "",
+        mediaUrl: data.mediaUrl || null,
+        mediaType: data.messageType !== "text" ? data.messageType : null,
+        scheduledFor: new Date(data.scheduledFor).toISOString(),
+      };
       const res = await authFetch("/api/scheduled-messages", {
         method: "POST",
-        body: JSON.stringify({
-          ...data,
-          scheduledFor: new Date(data.scheduledFor).toISOString(),
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const error = await res.json();
@@ -369,29 +390,85 @@ export default function SchedulerPage() {
                 <FormField
                   control={form.control}
                   name="contactId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Contato</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-contact">
-                            <SelectValue placeholder="Selecione o contato" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {contacts.map((contact) => (
-                            <SelectItem key={contact.id} value={contact.id}>
-                              <div className="flex items-center gap-2">
-                                <User className="h-4 w-4" />
-                                {contact.name} - {contact.phoneNumber}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    const selectedContact = contacts.find(c => c.id === field.value);
+                    const filteredContacts = contacts.filter(c => 
+                      c.name.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||
+                      c.phoneNumber.includes(contactSearchQuery)
+                    );
+                    return (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Contato</FormLabel>
+                        <Popover open={contactSearchOpen} onOpenChange={setContactSearchOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={contactSearchOpen}
+                                className={cn(
+                                  "justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                                data-testid="select-contact"
+                              >
+                                {selectedContact ? (
+                                  <span className="flex items-center gap-2">
+                                    <User className="h-4 w-4" />
+                                    {selectedContact.name} - {selectedContact.phoneNumber}
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-2">
+                                    <Search className="h-4 w-4" />
+                                    Buscar contato...
+                                  </span>
+                                )}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[350px] p-0" align="start">
+                            <Command shouldFilter={false}>
+                              <CommandInput 
+                                placeholder="Buscar por nome ou telefone..." 
+                                value={contactSearchQuery}
+                                onValueChange={setContactSearchQuery}
+                                data-testid="input-search-contact"
+                              />
+                              <CommandList>
+                                <CommandEmpty>Nenhum contato encontrado</CommandEmpty>
+                                <CommandGroup>
+                                  {filteredContacts.slice(0, 50).map((contact) => (
+                                    <CommandItem
+                                      key={contact.id}
+                                      value={contact.id}
+                                      onSelect={() => {
+                                        field.onChange(contact.id);
+                                        setContactSearchOpen(false);
+                                        setContactSearchQuery("");
+                                      }}
+                                      data-testid={`contact-option-${contact.id}`}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          field.value === contact.id ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      <User className="mr-2 h-4 w-4" />
+                                      <span className="font-medium">{contact.name}</span>
+                                      <span className="ml-2 text-muted-foreground">{contact.phoneNumber}</span>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
 
                 <FormField

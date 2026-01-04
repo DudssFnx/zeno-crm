@@ -360,23 +360,25 @@ export async function registerRoutes(
   app.get("/api/users/me/settings", authMiddleware(storage), async (req: AuthRequest, res) => {
     res.json({
       id: req.user!.id,
+      name: req.user!.name,
       displayName: req.user!.displayName,
       prefixMode: req.user!.prefixMode || "prefix",
+      avatarUrl: (req.user as any).avatarUrl || null,
     });
   });
 
   app.put("/api/users/me/settings", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { displayName, prefixMode } = req.body;
+      const { prefixMode, avatarUrl } = req.body;
       const updateData: Record<string, any> = {};
       
-      if (displayName !== undefined) updateData.displayName = displayName;
       if (prefixMode !== undefined) {
         const validModes = ["prefix", "firstLine", "none"];
         if (validModes.includes(prefixMode)) {
           updateData.prefixMode = prefixMode;
         }
       }
+      if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
 
       const user = await storage.updateUser(req.user!.id, updateData);
       if (!user) {
@@ -385,8 +387,10 @@ export async function registerRoutes(
 
       res.json({ 
         id: user.id,
+        name: user.name,
         displayName: user.displayName,
         prefixMode: user.prefixMode,
+        avatarUrl: (user as any).avatarUrl,
       });
     } catch (error) {
       console.error("Update user settings error:", error);
