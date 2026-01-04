@@ -942,10 +942,14 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Atualiza o stage da conversa
+    // Atualiza o stage da conversa (e stageEnteredAt se mudou de stage)
+    const updateData: any = { stageId, updatedAt: new Date() };
+    if (stageId !== oldStageId) {
+      updateData.stageEnteredAt = new Date();
+    }
     const [conversation] = await db
       .update(conversations)
-      .set({ stageId, updatedAt: new Date() })
+      .set(updateData)
       .where(eq(conversations.id, conversationId))
       .returning();
     return conversation;

@@ -1,10 +1,12 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { LayoutGrid, Phone, MessageSquare, Settings, Tag as TagIcon } from "lucide-react";
+import { LayoutGrid, Phone, MessageSquare, Settings, Tag as TagIcon, Clock, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { DashboardLayout } from "./dashboard";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
 import { LoadingCard } from "@/components/loading-spinner";
@@ -32,16 +34,43 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useState, useEffect } from "react";
 import { GripVertical } from "lucide-react";
-import { formatPhoneNumber } from "@/lib/utils";
+import { formatPhoneNumber, cn } from "@/lib/utils";
 import type { Tag, ConversationWithDetails } from "@shared/schema";
+
+function formatTimeInStage(stageEnteredAt: Date | string | null | undefined): string {
+  if (!stageEnteredAt) return "";
+  const entered = new Date(stageEnteredAt);
+  const now = new Date();
+  const diffMs = now.getTime() - entered.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffDays > 0) return `${diffDays}d`;
+  if (diffHours > 0) return `${diffHours}h`;
+  if (diffMins > 0) return `${diffMins}m`;
+  return "agora";
+}
+
+function getTimeColor(stageEnteredAt: Date | string | null | undefined): string {
+  if (!stageEnteredAt) return "text-muted-foreground";
+  const entered = new Date(stageEnteredAt);
+  const now = new Date();
+  const diffHours = (now.getTime() - entered.getTime()) / (1000 * 60 * 60);
+  
+  if (diffHours >= 48) return "text-destructive";
+  if (diffHours >= 24) return "text-amber-500";
+  return "text-muted-foreground";
+}
 
 interface SortableConversationCardProps {
   conversation: ConversationWithDetails;
   onClick: () => void;
   uniqueId: string;
+  showTime?: boolean;
 }
 
-function SortableConversationCard({ conversation, onClick, uniqueId }: SortableConversationCardProps) {
+function SortableConversationCard({ conversation, onClick, uniqueId, showTime }: SortableConversationCardProps) {
   const {
     attributes,
     listeners,
@@ -56,6 +85,9 @@ function SortableConversationCard({ conversation, onClick, uniqueId }: SortableC
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
+
+  const timeInStage = formatTimeInStage((conversation as any).stageEnteredAt);
+  const timeColor = getTimeColor((conversation as any).stageEnteredAt);
 
   return (
     <Card
@@ -75,7 +107,15 @@ function SortableConversationCard({ conversation, onClick, uniqueId }: SortableC
             size="sm" 
           />
           <div className="min-w-0 flex-1">
-            <p className="font-medium text-sm truncate">{conversation.contact.name}</p>
+            <div className="flex items-center justify-between gap-1">
+              <p className="font-medium text-sm truncate">{conversation.contact.name}</p>
+              {showTime && timeInStage && (
+                <span className={cn("text-xs font-medium flex items-center gap-0.5 shrink-0", timeColor)}>
+                  <Clock className="h-3 w-3" />
+                  {timeInStage}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
               <Phone className="h-3 w-3" />
               {formatPhoneNumber(conversation.contact.phoneNumber)}
@@ -140,9 +180,10 @@ interface TagColumnProps {
   tag: Tag;
   conversations: ConversationWithDetails[];
   onConversationClick: (conv: ConversationWithDetails) => void;
+  showTime?: boolean;
 }
 
-function SortableTagColumn({ tag, conversations, onConversationClick }: TagColumnProps) {
+function SortableTagColumn({ tag, conversations, onConversationClick, showTime }: TagColumnProps) {
   const {
     attributes,
     listeners,
@@ -196,6 +237,7 @@ function SortableTagColumn({ tag, conversations, onConversationClick }: TagColum
                 uniqueId={`${conv.id}_${tag.id}`}
                 conversation={conv}
                 onClick={() => onConversationClick(conv)}
+                showTime={showTime}
               />
             ))}
             {conversations.length === 0 && (
@@ -220,6 +262,10 @@ export default function KanbanPage() {
   const [activeConversation, setActiveConversation] = useState<ConversationWithDetails | null>(null);
   const [orderedTags, setOrderedTags] = useState<Tag[]>([]);
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
+  const [showTimeInStage, setShowTimeInStage] = useState(() => {
+    const saved = localStorage.getItem("kanban-show-time");
+    return saved === "true";
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -358,15 +404,31 @@ export default function KanbanPage() {
               Arraste as conversas entre as etiquetas para organizar seu atendimento. As etiquetas são atualizadas automaticamente.
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setLocation("/settings/tags")}
-            data-testid="button-manage-tags"
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            Gerenciar Etiquetas
-          </Button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              variant={showTimeInStage ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                const newValue = !showTimeInStage;
+                setShowTimeInStage(newValue);
+                localStorage.setItem("kanban-show-time", String(newValue));
+              }}
+              data-testid="button-toggle-time"
+              title={showTimeInStage ? "Ocultar tempo no estágio" : "Mostrar tempo no estágio"}
+            >
+              <Clock className="h-4 w-4 mr-2" />
+              {showTimeInStage ? "Ocultar Tempo" : "Mostrar Tempo"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLocation("/settings/tags")}
+              data-testid="button-manage-tags"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Gerenciar Etiquetas
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -422,6 +484,7 @@ export default function KanbanPage() {
                             uniqueId={`${conv.id}_no-tag`}
                             conversation={conv}
                             onClick={() => handleConversationClick(conv)}
+                            showTime={showTimeInStage}
                           />
                         ))}
                         {noTagConversations.length === 0 && (
@@ -443,6 +506,7 @@ export default function KanbanPage() {
                     tag={tag}
                     conversations={getConversationsForTag(tag.id)}
                     onConversationClick={handleConversationClick}
+                    showTime={showTimeInStage}
                   />
                 ))}
               </div>
