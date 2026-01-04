@@ -2424,5 +2424,416 @@ export async function registerRoutes(
     }
   });
 
+  // =====================================================
+  // BACKUP & RESTORE ENDPOINTS
+  // =====================================================
+
+  // Export backup (Admin only)
+  app.get("/api/backup/export", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const companyId = req.user!.companyId;
+      
+      // Fetch all configuration data
+      const [
+        tags,
+        macros,
+        contactAttributes,
+        cannedResponses,
+        stages,
+        webhookConfigs,
+        triageMenus,
+        robots,
+        departments,
+        automationRules,
+      ] = await Promise.all([
+        storage.getTags(companyId),
+        storage.getMacros(companyId),
+        storage.getContactAttributes(companyId),
+        storage.getCannedResponses(companyId),
+        storage.getStages(companyId),
+        storage.getWebhookConfigs(companyId),
+        storage.getTriageMenus(companyId),
+        storage.getRobots(companyId),
+        storage.getDepartments(companyId),
+        storage.getAutomationRules(companyId),
+      ]);
+
+      const company = await storage.getCompany(companyId);
+      
+      const backup = {
+        version: "1.0",
+        exportedAt: new Date().toISOString(),
+        companyName: company?.name || "Unknown",
+        data: {
+          tags,
+          macros,
+          contactAttributes,
+          cannedResponses,
+          stages,
+          webhookConfigs,
+          triageMenus,
+          robots,
+          departments,
+          automationRules,
+        },
+      };
+
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", `attachment; filename=backup_${companyId}_${Date.now()}.json`);
+      res.json(backup);
+    } catch (error) {
+      console.error("Backup export error:", error);
+      res.status(500).json({ message: "Failed to export backup" });
+    }
+  });
+
+  // Import backup (Admin only)
+  app.post("/api/backup/import", authMiddleware(storage), adminMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const companyId = req.user!.companyId;
+      const { data, options } = req.body;
+      
+      if (!data) {
+        return res.status(400).json({ message: "No backup data provided" });
+      }
+
+      const clearExisting = options?.clearExisting || false;
+      const results: Record<string, number> = {};
+      
+      // ID mapping: oldId -> newId for each entity type
+      const idMap: Record<string, Record<string, string>> = {
+        tags: {},
+        stages: {},
+        departments: {},
+      };
+
+      // Helper to remap IDs in JSON actions/options
+      // Comprehensive remapping for all known ID field patterns
+      function remapIds(obj: unknown): unknown {
+        if (!obj) return obj;
+        if (Array.isArray(obj)) {
+          return obj.map(item => remapIds(item));
+        }
+        if (typeof obj === "object") {
+          const result: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+            // Tag ID fields (single)
+            const tagIdFields = ["tagId", "tag_id"];
+            // Stage ID fields (single)
+            const stageIdFields = ["stageId", "stage_id", "targetStageId", "nextStageId", "assignStageId", "moveToStageId"];
+            // Department ID fields (single)
+            const deptIdFields = ["departmentId", "department_id", "assignDepartmentId", "routeToDepartmentId", "targetDepartmentId"];
+            // Tag ID fields (array)
+            const tagArrayFields = ["tagIds", "tag_ids", "addTags", "removeTags", "assignTags"];
+            // Stage ID fields (array)
+            const stageArrayFields = ["stageIds", "stage_ids", "assignStageIds"];
+            // Department ID fields (array)
+            const deptArrayFields = ["departmentIds", "department_ids", "assignToDepartmentIds"];
+            
+            if (tagIdFields.includes(key) && typeof value === "string") {
+              result[key] = idMap.tags[value] || value;
+            } else if (stageIdFields.includes(key) && typeof value === "string") {
+              result[key] = idMap.stages[value] || value;
+            } else if (deptIdFields.includes(key) && typeof value === "string") {
+              result[key] = idMap.departments[value] || value;
+            }
+            // Array ID fields
+            else if (tagArrayFields.includes(key) && Array.isArray(value)) {
+              result[key] = value.map((id: unknown) => 
+                typeof id === "string" ? (idMap.tags[id] || id) : id
+              );
+            } else if (stageArrayFields.includes(key) && Array.isArray(value)) {
+              result[key] = value.map((id: unknown) => 
+                typeof id === "string" ? (idMap.stages[id] || id) : id
+              );
+            } else if (deptArrayFields.includes(key) && Array.isArray(value)) {
+              result[key] = value.map((id: unknown) => 
+                typeof id === "string" ? (idMap.departments[id] || id) : id
+              );
+            }
+            // Recursive for all other objects/arrays
+            else {
+              result[key] = remapIds(value);
+            }
+          }
+          return result;
+        }
+        return obj;
+      }
+
+      // Import in order of dependencies
+      // 1. Tags (no dependencies) - create mapping
+      if (data.tags && data.tags.length > 0) {
+        if (clearExisting) {
+          await storage.deleteTagsByCompany(companyId);
+        }
+        for (const tag of data.tags) {
+          try {
+            const newTag = await storage.createTag({
+              companyId,
+              name: tag.name,
+              color: tag.color,
+            });
+            if (tag.id) {
+              idMap.tags[tag.id] = newTag.id;
+            }
+          } catch (e) {
+            // Try to find existing tag by name for mapping
+            const existingTags = await storage.getTags(companyId);
+            const existing = existingTags.find(t => t.name === tag.name);
+            if (existing && tag.id) {
+              idMap.tags[tag.id] = existing.id;
+            }
+          }
+        }
+        results.tags = data.tags.length;
+      }
+
+      // 2. Contact Attributes
+      if (data.contactAttributes && data.contactAttributes.length > 0) {
+        if (clearExisting) {
+          await storage.deleteContactAttributesByCompany(companyId);
+        }
+        for (const attr of data.contactAttributes) {
+          try {
+            await storage.createContactAttribute({
+              companyId,
+              name: attr.name,
+              color: attr.color,
+              displayOrder: attr.displayOrder,
+            });
+          } catch (e) {
+            // Skip duplicates
+          }
+        }
+        results.contactAttributes = data.contactAttributes.length;
+      }
+
+      // 3. Stages - create mapping
+      if (data.stages && data.stages.length > 0) {
+        if (clearExisting) {
+          await storage.deleteStagesByCompany(companyId);
+        }
+        for (const stage of data.stages) {
+          try {
+            const newStage = await storage.createStage({
+              companyId,
+              name: stage.name,
+              color: stage.color,
+              displayOrder: stage.displayOrder,
+            });
+            if (stage.id) {
+              idMap.stages[stage.id] = newStage.id;
+            }
+          } catch (e) {
+            // Try to find existing stage by name for mapping
+            const existingStages = await storage.getStages(companyId);
+            const existing = existingStages.find(s => s.name === stage.name);
+            if (existing && stage.id) {
+              idMap.stages[stage.id] = existing.id;
+            }
+          }
+        }
+        results.stages = data.stages.length;
+      }
+
+      // 4. Departments - create mapping
+      if (data.departments && data.departments.length > 0) {
+        if (clearExisting) {
+          await storage.deleteDepartmentsByCompany(companyId);
+        }
+        for (const dept of data.departments) {
+          try {
+            const newDept = await storage.createDepartment({
+              companyId,
+              name: dept.name,
+              description: dept.description,
+              keywords: dept.keywords,
+              isActive: dept.isActive,
+            });
+            if (dept.id) {
+              idMap.departments[dept.id] = newDept.id;
+            }
+          } catch (e) {
+            // Try to find existing department by name for mapping
+            const existingDepts = await storage.getDepartments(companyId);
+            const existing = existingDepts.find(d => d.name === dept.name);
+            if (existing && dept.id) {
+              idMap.departments[dept.id] = existing.id;
+            }
+          }
+        }
+        results.departments = data.departments.length;
+      }
+
+      // 5. Canned Responses (may reference tags)
+      if (data.cannedResponses && data.cannedResponses.length > 0) {
+        if (clearExisting) {
+          await storage.deleteCannedResponsesByCompany(companyId);
+        }
+        for (const response of data.cannedResponses) {
+          try {
+            // Remap tagIds if present
+            let remappedTagIds = response.tagIds;
+            if (Array.isArray(response.tagIds)) {
+              remappedTagIds = response.tagIds.map((tid: string) => idMap.tags[tid] || tid);
+            }
+            await storage.createCannedResponse({
+              companyId,
+              shortcut: response.shortcut,
+              content: response.content,
+              attributes: response.attributes,
+              tagIds: remappedTagIds,
+            });
+          } catch (e) {
+            // Skip duplicates
+          }
+        }
+        results.cannedResponses = data.cannedResponses.length;
+      }
+
+      // 6. Macros (reference tags in actions)
+      if (data.macros && data.macros.length > 0) {
+        if (clearExisting) {
+          await storage.deleteMacrosByCompany(companyId);
+        }
+        for (const macro of data.macros) {
+          try {
+            // Remap IDs in actions
+            const remappedActions = remapIds(macro.actions);
+            await storage.createMacro({
+              companyId,
+              name: macro.name,
+              description: macro.description,
+              messageTemplate: macro.messageTemplate,
+              actions: remappedActions as unknown[],
+              isGlobal: macro.isGlobal,
+              sortOrder: macro.sortOrder,
+            });
+          } catch (e) {
+            // Skip duplicates
+          }
+        }
+        results.macros = data.macros.length;
+      }
+
+      // 7. Webhooks
+      if (data.webhookConfigs && data.webhookConfigs.length > 0) {
+        if (clearExisting) {
+          await storage.deleteWebhooksByCompany(companyId);
+        }
+        for (const webhook of data.webhookConfigs) {
+          try {
+            await storage.createWebhookConfig({
+              companyId,
+              url: webhook.url,
+              events: webhook.events,
+              secret: webhook.secret,
+              isActive: webhook.isActive,
+            });
+          } catch (e) {
+            // Skip duplicates
+          }
+        }
+        results.webhookConfigs = data.webhookConfigs.length;
+      }
+
+      // 8. Robots (reference tags in actions)
+      if (data.robots && data.robots.length > 0) {
+        if (clearExisting) {
+          await storage.deleteRobotsByCompany(companyId);
+        }
+        for (const robot of data.robots) {
+          try {
+            // Remap IDs in actions
+            const remappedActions = remapIds(robot.actions);
+            await storage.createRobot({
+              companyId,
+              name: robot.name,
+              description: robot.description,
+              actions: remappedActions as unknown[],
+              isActive: robot.isActive,
+            });
+          } catch (e) {
+            // Skip duplicates
+          }
+        }
+        results.robots = data.robots.length;
+      }
+
+      // 9. Triage Menus (reference tags, stages, departments in options)
+      if (data.triageMenus && data.triageMenus.length > 0) {
+        if (clearExisting) {
+          await storage.deleteTriageMenusByCompany(companyId);
+        }
+        // Get first WhatsApp account for this company as default
+        const accounts = await storage.getWhatsappAccountsByCompany(companyId);
+        const defaultAccountId = accounts.length > 0 ? accounts[0].id : null;
+        
+        for (const menu of data.triageMenus) {
+          try {
+            // Remap IDs in options
+            const remappedOptions = remapIds(menu.options);
+            await storage.createTriageMenu({
+              companyId,
+              whatsappAccountId: defaultAccountId || menu.whatsappAccountId,
+              name: menu.name,
+              welcomeMessage: menu.welcomeMessage,
+              options: remappedOptions as unknown[],
+              invalidMessage: menu.invalidMessage,
+              timeoutMinutes: menu.timeoutMinutes,
+              isActive: menu.isActive,
+              triggerOnFirstMessage: menu.triggerOnFirstMessage,
+            });
+          } catch (e) {
+            // Skip duplicates
+          }
+        }
+        results.triageMenus = data.triageMenus.length;
+      }
+
+      // 10. Automation Rules (reference tags, stages in actions)
+      if (data.automationRules && data.automationRules.length > 0) {
+        if (clearExisting) {
+          await storage.deleteAutomationRulesByCompany(companyId);
+        }
+        for (const rule of data.automationRules) {
+          try {
+            // Remap IDs in conditions and actions
+            const remappedConditions = remapIds(rule.conditions);
+            const remappedActions = remapIds(rule.actions);
+            await storage.createAutomationRule({
+              companyId,
+              name: rule.name,
+              description: rule.description,
+              triggerEvent: rule.triggerEvent,
+              conditions: remappedConditions as unknown[],
+              actions: remappedActions as unknown[],
+              priority: rule.priority,
+              isActive: rule.isActive,
+            });
+          } catch (e) {
+            // Skip duplicates
+          }
+        }
+        results.automationRules = data.automationRules.length;
+      }
+
+      res.json({ 
+        message: "Backup imported successfully", 
+        imported: results,
+        idMappings: {
+          tags: Object.keys(idMap.tags).length,
+          stages: Object.keys(idMap.stages).length,
+          departments: Object.keys(idMap.departments).length,
+        },
+        note: "IDs were remapped automatically. Audio files in robots need re-upload."
+      });
+    } catch (error) {
+      console.error("Backup import error:", error);
+      res.status(500).json({ message: "Failed to import backup" });
+    }
+  });
+
   return httpServer;
 }

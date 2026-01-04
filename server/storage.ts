@@ -201,6 +201,18 @@ export interface IStorage {
   getRobots(companyId: string): Promise<Robot[]>;
   updateRobot(id: string, data: Partial<InsertRobot>): Promise<Robot | undefined>;
   deleteRobot(id: string): Promise<void>;
+
+  // Backup - Batch delete by company
+  deleteTagsByCompany(companyId: string): Promise<void>;
+  deleteContactAttributesByCompany(companyId: string): Promise<void>;
+  deleteStagesByCompany(companyId: string): Promise<void>;
+  deleteCannedResponsesByCompany(companyId: string): Promise<void>;
+  deleteMacrosByCompany(companyId: string): Promise<void>;
+  deleteWebhooksByCompany(companyId: string): Promise<void>;
+  deleteRobotsByCompany(companyId: string): Promise<void>;
+  deleteTriageMenusByCompany(companyId: string): Promise<void>;
+  deleteDepartmentsByCompany(companyId: string): Promise<void>;
+  deleteAutomationRulesByCompany(companyId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1273,6 +1285,71 @@ export class DatabaseStorage implements IStorage {
     // Delete robot executions first (foreign key constraint)
     await db.delete(robotExecutions).where(eq(robotExecutions.robotId, id));
     await db.delete(robots).where(eq(robots.id, id));
+  }
+
+  // Backup - Batch delete by company
+  async deleteTagsByCompany(companyId: string): Promise<void> {
+    const companyTags = await this.getTags(companyId);
+    for (const tag of companyTags) {
+      await db.delete(contactTags).where(eq(contactTags.tagId, tag.id));
+    }
+    await db.delete(tags).where(eq(tags.companyId, companyId));
+  }
+
+  async deleteContactAttributesByCompany(companyId: string): Promise<void> {
+    await db.delete(contactAttributes).where(eq(contactAttributes.companyId, companyId));
+  }
+
+  async deleteStagesByCompany(companyId: string): Promise<void> {
+    await db.delete(stages).where(eq(stages.companyId, companyId));
+  }
+
+  async deleteCannedResponsesByCompany(companyId: string): Promise<void> {
+    await db.delete(cannedResponses).where(eq(cannedResponses.companyId, companyId));
+  }
+
+  async deleteMacrosByCompany(companyId: string): Promise<void> {
+    const companyMacros = await this.getMacros(companyId);
+    for (const macro of companyMacros) {
+      await db.delete(macroExecutions).where(eq(macroExecutions.macroId, macro.id));
+    }
+    await db.delete(macros).where(eq(macros.companyId, companyId));
+  }
+
+  async deleteWebhooksByCompany(companyId: string): Promise<void> {
+    await db.delete(webhookConfigs).where(eq(webhookConfigs.companyId, companyId));
+  }
+
+  async deleteRobotsByCompany(companyId: string): Promise<void> {
+    const companyRobots = await this.getRobots(companyId);
+    for (const robot of companyRobots) {
+      await db.delete(robotExecutions).where(eq(robotExecutions.robotId, robot.id));
+    }
+    await db.delete(robots).where(eq(robots.companyId, companyId));
+  }
+
+  async deleteTriageMenusByCompany(companyId: string): Promise<void> {
+    const menus = await this.getTriageMenus(companyId);
+    for (const menu of menus) {
+      await db.delete(triageSessions).where(eq(triageSessions.menuId, menu.id));
+    }
+    await db.delete(triageMenus).where(eq(triageMenus.companyId, companyId));
+  }
+
+  async deleteDepartmentsByCompany(companyId: string): Promise<void> {
+    const deps = await this.getDepartments(companyId);
+    for (const dep of deps) {
+      await db.delete(departmentAgents).where(eq(departmentAgents.departmentId, dep.id));
+    }
+    await db.delete(departments).where(eq(departments.companyId, companyId));
+  }
+
+  async deleteAutomationRulesByCompany(companyId: string): Promise<void> {
+    const rules = await this.getAutomationRules(companyId);
+    for (const rule of rules) {
+      await db.delete(automationExecutions).where(eq(automationExecutions.ruleId, rule.id));
+    }
+    await db.delete(automationRules).where(eq(automationRules.companyId, companyId));
   }
 }
 
