@@ -78,6 +78,7 @@ export interface IStorage {
   addContactTag(contactId: string, tagId: string): Promise<ContactTag>;
   removeContactTag(contactId: string, tagId: string): Promise<void>;
   getContactTags(contactId: string): Promise<Tag[]>;
+  getAllContactTagsByCompany(companyId: string): Promise<ContactTag[]>;
 
   // Conversations
   deleteConversations(companyId: string, ids: string[]): Promise<number>;
@@ -497,6 +498,15 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(tags, eq(contactTags.tagId, tags.id))
       .where(eq(contactTags.contactId, contactId));
     return result.map((r) => r.tag);
+  }
+
+  async getAllContactTagsByCompany(companyId: string): Promise<ContactTag[]> {
+    const result = await db
+      .select({ contactTag: contactTags })
+      .from(contactTags)
+      .innerJoin(contacts, eq(contactTags.contactId, contacts.id))
+      .where(eq(contacts.companyId, companyId));
+    return result.map((r) => r.contactTag);
   }
 
   // Conversations

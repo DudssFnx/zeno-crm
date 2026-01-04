@@ -2445,6 +2445,8 @@ export async function registerRoutes(
         robots,
         departments,
         automationRules,
+        contacts,
+        contactTagsList,
       ] = await Promise.all([
         storage.getTags(companyId),
         storage.getMacros(companyId),
@@ -2456,12 +2458,14 @@ export async function registerRoutes(
         storage.getRobots(companyId),
         storage.getDepartments(companyId),
         storage.getAutomationRules(companyId),
+        storage.getContacts(companyId),
+        storage.getAllContactTagsByCompany(companyId),
       ]);
 
       const company = await storage.getCompany(companyId);
       
       const backup = {
-        version: "1.0",
+        version: "1.1",
         exportedAt: new Date().toISOString(),
         companyName: company?.name || "Unknown",
         data: {
@@ -2475,6 +2479,8 @@ export async function registerRoutes(
           robots,
           departments,
           automationRules,
+          contacts,
+          contactTags: contactTagsList,
         },
       };
 
@@ -2818,6 +2824,56 @@ export async function registerRoutes(
         results.automationRules = data.automationRules.length;
       }
 
+      // 11. Contacts (with ID mapping for contactTags)
+      const contactIdMap: Record<string, string> = {};
+      if (data.contacts && data.contacts.length > 0) {
+        // Get first WhatsApp account for this company as default
+        const contactAccounts = await storage.getWhatsappAccounts(companyId);
+        const contactDefaultAccountId = contactAccounts.length > 0 ? contactAccounts[0].id : null;
+        
+        for (const contact of data.contacts) {
+          try {
+            // Check if contact already exists by phone number
+            const existingContact = await storage.getContactByPhone(companyId, contact.phoneNumber);
+            if (existingContact) {
+              contactIdMap[contact.id] = existingContact.id;
+            } else {
+              const newContact = await storage.createContact({
+                companyId,
+                whatsappAccountId: contactDefaultAccountId || contact.whatsappAccountId,
+                phoneNumber: contact.phoneNumber,
+                name: contact.name,
+                avatarUrl: contact.avatarUrl,
+                notes: contact.notes,
+                attributes: contact.attributes,
+              });
+              contactIdMap[contact.id] = newContact.id;
+            }
+          } catch (e) {
+            // Skip on error
+          }
+        }
+        results.contacts = data.contacts.length;
+      }
+
+      // 12. Contact Tags (uses both tag and contact ID mappings)
+      if (data.contactTags && data.contactTags.length > 0) {
+        let importedCount = 0;
+        for (const ct of data.contactTags) {
+          try {
+            const newContactId = contactIdMap[ct.contactId];
+            const newTagId = idMap.tags[ct.tagId];
+            if (newContactId && newTagId) {
+              await storage.addContactTag(newContactId, newTagId);
+              importedCount++;
+            }
+          } catch (e) {
+            // Skip duplicates or errors
+          }
+        }
+        results.contactTags = importedCount;
+      }
+
       res.json({ 
         message: "Backup imported successfully", 
         imported: results,
@@ -2825,6 +2881,7 @@ export async function registerRoutes(
           tags: Object.keys(idMap.tags).length,
           stages: Object.keys(idMap.stages).length,
           departments: Object.keys(idMap.departments).length,
+          contacts: Object.keys(contactIdMap).length,
         },
         note: "IDs were remapped automatically. Audio files in robots need re-upload."
       });

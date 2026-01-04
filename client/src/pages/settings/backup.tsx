@@ -25,6 +25,8 @@ interface BackupData {
     robots: unknown[];
     departments: unknown[];
     automationRules: unknown[];
+    contacts: unknown[];
+    contactTags: unknown[];
   };
 }
 
@@ -127,6 +129,7 @@ export default function BackupPage() {
       robots: data.robots?.length || 0,
       departments: data.departments?.length || 0,
       automationRules: data.automationRules?.length || 0,
+      contacts: data.contacts?.length || 0,
     };
   };
 
@@ -172,6 +175,7 @@ export default function BackupPage() {
               <div className="text-sm text-muted-foreground space-y-1">
                 <p>O backup inclui:</p>
                 <ul className="list-disc list-inside ml-2 space-y-0.5">
+                  <li>Contatos (com tags associadas)</li>
                   <li>Tags e Etiquetas</li>
                   <li>Macros (Atalhos)</li>
                   <li>Atributos de Contato</li>
