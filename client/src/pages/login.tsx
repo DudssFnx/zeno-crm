@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Mail, Lock, User, Building2, KeyRound } from "lucide-react";
+import { Mail, Lock, User, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,10 +21,6 @@ const loginSchema = z.object({
   password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres"),
 });
 
-const validationSchema = z.object({
-  validationSecret: z.string().min(1, "Digite a senha de validacao"),
-});
-
 const registerSchema = z.object({
   companyName: z.string().min(2, "Nome da empresa deve ter pelo menos 2 caracteres"),
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
@@ -38,7 +34,6 @@ const registerSchema = z.object({
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
-type ValidationFormData = z.infer<typeof validationSchema>;
 type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function LoginPage() {
@@ -46,20 +41,12 @@ export default function LoginPage() {
   const { login } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [showValidationDialog, setShowValidationDialog] = useState(false);
   const [showRegisterDialog, setShowRegisterDialog] = useState(false);
-  const [validationSecret, setValidationSecret] = useState("");
-  const [isValidating, setIsValidating] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
-  });
-
-  const validationForm = useForm<ValidationFormData>({
-    resolver: zodResolver(validationSchema),
-    defaultValues: { validationSecret: "" },
   });
 
   const registerForm = useForm<RegisterFormData>({
@@ -90,39 +77,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleValidation = async (data: ValidationFormData) => {
-    setIsValidating(true);
-    try {
-      const res = await fetch("/api/auth/validate-secret", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ validationSecret: data.validationSecret }),
-      });
-      
-      const result = await res.json();
-      
-      if (!res.ok || !result.valid) {
-        toast({
-          title: "Senha de validacao incorreta",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      setValidationSecret(data.validationSecret);
-      setShowValidationDialog(false);
-      setShowRegisterDialog(true);
-      validationForm.reset();
-    } catch (error) {
-      toast({
-        title: "Erro ao validar senha",
-        variant: "destructive",
-      });
-    } finally {
-      setIsValidating(false);
-    }
-  };
-
   const handleRegister = async (data: RegisterFormData) => {
     setIsRegistering(true);
     try {
@@ -130,7 +84,6 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          validationSecret,
           companyName: data.companyName,
           name: data.name,
           email: data.email,
@@ -246,7 +199,7 @@ export default function LoginPage() {
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={() => setShowValidationDialog(true)}
+                onClick={() => setShowRegisterDialog(true)}
                 data-testid="button-open-register"
               >
                 Registrar Nova Conta
@@ -259,59 +212,6 @@ export default function LoginPage() {
       <footer className="py-4 text-center text-sm text-muted-foreground border-t">
         CRM WhatsApp multi-contas para equipes
       </footer>
-
-      <Dialog open={showValidationDialog} onOpenChange={setShowValidationDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Senha de Validacao</DialogTitle>
-            <DialogDescription>
-              Digite a senha de validacao para criar uma nova conta
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...validationForm}>
-            <form onSubmit={validationForm.handleSubmit(handleValidation)} className="space-y-4">
-              <FormField
-                control={validationForm.control}
-                name="validationSecret"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Senha de Validacao</FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          {...field}
-                          type="password"
-                          placeholder="Digite a senha de validacao"
-                          className="pl-10"
-                          data-testid="input-validation-secret"
-                        />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowValidationDialog(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isValidating}
-                  data-testid="button-validate-secret"
-                >
-                  {isValidating ? <LoadingSpinner size="sm" className="text-primary-foreground" /> : "Validar"}
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={showRegisterDialog} onOpenChange={setShowRegisterDialog}>
         <DialogContent className="sm:max-w-md">
