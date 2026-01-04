@@ -97,13 +97,13 @@ function MobileNavSheet({ user, isAdmin, isOperator, location, logout }: {
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-64 p-0">
-        <div className="flex flex-col h-full bg-sidebar">
-          <div className="p-4 border-b">
+      <SheetContent side="left" className="w-64 p-0 flex flex-col">
+        <div className="flex flex-col h-full bg-sidebar overflow-hidden">
+          <div className="p-4 border-b shrink-0">
             <img src={zenoLogo} alt="Zeno" className="h-10 w-10 rounded-lg object-cover" />
           </div>
-          <ScrollArea className="flex-1">
-            <nav className="p-2 space-y-1">
+          <div className="flex-1 overflow-y-auto overscroll-contain">
+            <nav className="p-2 space-y-1 pb-4">
               {navItems.map((item) => {
                 const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
                 return (
@@ -148,8 +148,8 @@ function MobileNavSheet({ user, isAdmin, isOperator, location, logout }: {
                 </>
               )}
             </nav>
-          </ScrollArea>
-          <div className="p-4 border-t">
+          </div>
+          <div className="p-4 border-t shrink-0">
             <div className="flex items-center gap-3 mb-3">
               <AvatarWithFallback name={user.name} size="sm" />
               <div className="flex-1 min-w-0">
