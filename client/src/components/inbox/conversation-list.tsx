@@ -399,7 +399,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                         level={getPriorityLevel(
                           conv.lastInboundAt,
                           conv.lastOutboundAt,
-                          conv.lastMessage?.direction
+                          conv.isUnread
                         )}
                       />
                       {conv.tags && conv.tags.slice(0, 2).map((tag) => (

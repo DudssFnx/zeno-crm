@@ -12,8 +12,11 @@ interface PriorityBadgeProps {
 export function getPriorityLevel(
   lastInboundAt: string | Date | null | undefined,
   lastOutboundAt: string | Date | null | undefined,
-  lastMessageDirection?: "incoming" | "outgoing"
+  isUnread?: boolean
 ): PriorityLevel {
+  // Só mostrar badge em conversas não lidas
+  if (!isUnread) return "none";
+  
   if (!lastInboundAt) return "none";
   
   const lastInbound = lastInboundAt instanceof Date 
