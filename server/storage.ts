@@ -618,14 +618,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getOpenConversationByAccountAndContact(whatsappAccountId: string, contactId: string): Promise<Conversation | undefined> {
+    // Buscar conversas abertas OU pendentes (ambas são conversas ativas)
     const [conversation] = await db
       .select()
       .from(conversations)
       .where(and(
         eq(conversations.whatsappAccountId, whatsappAccountId),
         eq(conversations.contactId, contactId),
-        eq(conversations.status, "open")
-      ));
+        or(eq(conversations.status, "open"), eq(conversations.status, "pending"))
+      ))
+      .orderBy(desc(conversations.updatedAt))
+      .limit(1);
     return conversation;
   }
 
