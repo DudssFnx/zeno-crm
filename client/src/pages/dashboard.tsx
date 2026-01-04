@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation, Link } from "wouter";
 import {
@@ -289,6 +289,18 @@ export default function InboxPage() {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [showContactDetails, setShowContactDetails] = useState(false);
   const [mobileView, setMobileView] = useState<MobileView>('list');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const conversationId = params.get('conversation');
+    if (conversationId) {
+      setSelectedConversationId(conversationId);
+      if (isMobile) {
+        setMobileView('chat');
+      }
+      window.history.replaceState({}, '', '/');
+    }
+  }, [isMobile]);
 
   if (!user) return null;
 
