@@ -40,7 +40,7 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 ## Database Schema
 
 ### Tables
-- **companies** - Multi-tenant company accounts
+- **companies** - Multi-tenant company accounts with SaaS fields (domain, plan, maxUsers, maxWhatsappAccounts, isActive, expiresAt)
 - **users** - Users with roles (admin/agent), displayName, prefixMode
 - **whatsapp_accounts** - WhatsApp connection accounts
 - **contacts** - Customer contacts with avatar support and multiple attributes (array, max 3)
@@ -61,6 +61,17 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 - JWT-based authentication (not Replit Auth)
 - Admin and Agent roles
 - Company-based multi-tenancy
+
+### Master Panel (SaaS Admin)
+- Accessible only to users with role="master"
+- Available at `/master/companies`
+- Manage all companies in the system:
+  - Create companies with admin users
+  - Set plan limits (basic/pro/enterprise)
+  - Configure domain, maxUsers, maxWhatsappAccounts
+  - Set expiration dates
+  - Activate/deactivate companies
+- View company statistics (users, accounts, contacts)
 
 ### Inbox (3-Column Layout)
 - **Left**: Conversation list with filters (status, account, assignee)
