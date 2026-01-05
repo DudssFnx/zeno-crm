@@ -10,6 +10,8 @@ import { loginSchema, insertTagSchema, insertWebhookConfigSchema } from "@shared
 import { normalizePhone, normalizeJid, isValidPhoneNumber } from "./jid-utils";
 import * as messageQueue from "./message-queue";
 import { initScheduledMessageProcessor } from "./scheduled-message-processor";
+import { isRemoteGatewayEnabled, remoteConnect, remoteDisconnect, remoteSendMessage, remoteGetStatus } from "./gateway-client";
+import { gatewayWebhookAuth, handleGatewayWebhook, setSocketServer as setGatewaySocketServer } from "./gateway-webhook-handler";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -50,6 +52,9 @@ export async function registerRoutes(
 
   // Connect Baileys gateway to Socket.IO
   whatsappBaileys.setSocketServer(io);
+  
+  // Connect gateway webhook handler to Socket.IO
+  setGatewaySocketServer(io);
   
   // Conectar o módulo de filas ao Socket.IO
   messageQueue.setSocketServer(io);
@@ -304,6 +309,13 @@ export async function registerRoutes(
       res.status(500).json({ message: "Registration failed" });
     }
   });
+
+  // Gateway webhook endpoint (for Railway WhatsApp Gateway)
+  // This endpoint receives events from the remote gateway and processes them
+  if (isRemoteGatewayEnabled()) {
+    console.log("[Gateway] Remote gateway enabled - registering webhook endpoint");
+    app.post("/api/gateway-webhook", gatewayWebhookAuth, handleGatewayWebhook);
+  }
 
   // Media upload endpoint
   app.post("/api/upload", authMiddleware(storage), upload.single("file"), async (req: AuthRequest, res) => {
