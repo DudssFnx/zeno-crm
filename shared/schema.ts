@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, jsonb, integer, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, jsonb, integer, doublePrecision, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -84,7 +84,10 @@ export const contacts = pgTable("contacts", {
   geocodedAt: timestamp("geocoded_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // Prevent duplicate contacts per company (same phone number)
+  companyPhoneUnique: unique("contacts_company_phone_unique").on(table.companyId, table.phoneNumber),
+}));
 
 export const contactsRelations = relations(contacts, ({ one, many }) => ({
   company: one(companies, { fields: [contacts.companyId], references: [companies.id] }),

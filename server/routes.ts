@@ -311,9 +311,20 @@ export async function registerRoutes(
   });
 
   // Public registration (no validation required)
+  // BLOCKED: Public registration is disabled for SaaS multi-tenant security
+  // Companies should be created only by master users through /master/companies panel
+  // If you need to enable registration, require REGISTRATION_SECRET in the request body
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { companyName, name, email, password, role } = req.body;
+      const { companyName, name, email, password, role, registrationSecret } = req.body;
+      
+      // SECURITY: Require registration secret for creating new companies
+      const requiredSecret = process.env.REGISTRATION_SECRET;
+      if (!requiredSecret || registrationSecret !== requiredSecret) {
+        return res.status(403).json({ 
+          message: "Registro público desabilitado. Empresas devem ser criadas pelo painel master." 
+        });
+      }
       
       // Validate required fields
       if (!companyName || typeof companyName !== "string" || companyName.trim().length < 2) {
@@ -750,6 +761,12 @@ export async function registerRoutes(
 
   app.put("/api/whatsapp-accounts/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
+      // Verify account belongs to user's company
+      const existingAccount = await storage.getWhatsappAccount(req.params.id);
+      if (!existingAccount || existingAccount.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Account not found" });
+      }
+      
       const { name, phoneNumber } = req.body;
       const account = await storage.updateWhatsappAccount(req.params.id, { name, phoneNumber });
       if (!account) {
@@ -764,6 +781,12 @@ export async function registerRoutes(
 
   app.delete("/api/whatsapp-accounts/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
+      // Verify account belongs to user's company
+      const existingAccount = await storage.getWhatsappAccount(req.params.id);
+      if (!existingAccount || existingAccount.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Account not found" });
+      }
+      
       await storage.deleteWhatsappAccount(req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -775,6 +798,12 @@ export async function registerRoutes(
   app.post("/api/whatsapp-accounts/:id/start-session", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
       const accountId = req.params.id;
+      
+      // Verify account belongs to user's company
+      const existingAccount = await storage.getWhatsappAccount(accountId);
+      if (!existingAccount || existingAccount.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Account not found" });
+      }
       
       // Start Puppeteer session (async, will emit events via Socket.IO)
       whatsappBaileys.startSession(accountId).then(async (result) => {
@@ -797,6 +826,13 @@ export async function registerRoutes(
   app.get("/api/whatsapp-accounts/:id/qr", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
       const accountId = req.params.id;
+      
+      // Verify account belongs to user's company
+      const existingAccount = await storage.getWhatsappAccount(accountId);
+      if (!existingAccount || existingAccount.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Account not found" });
+      }
+      
       const qrCode = await whatsappBaileys.getQRCode(accountId);
       const status = whatsappBaileys.getStatus(accountId);
       
@@ -821,6 +857,12 @@ export async function registerRoutes(
 
   app.post("/api/whatsapp-accounts/:id/disconnect", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
+      // Verify account belongs to user's company
+      const existingAccount = await storage.getWhatsappAccount(req.params.id);
+      if (!existingAccount || existingAccount.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Account not found" });
+      }
+      
       await whatsappBaileys.disconnect(req.params.id);
       await storage.updateWhatsappAccount(req.params.id, { status: "disconnected" });
       res.json({ success: true });
@@ -859,7 +901,7 @@ export async function registerRoutes(
 
   app.get("/api/contacts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
     const contact = await storage.getContactWithTags(req.params.id);
-    if (!contact) {
+    if (!contact || contact.companyId !== req.user!.companyId) {
       return res.status(404).json({ message: "Contact not found" });
     }
     res.json(contact);
@@ -1332,7 +1374,7 @@ export async function registerRoutes(
 
   app.get("/api/conversations/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
     const conversation = await storage.getConversationWithDetails(req.params.id);
-    if (!conversation) {
+    if (!conversation || conversation.companyId !== req.user!.companyId) {
       return res.status(404).json({ message: "Conversation not found" });
     }
     res.json(conversation);
@@ -1342,16 +1384,17 @@ export async function registerRoutes(
     try {
       const { userId } = req.body;
       
+      // Verify conversation belongs to user's company
+      const existingConversation = await storage.getConversation(req.params.id);
+      if (!existingConversation || existingConversation.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      
       // Operators can only self-assign or unassign from themselves
       if (req.user!.role === "operator") {
-        const conversation = await storage.getConversation(req.params.id);
-        if (!conversation) {
-          return res.status(404).json({ message: "Conversation not found" });
-        }
-        
         // Operator can only assign to themselves or unassign (if currently assigned to them)
         const isSelfAssigning = userId === req.user!.id;
-        const isUnassigningFromSelf = !userId && conversation.assignedToUserId === req.user!.id;
+        const isUnassigningFromSelf = !userId && existingConversation.assignedToUserId === req.user!.id;
         
         if (!isSelfAssigning && !isUnassigningFromSelf && userId !== null) {
           return res.status(403).json({ message: "Operadores só podem atribuir conversas a si mesmos" });
@@ -1375,7 +1418,13 @@ export async function registerRoutes(
     try {
       const { status } = req.body;
       const oldConv = await storage.getConversation(req.params.id);
-      const oldStatus = oldConv?.status;
+      
+      // Verify conversation belongs to user's company
+      if (!oldConv || oldConv.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      
+      const oldStatus = oldConv.status;
 
       const conversation = await storage.updateConversation(req.params.id, { status });
       if (!conversation) {
@@ -1402,7 +1451,9 @@ export async function registerRoutes(
   app.post("/api/conversations/:id/open", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
       const conversation = await storage.getConversation(req.params.id);
-      if (!conversation) {
+      
+      // Verify conversation belongs to user's company
+      if (!conversation || conversation.companyId !== req.user!.companyId) {
         return res.status(404).json({ message: "Conversation not found" });
       }
 
@@ -1439,7 +1490,9 @@ export async function registerRoutes(
   app.post("/api/conversations/:id/toggle-unread", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
       const conversation = await storage.getConversation(req.params.id);
-      if (!conversation) {
+      
+      // Verify conversation belongs to user's company
+      if (!conversation || conversation.companyId !== req.user!.companyId) {
         return res.status(404).json({ message: "Conversation not found" });
       }
 
@@ -1462,6 +1515,12 @@ export async function registerRoutes(
 
   // Messages routes
   app.get("/api/conversations/:id/messages", authMiddleware(storage), async (req: AuthRequest, res) => {
+    // Verify conversation belongs to user's company
+    const conversation = await storage.getConversation(req.params.id);
+    if (!conversation || conversation.companyId !== req.user!.companyId) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+    
     const messages = await storage.getMessages(req.params.id);
     res.json(messages);
   });
@@ -1474,7 +1533,9 @@ export async function registerRoutes(
       }
 
       const conversation = await storage.getConversation(req.params.id);
-      if (!conversation) {
+      
+      // Verify conversation belongs to user's company
+      if (!conversation || conversation.companyId !== req.user!.companyId) {
         return res.status(404).json({ message: "Conversation not found" });
       }
 
