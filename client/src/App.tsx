@@ -25,6 +25,7 @@ import AutomationPage from "@/pages/settings/automation";
 import SchedulerPage from "@/pages/settings/scheduler";
 import BackupPage from "@/pages/settings/backup";
 import MasterCompaniesPage from "@/pages/master/companies";
+import ClientsMapPage from "@/pages/clients-map";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -146,6 +147,9 @@ function Router() {
       </Route>
       <Route path="/master/companies">
         <MasterRoute component={MasterCompaniesPage} />
+      </Route>
+      <Route path="/clients-map">
+        <ProtectedRoute component={ClientsMapPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>

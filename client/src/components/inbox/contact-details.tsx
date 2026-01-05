@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote, Globe, UserPlus, ArrowLeft, Pencil, Check, User, Star, Mail, MailOpen } from "lucide-react";
+import { X, Plus, Phone, MessageSquare, Tag as TagIcon, StickyNote, Globe, UserPlus, ArrowLeft, Pencil, Check, User, Star, Mail, MailOpen, MapPin } from "lucide-react";
 import { SiWhatsapp, SiInstagram, SiGoogle } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,8 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
   const [notesTimeout, setNotesTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
+  const [city, setCity] = useState("");
+  const [cityTimeout, setCityTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const { data: conversation } = useQuery<ConversationWithDetails>({
     queryKey: ["/api/conversations", conversationId],
@@ -89,6 +91,12 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
       setEditedName(contactWithTags.name);
     }
   }, [contactWithTags?.name]);
+
+  useEffect(() => {
+    if (contactWithTags?.city !== undefined) {
+      setCity(contactWithTags.city || "");
+    }
+  }, [contactWithTags?.city]);
 
   const updateContact = useMutation({
     mutationFn: async (data: { name?: string; attributes?: string[] | null }) => {
@@ -160,6 +168,32 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", conversation?.contactId] });
     },
   });
+
+  const updateCity = useMutation({
+    mutationFn: async (newCity: string) => {
+      const res = await authFetch(`/api/contacts/${contactWithTags?.id}/city`, {
+        method: "PUT",
+        body: JSON.stringify({ city: newCity }),
+      });
+      if (!res.ok) throw new Error("Failed to update city");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", conversation?.contactId] });
+      toast({ title: "Cidade atualizada" });
+    },
+  });
+
+  const handleCityChange = (value: string) => {
+    setCity(value);
+    if (cityTimeout) {
+      clearTimeout(cityTimeout);
+    }
+    const timeout = setTimeout(() => {
+      updateCity.mutate(value);
+    }, 1500);
+    setCityTimeout(timeout);
+  };
 
   const addTag = useMutation({
     mutationFn: async (tagId: string) => {
@@ -386,6 +420,29 @@ export function ContactDetails({ conversationId, onClose, isMobile }: ContactDet
               />
               {updateNotes.isPending && (
                 <p className="text-xs text-muted-foreground mt-1">Salvando...</p>
+              )}
+            </div>
+
+            <Separator />
+
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                <h4 className="text-sm font-medium">Cidade</h4>
+              </div>
+              <Input
+                value={city}
+                onChange={(e) => handleCityChange(e.target.value)}
+                placeholder="Ex: São Paulo, SP"
+                data-testid="input-contact-city"
+              />
+              {updateCity.isPending && (
+                <p className="text-xs text-muted-foreground mt-1">Salvando...</p>
+              )}
+              {contactWithTags.latitude && contactWithTags.longitude && (
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+                  <Check className="h-3 w-3" /> Localização encontrada
+                </p>
               )}
             </div>
 

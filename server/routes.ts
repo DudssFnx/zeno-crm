@@ -16,6 +16,67 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
+// Geocoding cache to avoid repeated requests
+const geocodeCache = new Map<string, { latitude: number; longitude: number; state?: string }>();
+let lastGeocodeRequest = 0;
+
+async function geocodeCity(cityInput: string): Promise<{ latitude: number; longitude: number; state?: string } | null> {
+  const cacheKey = cityInput.toLowerCase().trim();
+  
+  if (geocodeCache.has(cacheKey)) {
+    return geocodeCache.get(cacheKey)!;
+  }
+  
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastGeocodeRequest;
+  if (timeSinceLastRequest < 1100) {
+    await new Promise(resolve => setTimeout(resolve, 1100 - timeSinceLastRequest));
+  }
+  lastGeocodeRequest = Date.now();
+  
+  try {
+    const searchQuery = cityInput.includes("Brasil") || cityInput.includes("Brazil") 
+      ? cityInput 
+      : `${cityInput}, Brasil`;
+    
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=1&addressdetails=1`;
+    
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "ZENO-CRM/1.0 (contact@zeno.com.br)",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+      },
+    });
+    
+    if (!response.ok) {
+      console.error(`[Geocode] Nominatim returned ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (!data || data.length === 0) {
+      console.log(`[Geocode] No results for: ${cityInput}`);
+      return null;
+    }
+    
+    const result = data[0];
+    const geocoded = {
+      latitude: parseFloat(result.lat),
+      longitude: parseFloat(result.lon),
+      state: result.address?.state || result.address?.state_district || undefined,
+    };
+    
+    geocodeCache.set(cacheKey, geocoded);
+    console.log(`[Geocode] Found: ${cityInput} -> ${geocoded.latitude}, ${geocoded.longitude}`);
+    
+    return geocoded;
+  } catch (error) {
+    console.error("[Geocode] Error:", error);
+    return null;
+  }
+}
+
 // Seed master user on startup
 async function seedMasterUser() {
   const masterEmail = "mike@mike.com.br";
@@ -774,7 +835,6 @@ export async function registerRoutes(
     const { search } = req.query;
     let contacts = await storage.getContacts(req.user!.companyId);
     
-    // Filter by search term if provided
     if (search && typeof search === "string") {
       const searchLower = search.toLowerCase();
       contacts = contacts.filter(c => 
@@ -784,6 +844,17 @@ export async function registerRoutes(
     }
     
     res.json(contacts);
+  });
+
+  app.get("/api/contacts/with-location", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const contacts = await storage.getContacts(req.user!.companyId);
+      const contactsWithLocation = contacts.filter(c => c.latitude && c.longitude);
+      res.json(contactsWithLocation);
+    } catch (error) {
+      console.error("Get contacts with location error:", error);
+      res.status(500).json({ message: "Failed to get contacts" });
+    }
   });
 
   app.get("/api/contacts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
@@ -924,6 +995,58 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Update contact error:", error);
       res.status(500).json({ message: "Failed to update contact" });
+    }
+  });
+
+  // Update contact city with geocoding
+  app.put("/api/contacts/:id/city", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { city } = req.body;
+      const contactId = req.params.id;
+      
+      const existingContact = await storage.getContact(contactId);
+      if (!existingContact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      
+      if (existingContact.companyId !== req.user!.companyId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      let updateData: { city: string; state?: string; latitude?: number; longitude?: number; geocodedAt?: Date } = { 
+        city: city || null 
+      };
+      
+      if (city && city.trim()) {
+        try {
+          const geocodeResult = await geocodeCity(city.trim());
+          if (geocodeResult) {
+            updateData = {
+              ...updateData,
+              state: geocodeResult.state || null,
+              latitude: geocodeResult.latitude,
+              longitude: geocodeResult.longitude,
+              geocodedAt: new Date(),
+            };
+          }
+        } catch (geoError) {
+          console.error("[Geocode] Error geocoding city:", geoError);
+        }
+      } else {
+        updateData = {
+          city: null,
+          state: null,
+          latitude: null,
+          longitude: null,
+          geocodedAt: null,
+        };
+      }
+      
+      const contact = await storage.updateContact(contactId, updateData);
+      res.json(contact);
+    } catch (error) {
+      console.error("Update contact city error:", error);
+      res.status(500).json({ message: "Failed to update city" });
     }
   });
 

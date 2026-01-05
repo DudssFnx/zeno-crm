@@ -24,6 +24,7 @@ import {
   CalendarClock,
   Database,
   Building2,
+  MapPin,
 } from "lucide-react";
 import zenoLogo from "@assets/image_1767464880710.png";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { icon: MessageSquare, label: "Atendimentos", path: "/" },
   { icon: Contact, label: "Contatos", path: "/contacts" },
+  { icon: MapPin, label: "Mapa Clientes", path: "/clients-map" },
   { icon: LayoutGrid, label: "Kanban", path: "/kanban" },
 ];
 
