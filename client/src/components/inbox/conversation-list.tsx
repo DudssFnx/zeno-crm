@@ -147,10 +147,8 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
     
     return true;
   })
-  // Ordenar: não lidas primeiro, depois por data
+  // Ordenar apenas por última mensagem (mais recente primeiro)
   .sort((a, b) => {
-    if (a.isUnread && !b.isUnread) return -1;
-    if (!a.isUnread && b.isUnread) return 1;
     return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
   });
 
