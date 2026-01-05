@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, jsonb, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, jsonb, integer, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -75,8 +75,13 @@ export const contacts = pgTable("contacts", {
   avatarUrl: text("avatar_url"),
   avatarUpdatedAt: timestamp("avatar_updated_at"),
   notes: text("notes"),
-  attributes: text("attributes").array(), // Array de atributos (máximo 3)
-  source: text("source").default("whatsapp"), // whatsapp | instagram | site | google | manual
+  attributes: text("attributes").array(),
+  source: text("source").default("whatsapp"),
+  city: text("city"),
+  state: text("state"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  geocodedAt: timestamp("geocoded_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
