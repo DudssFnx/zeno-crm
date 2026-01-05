@@ -890,7 +890,7 @@ export async function registerRoutes(
   // Start conversation by phone number
   app.post("/api/contacts/start-conversation", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
-      const { phoneNumber: rawPhone, whatsappAccountId, name } = req.body;
+      const { phoneNumber: rawPhone, whatsappAccountId, name, city } = req.body;
       
       if (!rawPhone || !whatsappAccountId) {
         return res.status(400).json({ message: "Phone number and WhatsApp account are required" });
@@ -909,11 +909,46 @@ export async function registerRoutes(
       let contact = await storage.getContactByPhone(req.user!.companyId, phoneNumber);
       let contactCreated = false;
       if (!contact) {
+        // If city was provided, geocode it
+        let geoData: { city?: string; state?: string; latitude?: number; longitude?: number } = {};
+        if (city && city.trim()) {
+          try {
+            const searchQuery = encodeURIComponent(city.trim() + ", Brasil");
+            const geoResponse = await fetch(
+              `https://nominatim.openstreetmap.org/search?q=${searchQuery}&format=json&limit=1&addressdetails=1`,
+              {
+                headers: {
+                  "User-Agent": "ZenoCRM/1.0 (contact@zeno.com.br)",
+                  "Accept-Language": "pt-BR,pt;q=0.9",
+                },
+              }
+            );
+            if (geoResponse.ok) {
+              const results = await geoResponse.json();
+              if (results.length > 0) {
+                const result = results[0];
+                geoData.latitude = parseFloat(result.lat);
+                geoData.longitude = parseFloat(result.lon);
+                geoData.city = result.address?.city || result.address?.town || result.address?.municipality || city.trim();
+                geoData.state = result.address?.state || undefined;
+              }
+            }
+          } catch (geoError) {
+            console.error("Geocoding error:", geoError);
+            geoData.city = city.trim();
+          }
+        }
+
         contact = await storage.createContact({
           companyId: req.user!.companyId,
           whatsappAccountId,
           name: name || phoneNumber,
-          phoneNumber, // Número já normalizado
+          phoneNumber,
+          city: geoData.city,
+          state: geoData.state,
+          latitude: geoData.latitude,
+          longitude: geoData.longitude,
+          geocodedAt: geoData.latitude ? new Date() : undefined,
         });
         contactCreated = true;
       }
@@ -1013,32 +1048,29 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Not authorized" });
       }
       
-      let updateData: { city: string; state?: string; latitude?: number; longitude?: number; geocodedAt?: Date } = { 
-        city: city || null 
-      };
+      let updateData: { city?: string; state?: string; latitude?: number; longitude?: number; geocodedAt?: Date } = {};
       
       if (city && city.trim()) {
+        updateData.city = city.trim();
         try {
           const geocodeResult = await geocodeCity(city.trim());
           if (geocodeResult) {
-            updateData = {
-              ...updateData,
-              state: geocodeResult.state || null,
-              latitude: geocodeResult.latitude,
-              longitude: geocodeResult.longitude,
-              geocodedAt: new Date(),
-            };
+            updateData.state = geocodeResult.state || undefined;
+            updateData.latitude = geocodeResult.latitude;
+            updateData.longitude = geocodeResult.longitude;
+            updateData.geocodedAt = new Date();
           }
         } catch (geoError) {
           console.error("[Geocode] Error geocoding city:", geoError);
         }
       } else {
+        // Clear city data using empty string (will be handled as null in storage)
         updateData = {
-          city: null,
-          state: null,
-          latitude: null,
-          longitude: null,
-          geocodedAt: null,
+          city: "",
+          state: undefined,
+          latitude: undefined,
+          longitude: undefined,
+          geocodedAt: undefined,
         };
       }
       

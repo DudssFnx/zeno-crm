@@ -27,6 +27,7 @@ const startConversationSchema = z.object({
   phoneNumber: z.string().min(10, "Digite um número de telefone válido"),
   whatsappAccountId: z.string().min(1, "Selecione uma conta WhatsApp"),
   name: z.string().optional(),
+  city: z.string().optional(),
 });
 
 type StartConversationData = z.infer<typeof startConversationSchema>;
@@ -48,7 +49,7 @@ export default function ContactsPage() {
 
   const form = useForm<StartConversationData>({
     resolver: zodResolver(startConversationSchema),
-    defaultValues: { phoneNumber: "", whatsappAccountId: "", name: "" },
+    defaultValues: { phoneNumber: "", whatsappAccountId: "", name: "", city: "" },
   });
 
   const { data: contacts = [], isLoading } = useQuery<Contact[]>({
@@ -283,6 +284,19 @@ export default function ContactsPage() {
                             <FormLabel>Nome do Contato (opcional)</FormLabel>
                             <FormControl>
                               <Input {...field} placeholder="João Silva" data-testid="input-contact-name" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="city"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Cidade (opcional)</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="São Paulo, SP" data-testid="input-contact-city" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
