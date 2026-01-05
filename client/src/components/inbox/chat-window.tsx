@@ -510,6 +510,26 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     },
   });
 
+  const markAsRead = useMutation({
+    mutationFn: async () => {
+      const res = await authFetch(`/api/conversations/${conversationId}/toggle-unread`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        throw new Error("Falha ao marcar como lido");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Marcado como lido" });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: "destructive" });
+    },
+  });
+
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
   }, []);
@@ -1494,6 +1514,21 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
                 </div>
               </DialogContent>
             </Dialog>
+
+            {conversation?.isUnread && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => markAsRead.mutate()}
+                disabled={markAsRead.isPending}
+                data-testid="button-mark-read"
+                title="Marcar como lido"
+              >
+                <CheckCheck className="h-4 w-4 text-blue-500" />
+                <span className="hidden sm:inline">Lido</span>
+              </Button>
+            )}
 
             {isInternalNote && (
               <span className="text-xs text-muted-foreground hidden sm:inline">
