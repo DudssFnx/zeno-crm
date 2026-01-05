@@ -215,6 +215,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   const [noteSaveStatus, setNoteSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [isMacroDialogOpen, setIsMacroDialogOpen] = useState(false);
   const [isRobotDialogOpen, setIsRobotDialogOpen] = useState(false);
+  const [isQuickReplyDialogOpen, setIsQuickReplyDialogOpen] = useState(false);
   const pendingAttributesRef = useRef<string[]>([]);
   const pendingTagsRef = useRef<string[]>([]);
   const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1460,6 +1461,50 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
               </DialogContent>
             </Dialog>
 
+            {cannedResponses.length > 0 && (
+              <Dialog open={isQuickReplyDialogOpen} onOpenChange={setIsQuickReplyDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    data-testid="button-quick-replies"
+                  >
+                    <Zap className="h-4 w-4 text-blue-500" />
+                    <span className="hidden sm:inline">Respostas</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[500px] max-h-[70vh]">
+                  <DialogHeader>
+                    <DialogTitle>Respostas Rapidas</DialogTitle>
+                  </DialogHeader>
+                  <ScrollArea className="max-h-[50vh]">
+                    <div className="space-y-2 pr-4">
+                      {cannedResponses.map((response) => (
+                        <Button
+                          key={response.id}
+                          variant="ghost"
+                          className="w-full justify-start text-left h-auto p-3 flex flex-col items-start gap-1"
+                          onClick={() => {
+                            selectCannedResponse(response);
+                            setIsQuickReplyDialogOpen(false);
+                          }}
+                          data-testid={`button-quick-reply-${response.id}`}
+                        >
+                          <div className="flex items-center gap-2 w-full">
+                            <span className="font-medium text-sm">/{response.shortcut}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground line-clamp-2">
+                            {response.content}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </DialogContent>
+              </Dialog>
+            )}
+
             <Dialog open={isRobotDialogOpen} onOpenChange={setIsRobotDialogOpen}>
               <DialogTrigger asChild>
                 <Button
@@ -1533,12 +1578,6 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
             {isInternalNote && (
               <span className="text-xs text-muted-foreground hidden sm:inline">
                 Esta nota é visível apenas para sua equipe
-              </span>
-            )}
-            {!isInternalNote && cannedResponses.length > 0 && (
-              <span className="text-xs text-muted-foreground items-center gap-1 hidden sm:flex">
-                <Zap className="h-3 w-3" />
-                Digite "/" para respostas rápidas
               </span>
             )}
           </div>
