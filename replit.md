@@ -30,9 +30,18 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 │   ├── db.ts                    # Database connection
 │   ├── routes.ts                # API routes
 │   ├── storage.ts               # Database storage layer
+│   ├── gateway-client.ts        # Remote gateway client (Railway communication)
+│   ├── gateway-webhook-handler.ts # Webhook receiver for Railway events
 │   ├── whatsapp-gateway.ts      # Mock WhatsApp gateway (fallback)
 │   ├── whatsapp-puppeteer.ts    # Real WhatsApp Web connection via Puppeteer
 │   └── webhook-dispatcher.ts    # Webhook event dispatcher
+├── whatsapp-gateway/            # Standalone WhatsApp service for Railway
+│   ├── src/
+│   │   ├── index.ts             # Express server with REST endpoints
+│   │   ├── baileys-gateway.ts   # Baileys WhatsApp connection logic
+│   │   └── webhook.ts           # Webhook sender to Replit
+│   ├── Dockerfile               # Container config for Railway
+│   └── RAILWAY-SETUP.md         # Deployment documentation
 └── shared/
     └── schema.ts                # Database schema and types
 ```

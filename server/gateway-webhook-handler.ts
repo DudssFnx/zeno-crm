@@ -29,9 +29,11 @@ export function gatewayWebhookAuth(req: Request, res: Response, next: NextFuncti
     return;
   }
   
-  const payload = JSON.stringify(req.body);
+  const rawBody = (req as any).rawBody as Buffer | undefined;
+  const payload = rawBody ? rawBody.toString("utf8") : JSON.stringify(req.body);
   
   if (!verifyGatewaySignature(payload, signature, timestamp)) {
+    console.error("[GatewayWebhook] Signature verification failed");
     res.status(401).json({ error: "Invalid signature" });
     return;
   }
