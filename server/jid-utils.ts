@@ -56,6 +56,58 @@ export function normalizePhone(phone: string): string {
 }
 
 /**
+ * Gera variantes de um número brasileiro com e sem o 9º dígito
+ * Números móveis brasileiros podem ter 8 ou 9 dígitos após o DDD
+ * @param phone Número de telefone normalizado
+ * @returns Array com variantes do número (original + com/sem 9º dígito)
+ */
+export function getPhoneVariants(phone: string): string[] {
+  const normalized = normalizePhone(phone);
+  
+  // LIDs não têm variantes
+  if (normalized.startsWith("LID_")) {
+    return [normalized];
+  }
+  
+  const variants = [normalized];
+  
+  // Verificar se é número brasileiro (começa com 55)
+  if (!normalized.startsWith("55")) {
+    return variants;
+  }
+  
+  // Formato: 55 + DDD (2 dígitos) + número (8 ou 9 dígitos)
+  // Total: 12 dígitos (sem 9) ou 13 dígitos (com 9)
+  const ddd = normalized.substring(2, 4);
+  const localNumber = normalized.substring(4);
+  
+  if (normalized.length === 13 && localNumber.startsWith("9")) {
+    // Número com 9º dígito - gerar variante sem o 9
+    const without9 = "55" + ddd + localNumber.substring(1);
+    variants.push(without9);
+  } else if (normalized.length === 12) {
+    // Número sem 9º dígito - gerar variante com o 9
+    const with9 = "55" + ddd + "9" + localNumber;
+    variants.push(with9);
+  }
+  
+  return variants;
+}
+
+/**
+ * Verifica se dois números de telefone são equivalentes (considerando 9º dígito)
+ * @param phone1 Primeiro número
+ * @param phone2 Segundo número
+ * @returns true se forem equivalentes
+ */
+export function phoneNumbersAreEquivalent(phone1: string, phone2: string): boolean {
+  const variants1 = getPhoneVariants(phone1);
+  const variants2 = getPhoneVariants(phone2);
+  
+  return variants1.some(v1 => variants2.includes(v1));
+}
+
+/**
  * Verifica se um JID é válido para chat (não é grupo, broadcast ou status)
  * @param jid JID do WhatsApp
  * @returns true se for um chat válido

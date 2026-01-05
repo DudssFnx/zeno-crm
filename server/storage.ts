@@ -31,7 +31,7 @@ import {
   type Robot, type InsertRobot,
   type ConversationWithDetails, type ContactWithTags, type MessageWithSender,
 } from "@shared/schema";
-import { normalizePhone } from "./jid-utils";
+import { normalizePhone, getPhoneVariants } from "./jid-utils";
 
 export interface IStorage {
   // Companies
@@ -409,15 +409,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getContactByPhoneAndAccount(whatsappAccountId: string, phoneNumber: string): Promise<Contact | undefined> {
-    const normalizedInput = normalizePhone(phoneNumber);
+    // Gerar variantes do número (com e sem 9º dígito)
+    const phoneVariants = getPhoneVariants(phoneNumber);
+    console.log(`[Storage] getContactByPhoneAndAccount: variants=${phoneVariants.join(", ")}`);
     
+    // Buscar contato usando qualquer variante do número
     const [contact] = await db
       .select()
       .from(contacts)
       .where(and(
         eq(contacts.whatsappAccountId, whatsappAccountId),
-        eq(contacts.phoneNumber, normalizedInput)
+        inArray(contacts.phoneNumber, phoneVariants)
       ));
+    
+    if (contact) {
+      console.log(`[Storage] Found contact with phone variant: stored=${contact.phoneNumber}`);
+    }
     
     return contact;
   }
