@@ -1,15 +1,17 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { LayoutGrid, Phone, MessageSquare, Settings, Tag as TagIcon, Clock, Eye, EyeOff } from "lucide-react";
+import { LayoutGrid, Phone, MessageSquare, Settings, Tag as TagIcon, Clock, Eye, EyeOff, Zap, Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "./dashboard";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
-import { LoadingCard } from "@/components/loading-spinner";
+import { LoadingCard, LoadingSpinner } from "@/components/loading-spinner";
 import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -35,7 +37,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useState, useEffect } from "react";
 import { GripVertical } from "lucide-react";
 import { formatPhoneNumber, cn } from "@/lib/utils";
-import type { Tag, ConversationWithDetails } from "@shared/schema";
+import type { Tag, ConversationWithDetails, CannedResponse } from "@shared/schema";
 
 function formatTimeInStage(stageEnteredAt: Date | string | null | undefined): string {
   if (!stageEnteredAt) return "";
@@ -63,14 +65,195 @@ function getTimeColor(stageEnteredAt: Date | string | null | undefined): string 
   return "text-muted-foreground";
 }
 
+interface QuickReplyPopoverProps {
+  conversationId: string;
+  contactId: string;
+  cannedResponses: CannedResponse[];
+  onSuccess: () => void;
+}
+
+function QuickReplyPopover({ conversationId, contactId, cannedResponses, onSuccess }: QuickReplyPopoverProps) {
+  const authFetch = useAuthFetch();
+  const { toast } = useToast();
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isSending, setIsSending] = useState(false);
+
+  const filteredResponses = searchTerm
+    ? cannedResponses.filter(r => 
+        r.shortcut.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.content.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : cannedResponses;
+
+  const handleSendQuickReply = async (response: CannedResponse, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsSending(true);
+    
+    try {
+      const msgRes = await authFetch(`/api/conversations/${conversationId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ content: response.content }),
+      });
+      
+      if (!msgRes.ok) {
+        const error = await msgRes.json().catch(() => ({ message: "Falha ao enviar" }));
+        throw new Error(error.message);
+      }
+
+      let mutationErrors: string[] = [];
+      let capacityWarnings: string[] = [];
+
+      if (response.attributes && response.attributes.length > 0) {
+        const contactRes = await authFetch(`/api/contacts/${contactId}`);
+        if (contactRes.ok) {
+          const contact = await contactRes.json();
+          const currentAttrs: string[] = contact.attributes || [];
+          const newAttrsToAdd = response.attributes.filter(a => !currentAttrs.includes(a));
+          
+          if (newAttrsToAdd.length > 0) {
+            const availableSlots = 3 - currentAttrs.length;
+            if (availableSlots <= 0) {
+              capacityWarnings.push("Contato já tem 3 atributos");
+            } else if (newAttrsToAdd.length > availableSlots) {
+              const attrsToApply = newAttrsToAdd.slice(0, availableSlots);
+              const combinedAttrs = [...currentAttrs, ...attrsToApply];
+              const attrRes = await authFetch(`/api/contacts/${contactId}`, {
+                method: "PUT",
+                body: JSON.stringify({ attributes: combinedAttrs }),
+              });
+              if (!attrRes.ok) {
+                mutationErrors.push("Falha ao aplicar atributos");
+              } else {
+                capacityWarnings.push("Alguns atributos não foram aplicados (limite de 3)");
+              }
+            } else {
+              const combinedAttrs = [...currentAttrs, ...newAttrsToAdd];
+              const attrRes = await authFetch(`/api/contacts/${contactId}`, {
+                method: "PUT",
+                body: JSON.stringify({ attributes: combinedAttrs }),
+              });
+              if (!attrRes.ok) {
+                mutationErrors.push("Falha ao aplicar atributos");
+              }
+            }
+          }
+        }
+      }
+
+      if (response.tagIds && response.tagIds.length > 0) {
+        for (const tagId of response.tagIds) {
+          const tagRes = await authFetch(`/api/contacts/${contactId}/tags`, {
+            method: "POST",
+            body: JSON.stringify({ tagId }),
+          });
+          if (!tagRes.ok && tagRes.status !== 409) {
+            mutationErrors.push("Falha ao aplicar etiqueta");
+          }
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+
+      const allWarnings = [...mutationErrors, ...capacityWarnings];
+      if (allWarnings.length > 0) {
+        toast({ 
+          title: "Mensagem enviada", 
+          description: allWarnings.join(". "),
+          variant: "default" 
+        });
+      } else {
+        toast({ title: "Mensagem enviada" });
+      }
+      setIsOpen(false);
+      setSearchTerm("");
+      onSuccess();
+    } catch (error) {
+      toast({ title: error instanceof Error ? error.message : "Falha ao enviar", variant: "destructive" });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen(true);
+          }}
+          data-testid={`button-quick-reply-${conversationId}`}
+          title="Resposta rápida"
+        >
+          <Zap className="h-4 w-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent 
+        className="w-72 p-2" 
+        align="start"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar resposta..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 h-8"
+              data-testid="input-quick-reply-search"
+            />
+          </div>
+          <ScrollArea className="max-h-60">
+            <div className="space-y-1">
+              {filteredResponses.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  {cannedResponses.length === 0 ? "Nenhuma resposta rápida configurada" : "Nenhuma resposta encontrada"}
+                </p>
+              ) : (
+                filteredResponses.map((response) => (
+                  <button
+                    key={response.id}
+                    className="w-full text-left px-2 py-2 rounded-md hover-elevate active-elevate-2 transition-colors"
+                    onClick={(e) => handleSendQuickReply(response, e)}
+                    disabled={isSending}
+                    data-testid={`quick-reply-option-${response.id}`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant="secondary" className="font-mono text-xs">
+                        /{response.shortcut}
+                      </Badge>
+                      {isSending && <LoadingSpinner size="sm" />}
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      {response.content}
+                    </p>
+                  </button>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 interface SortableConversationCardProps {
   conversation: ConversationWithDetails;
   onClick: () => void;
   uniqueId: string;
   showTime?: boolean;
+  cannedResponses: CannedResponse[];
 }
 
-function SortableConversationCard({ conversation, onClick, uniqueId, showTime }: SortableConversationCardProps) {
+function SortableConversationCard({ conversation, onClick, uniqueId, showTime, cannedResponses }: SortableConversationCardProps) {
   const {
     attributes,
     listeners,
@@ -109,12 +292,20 @@ function SortableConversationCard({ conversation, onClick, uniqueId, showTime }:
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-1">
               <p className="font-medium text-sm truncate">{conversation.contact.name}</p>
-              {showTime && timeInStage && (
-                <span className={cn("text-xs font-medium flex items-center gap-0.5 shrink-0", timeColor)}>
-                  <Clock className="h-3 w-3" />
-                  {timeInStage}
-                </span>
-              )}
+              <div className="flex items-center gap-1 shrink-0">
+                <QuickReplyPopover
+                  conversationId={conversation.id}
+                  contactId={conversation.contactId}
+                  cannedResponses={cannedResponses}
+                  onSuccess={() => {}}
+                />
+                {showTime && timeInStage && (
+                  <span className={cn("text-xs font-medium flex items-center gap-0.5", timeColor)}>
+                    <Clock className="h-3 w-3" />
+                    {timeInStage}
+                  </span>
+                )}
+              </div>
             </div>
             <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
               <Phone className="h-3 w-3" />
@@ -181,9 +372,10 @@ interface TagColumnProps {
   conversations: ConversationWithDetails[];
   onConversationClick: (conv: ConversationWithDetails) => void;
   showTime?: boolean;
+  cannedResponses: CannedResponse[];
 }
 
-function SortableTagColumn({ tag, conversations, onConversationClick, showTime }: TagColumnProps) {
+function SortableTagColumn({ tag, conversations, onConversationClick, showTime, cannedResponses }: TagColumnProps) {
   const {
     attributes,
     listeners,
@@ -238,6 +430,7 @@ function SortableTagColumn({ tag, conversations, onConversationClick, showTime }
                 conversation={conv}
                 onClick={() => onConversationClick(conv)}
                 showTime={showTime}
+                cannedResponses={cannedResponses}
               />
             ))}
             {conversations.length === 0 && (
@@ -289,6 +482,15 @@ export default function KanbanPage() {
     queryFn: async () => {
       const res = await authFetch("/api/conversations");
       if (!res.ok) throw new Error("Falha ao buscar conversas");
+      return res.json();
+    },
+  });
+
+  const { data: cannedResponses = [] } = useQuery<CannedResponse[]>({
+    queryKey: ["/api/canned-responses"],
+    queryFn: async () => {
+      const res = await authFetch("/api/canned-responses");
+      if (!res.ok) throw new Error("Falha ao buscar respostas rápidas");
       return res.json();
     },
   });
@@ -485,6 +687,7 @@ export default function KanbanPage() {
                             conversation={conv}
                             onClick={() => handleConversationClick(conv)}
                             showTime={showTimeInStage}
+                            cannedResponses={cannedResponses}
                           />
                         ))}
                         {noTagConversations.length === 0 && (
@@ -507,6 +710,7 @@ export default function KanbanPage() {
                     conversations={getConversationsForTag(tag.id)}
                     onConversationClick={handleConversationClick}
                     showTime={showTimeInStage}
+                    cannedResponses={cannedResponses}
                   />
                 ))}
               </div>

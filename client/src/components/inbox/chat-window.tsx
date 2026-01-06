@@ -663,9 +663,9 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
 
   const selectCannedResponse = (response: CannedResponse) => {
     console.log("[ChatWindow] Selecionada resposta rápida:", response.shortcut, "atributos:", response.attributes, "tags:", response.tagIds);
-    setMessage(response.content);
     setShowCannedResponses(false);
     setCannedSearchTerm("");
+    
     if (response.attributes && response.attributes.length > 0) {
       console.log("[ChatWindow] Definindo pendingAttributes (ref):", response.attributes);
       setPendingAttributes(response.attributes);
@@ -676,7 +676,11 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
       setPendingTags(response.tagIds);
       pendingTagsRef.current = response.tagIds;
     }
-    textareaRef.current?.focus();
+    
+    sendMessage.mutate({
+      content: response.content,
+      isInternalNote: false,
+    });
   };
 
   const getMediaTypeFromMimetype = (mimetype: string): string => {
