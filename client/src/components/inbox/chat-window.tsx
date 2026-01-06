@@ -101,13 +101,15 @@ function MediaContent({ mediaUrl, mediaType, fileName, fileSize, isOutgoing }: M
         </div>
         {showLightbox && (
           <Dialog open={showLightbox} onOpenChange={setShowLightbox}>
-            <DialogContent className="max-w-4xl max-h-[90vh] p-2">
-              <img
-                src={mediaUrl}
-                alt={fileName || "Imagem"}
-                className="w-full h-full object-contain rounded-lg"
-                data-testid="media-image-lightbox"
-              />
+            <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] p-2 flex flex-col">
+              <ScrollArea className="flex-1 max-h-[85vh]">
+                <img
+                  src={mediaUrl}
+                  alt={fileName || "Imagem"}
+                  className="w-full rounded-lg"
+                  data-testid="media-image-lightbox"
+                />
+              </ScrollArea>
             </DialogContent>
           </Dialog>
         )}
