@@ -127,7 +127,12 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
     },
   });
 
-  const filteredConversations = conversations.filter((conv) => {
+  // Deduplicar conversas (evita chaves duplicadas no React)
+  const uniqueConversations = conversations.filter((conv, index, self) => 
+    self.findIndex(c => c.id === conv.id) === index
+  );
+
+  const filteredConversations = uniqueConversations.filter((conv) => {
     if (search) {
       const searchLower = search.toLowerCase();
       const matchesSearch = conv.contact.name.toLowerCase().includes(searchLower) ||
