@@ -1,0 +1,285 @@
+B2B Sale
+
+
+production
+Architecture
+Observability
+Logs
+Settings
+
+
+
+1
+
+
+
+
+Activity
+
+B2B-Sale
+
+Deployment failed
+
+1 minute ago
+
+
+3 changes in B2B-Sale
+
+madrugadaotabacaria-dotcom
+
+·
+1 minute ago
+
+1 change in B2B-Sale
+
+madrugadaotabacaria-dotcom
+
+·
+12 hours ago
+B2B-Sale
+
+Deployment crashed
+
+12 hours ago
+
+B2B-Sale
+
+Deployment restarted
+
+12 hours ago
+
+B2B-Sale
+
+Deployment restarted
+
+12 hours ago
+
+B2B-Sale
+
+Deployment restarted
+
+12 hours ago
+
+B2B-Sale
+
+Deployment restarted
+
+12 hours ago
+
+B2B-Sale
+
+Deployment crashed
+
+12 hours ago
+
+B2B-Sale
+
+Deployment restarted
+
+12 hours ago
+
+B2B-Sale
+
+Deployment restarted
+
+12 hours ago
+
+B2B-Sale
+
+Deployment successful
+
+12 hours ago
+
+
+3 changes in B2B-Sale
+
+madrugadaotabacaria-dotcom
+
+·
+12 hours ago
+
+1 change in postgres-volume
+
+madrugadaotabacaria-dotcom
+
+·
+16 hours ago
+
+2 changes in Postgres
+
+madrugadaotabacaria-dotcom
+
+·
+16 hours ago
+Postgres
+
+Deployment successful
+
+4 days ago
+
+
+Deploy PostgreSQL
+
+1 service and 1 volume updated
+madrugadaotabacaria-dotcom
+
+·
+4 days ago
+
+New environment
+
+madrugadaotabacaria-dotcom
+
+·
+4 days ago
+
+B2B-Sale
+Deployments
+Variables
+Metrics
+Settings
+Unexposed service
+us-east4-eqdc4a
+1 Replica
+
+
+
+
+
+
+
+
+
+
+
+
+
+B2B-Sale
+/
+cbee4916
+Failed
+
+Jan 6, 2026, 8:41 AM
+Get Help
+Details
+Build Logs
+Deploy Logs
+Search build logs
+
+You reached the start of the range
+Jan 6, 2026, 8:36 AM
+scheduling build on Metal builder "builder-wkkdbn"
+scheduling build on Metal builder "builder-wkkdbn"
+[snapshot] received sha256:4841cb2cefc4a94bed532f5b2a8244dfe5d471d9008d4f16ee63fbf813672c6a md5:4f94818b9ba41e787dfa3007c43519f2
+receiving snapshot
+84.2 MB
+3.3s
+analyzing snapshot
+84.2 MB
+433ms
+uploading snapshot
+84.2 MB
+1.7s
+fetched snapshot sha256:4841cb2cefc4a94bed532f5b2a8244dfe5d471d9008d4f16ee63fbf813672c6a (88 MB bytes)
+fetching snapshot
+84.2 MB
+1.5s
+unpacking archive
+89.2 MB
+477ms
+using build driver railpack-v0.15.4
+                   
+╭─────────────────╮
+│ Railpack 0.15.4 │
+╰─────────────────╯
+ 
+  ↳ Detected Node
+  ↳ Using npm package manager
+            
+  Packages  
+  ──────────
+  node  │  22.21.1  │  railpack default (22)
+            
+  Steps     
+  ──────────
+  ▸ install
+    $ npm ci
+         
+  ▸ build
+    $ npm run build
+            
+  Deploy    
+  ──────────
+    $ npm run start
+ 
+
+load build definition from ./railpack-plan.json
+0ms
+
+mkdir -p /app/node_modules/.cache cached
+0ms
+
+install mise packages: node cached
+0ms
+
+copy package-lock.json, package.json
+864ms
+
+npm ci
+10s
+Run `npm audit` for details.
+
+copy / /app
+1s
+
+npm run build
+10s
+npm warn config production Use `--omit=dev` instead.
+> rest-express@1.0.0 build
+> tsx script/build.ts
+building client...
+vite v5.4.21 building for production...
+transforming...
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 3466 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/public/index.html                                   0.84 kB │ gzip:   0.45 kB
+../dist/public/assets/image_1765659931449-QZT3Irl6.png     72.95 kB
+../dist/public/assets/image_1765676145067-C9dAam-w.png    581.95 kB
+../dist/public/assets/image_1765676126936-llc6SiT5.png    968.48 kB
+../dist/public/assets/index-D9_AiPEW.css                  121.33 kB │ gzip:  23.47 kB
+../dist/public/assets/index-D_haAB5y.js                 1,744.62 kB │ gzip: 452.08 kB
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 7.75s
+building server...
+✘ [ERROR] Could not resolve "./services/plans.service"
+    server/index.ts:9:29:
+      9 │ import { plansService } from "./services/plans.service";
+        ╵                              ~~~~~~~~~~~~~~~~~~~~~~~~~~
+1 error
+Error: Build failed with 1 error:
+
+server/index.ts:9:29: ERROR: Could not resolve "./services/plans.service"
+    at failureErrorWithLog (/app/node_modules/esbuild/lib/main.js:1467:15)
+    at /app/node_modules/esbuild/lib/main.js:926:25
+    at /app/node_modules/esbuild/lib/main.js:878:52
+    at buildResponseToResult (/app/node_modules/esbuild/lib/main.js:924:7)
+    at /app/node_modules/esbuild/lib/main.js:951:16
+    at responseCallbacks.<computed> (/app/node_modules/esbuild/lib/main.js:603:9)
+    at handleIncomingPacket (/app/node_modules/esbuild/lib/main.js:658:12)
+    at Socket.readFromStdout (/app/node_modules/esbuild/lib/main.js:581:7)
+    at Socket.emit (node:events:519:28)
+    at addChunk (node:internal/streams/readable:561:12) {
+  errors: [Getter/Setter],
+  warnings: [Getter/Setter]
+}
+Build Failed: build daemon returned an error < failed to solve: process "npm run build" did not complete successfully: exit code: 1 >
+You reached the end of the range
+Jan 6, 2026, 8:46 AM
+
+
+B2B-Sale | Railway
