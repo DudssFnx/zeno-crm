@@ -181,9 +181,9 @@ function QuickReplyPopover({ conversationId, contactId, cannedResponses, onSucce
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="ghost"
+          variant="outline"
           size="icon"
-          className="h-7 w-7 shrink-0"
+          className="h-6 w-6 shrink-0"
           onClick={(e) => {
             e.stopPropagation();
             setIsOpen(true);
@@ -191,7 +191,7 @@ function QuickReplyPopover({ conversationId, contactId, cannedResponses, onSucce
           data-testid={`button-quick-reply-${conversationId}`}
           title="Resposta rápida"
         >
-          <Zap className="h-4 w-4" />
+          <Zap className="h-3 w-3" />
         </Button>
       </PopoverTrigger>
       <PopoverContent 
@@ -311,13 +311,6 @@ function SortableConversationCard({ conversation, onClick, uniqueId, showTime, c
               <Phone className="h-3 w-3" />
               {formatPhoneNumber(conversation.contact.phoneNumber)}
             </p>
-            {conversation.lastMessage && (
-              <p className="text-xs text-muted-foreground truncate mt-1">
-                <MessageSquare className="h-3 w-3 inline mr-1" />
-                {conversation.lastMessage.content.substring(0, 50)}
-                {conversation.lastMessage.content.length > 50 ? "..." : ""}
-              </p>
-            )}
           </div>
         </div>
         {conversation.tags && conversation.tags.length > 0 && (
