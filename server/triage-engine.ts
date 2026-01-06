@@ -427,7 +427,7 @@ export class TriageEngine {
         .where(eq(conversations.id, conversationId));
     }
 
-    const confirmationMessage = `Perfeito! Você foi direcionado para ${option.label}. Um atendente irá te responder em breve.`;
+    const confirmationMessage = option.response || `Perfeito! Você foi direcionado para ${option.label}. Um atendente irá te responder em breve.`;
 
     return {
       action: "route_to_department",
