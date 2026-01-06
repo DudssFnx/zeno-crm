@@ -638,7 +638,7 @@ class WhatsAppBaileysGateway {
         };
         break;
       case "documentMessage":
-        content = msg.message.documentMessage?.fileName || "[Documento]";
+        content = msg.message.documentMessage?.caption || msg.message.documentMessage?.fileName || "[Documento]";
         mediaInfo = {
           mediaType: "document",
           mimetype: msg.message.documentMessage?.mimetype || "application/octet-stream",
@@ -648,6 +648,21 @@ class WhatsAppBaileysGateway {
           message: msg.message,
         };
         break;
+      case "documentWithCaptionMessage": {
+        const docMsg = msg.message.documentWithCaptionMessage?.message?.documentMessage;
+        content = docMsg?.caption || docMsg?.fileName || "[Documento]";
+        if (docMsg) {
+          mediaInfo = {
+            mediaType: "document",
+            mimetype: docMsg.mimetype || "application/octet-stream",
+            fileName: docMsg.fileName || undefined,
+            fileSize: docMsg.fileLength ? Number(docMsg.fileLength) : undefined,
+            messageKey: msg.key,
+            message: msg.message,
+          };
+        }
+        break;
+      }
       case "stickerMessage":
         content = "[Sticker]";
         break;
