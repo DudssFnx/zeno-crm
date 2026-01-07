@@ -373,10 +373,70 @@ class RobotEngine {
   }
 
   private processTemplateVariables(content: string, context: ExecutionContext): string {
+    // Variações de período do dia (baseado no horário atual)
+    const periodoVariacoes = [
+      "um bom dia",
+      "bom dia",
+      "um boom dia",
+      "um ótimo dia",
+      "um excelente dia",
+      "um belo dia",
+      "um ótimo bom dia",
+      "um dia abençoado",
+      "um dia incrível",
+      "um dia produtivo"
+    ];
+    
+    const periodoTardeVariacoes = [
+      "uma boa tarde",
+      "boa tarde",
+      "uma ótima tarde",
+      "uma excelente tarde",
+      "uma tarde abençoada",
+      "uma tarde incrível",
+      "uma tarde produtiva"
+    ];
+    
+    const periodoNoiteVariacoes = [
+      "uma boa noite",
+      "boa noite",
+      "uma ótima noite",
+      "uma excelente noite",
+      "uma noite abençoada",
+      "uma noite tranquila"
+    ];
+    
+    // Variações de saudação
+    const saudacaoVariacoes = [
+      "Olá, tudo bem?",
+      "Oi, tudo bem?",
+      "Olá, tudo bem com você?",
+      "Oi, tudo bem por aí?",
+      "Oi, tudo certo?",
+      "Olá, tudo certo?"
+    ];
+    
+    // Determinar período do dia
+    const hora = new Date().getHours();
+    let periodoVariacao: string[];
+    if (hora >= 5 && hora < 12) {
+      periodoVariacao = periodoVariacoes;
+    } else if (hora >= 12 && hora < 18) {
+      periodoVariacao = periodoTardeVariacoes;
+    } else {
+      periodoVariacao = periodoNoiteVariacoes;
+    }
+    
+    // Selecionar variação aleatória
+    const periodoDoDia = periodoVariacao[Math.floor(Math.random() * periodoVariacao.length)];
+    const saudacao = saudacaoVariacoes[Math.floor(Math.random() * saudacaoVariacoes.length)];
+    
     return content
       .replace(/\{\{nome\}\}/gi, context.contactName)
       .replace(/\{\{telefone\}\}/gi, context.contactPhone)
-      .replace(/\{\{primeiro_nome\}\}/gi, context.contactName.split(" ")[0] || context.contactName);
+      .replace(/\{\{primeiro_nome\}\}/gi, context.contactName.split(" ")[0] || context.contactName)
+      .replace(/\{\{periodo_do_dia\}\}/gi, periodoDoDia)
+      .replace(/\{\{saudacao\}\}/gi, saudacao);
   }
 
   cancelExecution(executionId: string): boolean {

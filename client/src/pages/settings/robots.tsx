@@ -794,7 +794,7 @@ export default function RobotsPage() {
             <DialogHeader className="shrink-0 px-6 pt-6 pb-4 border-b">
               <DialogTitle className="text-xl">{editingRobot ? "Editar Robo" : "Novo Robo"}</DialogTitle>
               <DialogDescription>
-                Arraste os blocos para reordenar. Use variaveis como {"{{nome}}"}, {"{{telefone}}"}, {"{{primeiro_nome}}"}.
+                Arraste os blocos para reordenar. Use variaveis como {"{{nome}}"}, {"{{primeiro_nome}}"}, {"{{periodo_do_dia}}"}, {"{{saudacao}}"}.
               </DialogDescription>
             </DialogHeader>
             
@@ -927,7 +927,14 @@ export default function RobotsPage() {
                         <code className="block px-1.5 py-0.5 bg-muted rounded">{"{{nome}}"}</code>
                         <code className="block px-1.5 py-0.5 bg-muted rounded">{"{{primeiro_nome}}"}</code>
                         <code className="block px-1.5 py-0.5 bg-muted rounded">{"{{telefone}}"}</code>
+                        <code className="block px-1.5 py-0.5 bg-muted rounded text-green-600 dark:text-green-400">{"{{periodo_do_dia}}"}</code>
+                        <code className="block px-1.5 py-0.5 bg-muted rounded text-blue-600 dark:text-blue-400">{"{{saudacao}}"}</code>
                       </div>
+                      <p className="text-[9px] text-muted-foreground mt-2 leading-relaxed">
+                        <span className="text-green-600 dark:text-green-400">periodo_do_dia</span>: variacao aleatoria baseada no horario
+                        <br />
+                        <span className="text-blue-600 dark:text-blue-400">saudacao</span>: variacao aleatoria de cumprimento
+                      </p>
                     </div>
                   </div>
 
