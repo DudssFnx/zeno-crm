@@ -17,7 +17,7 @@ import path from "path";
 import pino from "pino";
 import NodeCache from "node-cache";
 import QRCode from "qrcode";
-import { normalizeJid, extractPhoneFromJid, isValidChatJid, isValidPhoneNumber, normalizePhone } from "./jid-utils";
+import { normalizeJid, extractPhoneFromJid, isValidChatJid, isValidPhoneNumber, normalizePhone, isGroupJid } from "./jid-utils";
 import { storage } from "./storage";
 
 const SESSION_DIR = "./whatsapp-sessions-baileys";
@@ -74,6 +74,7 @@ export interface IncomingMessage {
   senderDisplayName?: string;
   mediaInfo?: MediaInfo;
   messageId?: string;
+  isGroup?: boolean; // true if message is from a WhatsApp group
 }
 
 export type MessageHandler = (accountId: string, message: IncomingMessage) => Promise<void>;
@@ -518,7 +519,7 @@ class WhatsAppBaileysGateway {
     
     const rawJid = msg.key.remoteJid;
     
-    // Ignorar status, broadcast, newsletter e grupos
+    // Ignorar status, broadcast, newsletter
     if (!isValidChatJid(rawJid)) {
       console.log(`[Baileys] Ignorando JID inválido: ${rawJid}`);
       return;
@@ -541,36 +542,52 @@ class WhatsAppBaileysGateway {
       oldest.forEach((id) => session.processedMessages.delete(id));
     }
 
-    // Use resolveChatIdentifiers to get the best available phone number
-    const resolved = this.resolveChatIdentifiers(msg);
-    if (!resolved) {
-      console.log(`[Baileys] Could not resolve chat identifiers for message`);
-      return;
-    }
+    // Check if this is a group message
+    const isGroup = isGroupJid(rawJid);
+    let phoneNumber: string;
+    let contactName: string;
     
-    const { chatIdResolved, phoneNumber, isLid, altJidUsed, resolvedFromCache } = resolved;
-    
-    // Log LID resolution details
-    if (isLid) {
-      if (altJidUsed) {
-        console.log(`[Baileys] LID resolved via ALT JID: ${rawJid} -> ${phoneNumber}`);
-      } else if (resolvedFromCache) {
-        console.log(`[Baileys] LID resolved via cache: ${rawJid} -> ${phoneNumber}`);
-      } else {
-        console.log(`[Baileys] LID not resolvable: ${rawJid}, pushName: ${msg.pushName}`);
+    if (isGroup) {
+      // For groups, use the group ID as identifier and group subject as name
+      phoneNumber = rawJid.replace("@g.us", ""); // Group ID without suffix
+      // Try to get group name from message or use a placeholder
+      contactName = msg.pushName || `Grupo ${phoneNumber}`;
+      console.log(`[Baileys] Mensagem de grupo: ${rawJid} - ${contactName}`);
+    } else {
+      // Use resolveChatIdentifiers to get the best available phone number
+      const resolved = this.resolveChatIdentifiers(msg);
+      if (!resolved) {
+        console.log(`[Baileys] Could not resolve chat identifiers for message`);
+        return;
       }
       
-      // If we discovered a new mapping, notify to update existing LID contacts
-      if (altJidUsed && !phoneNumber.startsWith("LID_")) {
-        const lidDigits = extractPhoneFromJid(rawJid);
-        this.notifyLidMappingDiscovered(accountId, lidDigits, phoneNumber);
+      const { chatIdResolved, isLid, altJidUsed, resolvedFromCache } = resolved;
+      phoneNumber = resolved.phoneNumber;
+      
+      // Log LID resolution details
+      if (isLid) {
+        if (altJidUsed) {
+          console.log(`[Baileys] LID resolved via ALT JID: ${rawJid} -> ${phoneNumber}`);
+        } else if (resolvedFromCache) {
+          console.log(`[Baileys] LID resolved via cache: ${rawJid} -> ${phoneNumber}`);
+        } else {
+          console.log(`[Baileys] LID not resolvable: ${rawJid}, pushName: ${msg.pushName}`);
+        }
+        
+        // If we discovered a new mapping, notify to update existing LID contacts
+        if (altJidUsed && !phoneNumber.startsWith("LID_")) {
+          const lidDigits = extractPhoneFromJid(rawJid);
+          this.notifyLidMappingDiscovered(accountId, lidDigits, phoneNumber);
+        }
       }
-    }
-    
-    // Validar número de telefone (ignorar se for LID não mapeado)
-    if (!phoneNumber.startsWith("LID_") && !isValidPhoneNumber(phoneNumber)) {
-      console.log(`[Baileys] Ignorando número inválido: ${phoneNumber}`);
-      return;
+      
+      // Validar número de telefone (ignorar se for LID não mapeado)
+      if (!phoneNumber.startsWith("LID_") && !isValidPhoneNumber(phoneNumber)) {
+        console.log(`[Baileys] Ignorando número inválido: ${phoneNumber}`);
+        return;
+      }
+      
+      contactName = msg.pushName || phoneNumber;
     }
 
     const messageType = getContentType(msg.message);
@@ -680,13 +697,14 @@ class WhatsAppBaileysGateway {
 
     const direction = msg.key.fromMe ? "outgoing" : "incoming";
     
+    // For non-groups, update contact name based on direction
     // CRITICAL: Never use pushName for outgoing messages (fromMe === true)
-    // pushName is only valid for incoming messages from the contact
-    // For outgoing messages sent from other linked devices, pushName is undefined or incorrect
-    const contactName = direction === "incoming" ? (msg.pushName || phoneNumber) : phoneNumber;
+    if (!isGroup) {
+      contactName = direction === "incoming" ? (msg.pushName || phoneNumber) : phoneNumber;
+    }
 
     console.log(
-      `[Baileys] ${direction === "outgoing" ? "Enviada" : "Recebida"} [${phoneNumber}] fromMe=${msg.key.fromMe}: ${contactName}: ${content.substring(0, 50)}${mediaInfo ? ` [${mediaInfo.mediaType}]` : ""}`
+      `[Baileys] ${direction === "outgoing" ? "Enviada" : "Recebida"} [${phoneNumber}]${isGroup ? " [GRUPO]" : ""} fromMe=${msg.key.fromMe}: ${contactName}: ${content.substring(0, 50)}${mediaInfo ? ` [${mediaInfo.mediaType}]` : ""}`
     );
 
     if (this.messageHandler) {
@@ -699,6 +717,7 @@ class WhatsAppBaileysGateway {
         senderDisplayName: direction === "outgoing" ? "Celular" : undefined,
         mediaInfo,
         messageId: messageId || undefined,
+        isGroup,
       });
     }
   }

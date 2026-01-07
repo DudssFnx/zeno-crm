@@ -53,6 +53,7 @@ interface QueuedMessage {
   timestamp: string;
   mediaInfo?: MediaInfo;
   messageId?: string;
+  isGroup?: boolean; // true if message is from a WhatsApp group
 }
 
 interface AvatarTask {
@@ -366,7 +367,7 @@ async function processMediaDownload(task: MediaDownloadTask) {
 
 // Processamento real da mensagem (DB operations)
 async function processMessageInBackground(msg: QueuedMessage) {
-  const { accountId, companyId, phoneNumber, contactName, content, direction, senderDisplayName, avatarUrl, mediaInfo, messageId } = msg;
+  const { accountId, companyId, phoneNumber, contactName, content, direction, senderDisplayName, avatarUrl, mediaInfo, messageId, isGroup } = msg;
   
   // IMPORTANT: Only skip outgoing messages that were sent by CRM (to avoid duplicates)
   // Outgoing messages from phone/linked device should be processed normally
@@ -414,6 +415,7 @@ async function processMessageInBackground(msg: QueuedMessage) {
         phoneNumber: normalizedPhone,
         avatarUrl,
         source: "whatsapp",
+        isGroup: isGroup || false,
       });
       contact = result.contact;
       contactCreated = result.created;
@@ -690,6 +692,7 @@ export async function handleMessageFast(
     timestamp: message.timestamp,
     mediaInfo: message.mediaInfo,
     messageId: message.messageId,
+    isGroup: message.isGroup,
   });
 }
 
