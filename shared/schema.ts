@@ -72,6 +72,7 @@ export const contacts = pgTable("contacts", {
   whatsappAccountId: varchar("whatsapp_account_id").references(() => whatsappAccounts.id),
   name: text("name").notNull(),
   phoneNumber: text("phone_number").notNull(),
+  isGroup: boolean("is_group").notNull().default(false), // true for WhatsApp groups
   avatarUrl: text("avatar_url"),
   avatarUpdatedAt: timestamp("avatar_updated_at"),
   notes: text("notes"),

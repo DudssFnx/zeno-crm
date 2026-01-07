@@ -108,7 +108,17 @@ export function phoneNumbersAreEquivalent(phone1: string, phone2: string): boole
 }
 
 /**
- * Verifica se um JID é válido para chat (não é grupo, broadcast ou status)
+ * Verifica se um JID é um grupo do WhatsApp
+ * @param jid JID do WhatsApp
+ * @returns true se for um grupo
+ */
+export function isGroupJid(jid: string): boolean {
+  if (!jid) return false;
+  return jid.endsWith("@g.us");
+}
+
+/**
+ * Verifica se um JID é válido para chat (inclui grupos, mas não broadcast ou status)
  * @param jid JID do WhatsApp
  * @returns true se for um chat válido
  */
@@ -117,7 +127,7 @@ export function isValidChatJid(jid: string): boolean {
   if (jid.includes("@newsletter")) return false;
   if (jid.includes("@broadcast")) return false;
   if (jid === "status@broadcast") return false;
-  if (jid.endsWith("@g.us")) return false; // grupos ignorados
+  // Grupos são aceitos (@g.us)
   // Verificar se é um número que começa com 120363 (grupos internos do WhatsApp)
   if (jid.startsWith("120363")) return false;
   return true;
