@@ -160,6 +160,7 @@ export async function registerRoutes(
         timestamp: message.timestamp,
         mediaInfo: message.mediaInfo,
         messageId: message.messageId,
+        isGroup: message.isGroup,
       });
       
       console.log(`[FastHandler] Processed in ${Date.now() - startTime}ms`);

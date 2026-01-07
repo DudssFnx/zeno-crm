@@ -611,6 +611,7 @@ export async function handleMessageFast(
     timestamp: string;
     mediaInfo?: MediaInfo;
     messageId?: string;
+    isGroup?: boolean;
   }
 ) {
   // LOG CRÍTICO: Toda mensagem que chega aqui DEVE ser processada

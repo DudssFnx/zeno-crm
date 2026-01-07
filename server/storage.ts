@@ -440,6 +440,31 @@ export class DatabaseStorage implements IStorage {
     const existing = await this.getContactByPhoneAndAccount(data.whatsappAccountId, normalizedPhone);
     if (existing) {
       console.log(`[Storage] Contact exists: id=${existing.id} name="${existing.name}" phone=${existing.phoneNumber}`);
+      
+      // For groups, update name and avatar if they were fetched from WhatsApp metadata
+      if (existing.isGroup && (data.name || data.avatarUrl)) {
+        const updates: Partial<InsertContact> = {};
+        
+        // Update group name if provided and different from placeholder
+        if (data.name && !data.name.startsWith("Grupo ") && data.name !== existing.name) {
+          updates.name = data.name;
+          console.log(`[Storage] Updating group name: "${existing.name}" -> "${data.name}"`);
+        }
+        
+        // Update avatar if provided and different
+        if (data.avatarUrl && data.avatarUrl !== existing.avatarUrl) {
+          updates.avatarUrl = data.avatarUrl;
+          console.log(`[Storage] Updating group avatar`);
+        }
+        
+        if (Object.keys(updates).length > 0) {
+          const updated = await this.updateContact(existing.id, updates);
+          if (updated) {
+            return { contact: updated, created: false };
+          }
+        }
+      }
+      
       return { contact: existing, created: false };
     }
     

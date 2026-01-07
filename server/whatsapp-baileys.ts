@@ -546,12 +546,38 @@ class WhatsAppBaileysGateway {
     const isGroup = isGroupJid(rawJid);
     let phoneNumber: string;
     let contactName: string;
+    let groupAvatarUrl: string | undefined;
     
     if (isGroup) {
-      // For groups, use the group ID as identifier and group subject as name
+      // For groups, use the group ID as identifier
       phoneNumber = rawJid.replace("@g.us", ""); // Group ID without suffix
-      // Try to get group name from message or use a placeholder
-      contactName = msg.pushName || `Grupo ${phoneNumber}`;
+      
+      // Fetch group metadata (name and picture)
+      try {
+        const groupMetadata = await session.socket?.groupMetadata(rawJid);
+        if (groupMetadata) {
+          contactName = groupMetadata.subject || `Grupo ${phoneNumber}`;
+          console.log(`[Baileys] Grupo: ${contactName} (${rawJid})`);
+          
+          // Try to fetch group profile picture
+          try {
+            const ppUrl = await session.socket?.profilePictureUrl(rawJid, "image");
+            if (ppUrl) {
+              groupAvatarUrl = ppUrl;
+              console.log(`[Baileys] Foto do grupo obtida: ${contactName}`);
+            }
+          } catch (ppError) {
+            // Group may not have a picture, that's ok
+            console.log(`[Baileys] Grupo sem foto: ${contactName}`);
+          }
+        } else {
+          contactName = `Grupo ${phoneNumber}`;
+        }
+      } catch (error) {
+        console.log(`[Baileys] Erro ao buscar metadados do grupo: ${rawJid}`, error);
+        contactName = `Grupo ${phoneNumber}`;
+      }
+      
       console.log(`[Baileys] Mensagem de grupo: ${rawJid} - ${contactName}`);
     } else {
       // Use resolveChatIdentifiers to get the best available phone number
@@ -718,6 +744,7 @@ class WhatsAppBaileysGateway {
         mediaInfo,
         messageId: messageId || undefined,
         isGroup,
+        avatarUrl: isGroup ? groupAvatarUrl : undefined, // Pass group avatar
       });
     }
   }
