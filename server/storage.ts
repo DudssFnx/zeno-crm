@@ -747,7 +747,8 @@ export class DatabaseStorage implements IStorage {
   async createMessage(data: InsertMessage): Promise<Message> {
     const [message] = await db.insert(messages).values(data).returning();
     
-    // Atualiza conversa: se incoming = não lida, se outgoing de humano = lida
+    // Atualiza conversa: se incoming = não lida
+    // Marcar como lida acontece apenas quando o usuário ABRE a conversa (via endpoint mark-read)
     const updateData: Record<string, any> = { 
       lastMessageAt: new Date(), 
       updatedAt: new Date() 
@@ -756,12 +757,8 @@ export class DatabaseStorage implements IStorage {
     // Mensagem do cliente (incoming) = marcar como não lida
     if (data.direction === "incoming") {
       updateData.isUnread = true;
-    } 
-    // Mensagem outgoing COM senderUserId = atendente humano respondeu = marcar como lida
-    // Mensagem outgoing SEM senderUserId = bot/automação = NÃO marca como lida
-    else if (data.direction === "outgoing" && data.senderUserId) {
-      updateData.isUnread = false;
     }
+    // Mensagens outgoing NÃO alteram status de lido - só abrir a conversa marca como lida
     
     await db
       .update(conversations)

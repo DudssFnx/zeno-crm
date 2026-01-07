@@ -1513,6 +1513,38 @@ export async function registerRoutes(
     }
   });
 
+  // Mark conversation as read (when user opens the conversation)
+  app.post("/api/conversations/:id/mark-read", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const conversation = await storage.getConversation(req.params.id);
+      
+      // Verify conversation belongs to user's company
+      if (!conversation || conversation.companyId !== req.user!.companyId) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+
+      // Only update if currently unread
+      if (conversation.isUnread) {
+        const updated = await storage.updateConversation(req.params.id, { 
+          isUnread: false 
+        });
+        
+        // Emit real-time event
+        io.to(`company:${req.user!.companyId}`).emit("conversation:updated", {
+          conversationId: req.params.id,
+          isUnread: false
+        });
+
+        return res.json(updated);
+      }
+
+      res.json(conversation);
+    } catch (error) {
+      console.error("Mark read error:", error);
+      res.status(500).json({ message: "Failed to mark conversation as read" });
+    }
+  });
+
   // Messages routes
   app.get("/api/conversations/:id/messages", authMiddleware(storage), async (req: AuthRequest, res) => {
     // Verify conversation belongs to user's company

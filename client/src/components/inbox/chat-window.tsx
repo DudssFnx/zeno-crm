@@ -556,6 +556,20 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     setIsAtBottom(true);
   }, [conversationId, scrollToBottom]);
 
+  // Mark conversation as read when opened
+  useEffect(() => {
+    if (conversationId && conversation?.isUnread) {
+      authFetch(`/api/conversations/${conversationId}/mark-read`, {
+        method: "POST",
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      }).catch((err) => {
+        console.error("Failed to mark conversation as read:", err);
+      });
+    }
+  }, [conversationId, conversation?.isUnread, authFetch]);
+
   useEffect(() => {
     const scrollArea = scrollAreaRef.current;
     if (!scrollArea) return;
