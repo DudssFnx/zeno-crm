@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { robots, robotExecutions, conversations, contacts, messages, contactTags, tags } from "@shared/schema";
+import { robots, robotExecutions, conversations, contacts, messages, contactTags, tags, contactAttributes } from "@shared/schema";
 import type { Robot, RobotAction, RobotExecution } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -59,6 +59,9 @@ class RobotEngine {
       "add_tag": "Adicionando etiqueta",
       "remove_tag": "Removendo etiqueta",
       "remove_all_tags": "Removendo todas etiquetas",
+      "add_attribute": "Adicionando atributo",
+      "remove_attribute": "Removendo atributo",
+      "remove_all_attributes": "Removendo todos atributos",
       "set_status": "Alterando status",
       "assign_agent": "Atribuindo atendente",
       "transfer": "Transferindo",
@@ -307,6 +310,60 @@ class RobotEngine {
 
       case "transfer": {
         logger.info({ conversationId: context.conversationId, departmentId: action.departmentId }, "Transferindo conversa");
+        break;
+      }
+
+      case "add_attribute": {
+        if (action.attributeId) {
+          const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
+          if (conv) {
+            const [attr] = await db.select().from(contactAttributes).where(eq(contactAttributes.id, action.attributeId));
+            if (attr) {
+              const [contact] = await db.select().from(contacts).where(eq(contacts.id, conv.contactId));
+              if (contact) {
+                const currentAttrs = contact.attributes || [];
+                if (!currentAttrs.includes(attr.name)) {
+                  await db.update(contacts)
+                    .set({ attributes: [...currentAttrs, attr.name] })
+                    .where(eq(contacts.id, conv.contactId));
+                  logger.info({ contactId: conv.contactId, attribute: attr.name }, "Atributo adicionado ao contato");
+                }
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      case "remove_attribute": {
+        if (action.attributeId) {
+          const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
+          if (conv) {
+            const [attr] = await db.select().from(contactAttributes).where(eq(contactAttributes.id, action.attributeId));
+            if (attr) {
+              const [contact] = await db.select().from(contacts).where(eq(contacts.id, conv.contactId));
+              if (contact) {
+                const currentAttrs = contact.attributes || [];
+                const newAttrs = currentAttrs.filter(a => a !== attr.name);
+                await db.update(contacts)
+                  .set({ attributes: newAttrs })
+                  .where(eq(contacts.id, conv.contactId));
+                logger.info({ contactId: conv.contactId, attribute: attr.name }, "Atributo removido do contato");
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      case "remove_all_attributes": {
+        const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
+        if (conv) {
+          await db.update(contacts)
+            .set({ attributes: [] })
+            .where(eq(contacts.id, conv.contactId));
+          logger.info({ contactId: conv.contactId }, "Todos os atributos removidos do contato");
+        }
         break;
       }
 

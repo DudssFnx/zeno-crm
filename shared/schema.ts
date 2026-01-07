@@ -730,6 +730,9 @@ export const robotActionSchema = z.object({
     "add_tag",          // Adicionar tag
     "remove_tag",       // Remover tag
     "remove_all_tags",  // Remover todas as tags
+    "add_attribute",    // Adicionar atributo ao contato
+    "remove_attribute", // Remover atributo do contato
+    "remove_all_attributes", // Remover todos atributos do contato
     "set_status",       // Alterar status da conversa
     "assign_agent",     // Atribuir atendente
     "transfer",         // Transferir atendimento
@@ -740,6 +743,7 @@ export const robotActionSchema = z.object({
   fileName: z.string().optional(),        // Nome do arquivo
   delayMs: z.number().optional(),         // Delay em ms (para delay/simulate)
   tagId: z.string().optional(),           // ID da tag
+  attributeId: z.string().optional(),     // ID do atributo de contato
   status: z.enum(["open", "pending", "resolved"]).optional(),
   agentId: z.string().optional(),         // ID do agente
   departmentId: z.string().optional(),    // ID do departamento para transferência
