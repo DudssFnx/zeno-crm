@@ -35,8 +35,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useState, useEffect } from "react";
-import { GripVertical } from "lucide-react";
+import { GripVertical, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPhoneNumber, cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { Tag, ConversationWithDetails, CannedResponse } from "@shared/schema";
 
 function formatTimeInStage(stageEnteredAt: Date | string | null | undefined): string {
@@ -445,9 +446,11 @@ export default function KanbanPage() {
   const authFetch = useAuthFetch();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [activeConversation, setActiveConversation] = useState<ConversationWithDetails | null>(null);
   const [orderedTags, setOrderedTags] = useState<Tag[]>([]);
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
+  const [mobileColumnIndex, setMobileColumnIndex] = useState(0);
   const [showTimeInStage, setShowTimeInStage] = useState(() => {
     const saved = localStorage.getItem("kanban-show-time");
     return saved === "true";
@@ -589,17 +592,32 @@ export default function KanbanPage() {
     }
   };
 
+  // All columns for mobile navigation (sem etiqueta + tags)
+  const allColumns = [
+    { id: "no-tag", name: "Sem Etiqueta", color: undefined, conversations: noTagConversations },
+    ...orderedTags.map(tag => ({
+      id: tag.id,
+      name: tag.name,
+      color: tag.color,
+      conversations: getConversationsForTag(tag.id),
+    })),
+  ];
+
+  const currentMobileColumn = allColumns[mobileColumnIndex] || allColumns[0];
+
   return (
     <DashboardLayout>
-      <div className="flex-1 p-6 overflow-hidden">
-        <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
+      <div className={cn("flex-1 overflow-hidden", isMobile ? "p-3" : "p-6")}>
+        <div className={cn("mb-4 flex items-center justify-between gap-3", isMobile && "flex-col items-start")}>
           <div>
-            <h1 className="text-2xl font-semibold">Pipeline de Conversas</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Arraste as conversas entre as etiquetas para organizar seu atendimento. As etiquetas são atualizadas automaticamente.
-            </p>
+            <h1 className={cn("font-semibold", isMobile ? "text-lg" : "text-2xl")}>Pipeline de Conversas</h1>
+            {!isMobile && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Arraste as conversas entre as etiquetas para organizar seu atendimento. As etiquetas são atualizadas automaticamente.
+              </p>
+            )}
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant={showTimeInStage ? "default" : "outline"}
               size="sm"
@@ -611,8 +629,8 @@ export default function KanbanPage() {
               data-testid="button-toggle-time"
               title={showTimeInStage ? "Ocultar tempo no estágio" : "Mostrar tempo no estágio"}
             >
-              <Clock className="h-4 w-4 mr-2" />
-              {showTimeInStage ? "Ocultar Tempo" : "Mostrar Tempo"}
+              <Clock className="h-4 w-4" />
+              {!isMobile && <span className="ml-2">{showTimeInStage ? "Ocultar Tempo" : "Mostrar Tempo"}</span>}
             </Button>
             <Button
               variant="outline"
@@ -620,8 +638,8 @@ export default function KanbanPage() {
               onClick={() => setLocation("/settings/tags")}
               data-testid="button-manage-tags"
             >
-              <Settings className="h-4 w-4 mr-2" />
-              Gerenciar Etiquetas
+              <Settings className="h-4 w-4" />
+              {!isMobile && <span className="ml-2">Gerenciar Etiquetas</span>}
             </Button>
           </div>
         </div>
@@ -644,7 +662,90 @@ export default function KanbanPage() {
               />
             </CardContent>
           </Card>
+        ) : isMobile ? (
+          /* Mobile View - One column at a time with navigation */
+          <div className="flex flex-col h-[calc(100vh-160px)]">
+            {/* Column navigation header */}
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setMobileColumnIndex(Math.max(0, mobileColumnIndex - 1))}
+                disabled={mobileColumnIndex === 0}
+                data-testid="button-prev-column"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              
+              <div className="flex-1 flex items-center justify-center gap-2">
+                {currentMobileColumn.color && (
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: currentMobileColumn.color }}
+                  />
+                )}
+                {!currentMobileColumn.color && (
+                  <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                )}
+                <span className="font-medium text-sm truncate">{currentMobileColumn.name}</span>
+                <Badge variant="secondary" className="text-xs shrink-0">
+                  {currentMobileColumn.conversations.length}
+                </Badge>
+              </div>
+              
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setMobileColumnIndex(Math.min(allColumns.length - 1, mobileColumnIndex + 1))}
+                disabled={mobileColumnIndex === allColumns.length - 1}
+                data-testid="button-next-column"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Column dots indicator */}
+            <div className="flex justify-center gap-1.5 mb-3">
+              {allColumns.map((col, idx) => (
+                <button
+                  key={col.id}
+                  onClick={() => setMobileColumnIndex(idx)}
+                  className={cn(
+                    "w-2 h-2 rounded-full transition-all",
+                    idx === mobileColumnIndex ? "bg-primary w-4" : "bg-muted-foreground/30"
+                  )}
+                  data-testid={`dot-column-${idx}`}
+                />
+              ))}
+            </div>
+
+            {/* Column content */}
+            <div 
+              className="flex-1 bg-muted/30 rounded-lg overflow-hidden flex flex-col"
+              style={{ borderTop: currentMobileColumn.color ? `3px solid ${currentMobileColumn.color}` : undefined }}
+            >
+              <ScrollArea className="flex-1 p-3">
+                <div className="space-y-2">
+                  {currentMobileColumn.conversations.map((conv) => (
+                    <div
+                      key={conv.id}
+                      onClick={() => handleConversationClick(conv)}
+                      className="cursor-pointer"
+                    >
+                      <ConversationCard conversation={conv} />
+                    </div>
+                  ))}
+                  {currentMobileColumn.conversations.length === 0 && (
+                    <div className="text-center py-12 text-muted-foreground text-sm">
+                      Nenhuma conversa nesta etiqueta
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
         ) : (
+          /* Desktop View - Full horizontal Kanban */
           <DndContext
             sensors={sensors}
             collisionDetection={closestCorners}
