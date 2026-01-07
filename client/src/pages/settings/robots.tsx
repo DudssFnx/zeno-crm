@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Bot, GripVertical, Clock, MessageSquare, Mic, Play, Tag as TagIcon, UserCircle, Image, FileText, Video, ArrowRight, Upload, X, ArrowDown, Circle } from "lucide-react";
+import { Plus, Pencil, Trash2, Bot, GripVertical, Clock, Timer, MessageSquare, Mic, Play, Tag as TagIcon, UserCircle, Image, FileText, Video, ArrowRight, Upload, X, ArrowDown, Circle } from "lucide-react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -34,6 +34,7 @@ const actionTypes = [
   { value: "simulate_typing", label: "Simular Digitando", icon: MessageSquare, color: "#6366F1", category: "simulacao" },
   { value: "simulate_recording", label: "Simular Gravando", icon: Mic, color: "#D946EF", category: "simulacao" },
   { value: "delay", label: "Aguardar", icon: Clock, color: "#F97316", category: "tempo" },
+  { value: "random_delay", label: "Tempo Randomico", icon: Timer, color: "#A855F7", category: "tempo" },
   { value: "add_tag", label: "Adicionar Etiqueta", icon: TagIcon, color: "#14B8A6", category: "etiqueta" },
   { value: "remove_tag", label: "Remover Etiqueta", icon: TagIcon, color: "#EF4444", category: "etiqueta" },
   { value: "remove_all_tags", label: "Remover Todas Etiquetas", icon: TagIcon, color: "#DC2626", category: "etiqueta" },
@@ -55,7 +56,7 @@ const robotActionSchema = z.object({
   id: z.string(),
   type: z.enum([
     "send_text", "send_image", "send_audio", "send_video", "send_document",
-    "simulate_typing", "simulate_recording", "delay",
+    "simulate_typing", "simulate_recording", "delay", "random_delay",
     "add_tag", "remove_tag", "remove_all_tags", 
     "add_attribute", "remove_attribute", "remove_all_attributes",
     "set_status", "assign_agent", "transfer"
@@ -135,6 +136,8 @@ function FlowBlock({
         return `${(action.delayMs || 3000) / 1000}s`;
       case "delay":
         return `${(action.delayMs || 2000) / 1000}s`;
+      case "random_delay":
+        return "15-45s";
       case "add_tag":
       case "remove_tag":
         const tag = tags.find(t => t.id === action.tagId);

@@ -198,6 +198,16 @@ class RobotEngine {
         break;
       }
 
+      case "random_delay": {
+        // Tempo randômico entre 15 e 45 segundos para parecer mais natural
+        const minDelay = 15000; // 15 segundos
+        const maxDelay = 45000; // 45 segundos
+        const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        logger.info({ randomDelay: randomDelay / 1000 }, "Aguardando tempo randomico");
+        await this.sleep(randomDelay);
+        break;
+      }
+
       case "send_text": {
         logger.info({ actionContent: action.content }, "Executing send_text action");
         if (action.content) {

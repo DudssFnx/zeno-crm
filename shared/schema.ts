@@ -727,6 +727,7 @@ export const robotActionSchema = z.object({
     "simulate_typing",  // Simular digitando
     "simulate_recording", // Simular gravando áudio
     "delay",            // Aguardar tempo
+    "random_delay",     // Aguardar tempo randomico (15-45s)
     "add_tag",          // Adicionar tag
     "remove_tag",       // Remover tag
     "remove_all_tags",  // Remover todas as tags
