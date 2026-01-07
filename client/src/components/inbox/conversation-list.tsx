@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, MessageSquare, Trash2, X, MessageCircle } from "lucide-react";
+import { Search, MessageSquare, Trash2, X, MessageCircle, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -47,6 +47,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
   const [unreadFilter, setUnreadFilter] = useState<boolean>(false);
+  const [groupFilter, setGroupFilter] = useState<string>("all"); // all, groups, individual
   const [selectedConversations, setSelectedConversations] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -148,6 +149,13 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
     // Filtro de não lidas: campo isUnread marcado pelo usuário
     if (unreadFilter) {
       if (!conv.isUnread) return false;
+    }
+    
+    // Filtro de grupos
+    if (groupFilter === "groups") {
+      if (!conv.contact.isGroup) return false;
+    } else if (groupFilter === "individual") {
+      if (conv.contact.isGroup) return false;
     }
     
     return true;
@@ -262,6 +270,17 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
             Não Lidas
           </Button>
 
+          <Select value={groupFilter} onValueChange={setGroupFilter}>
+            <SelectTrigger className="min-w-[100px] flex-1" data-testid="select-group-filter">
+              <SelectValue placeholder="Tipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="individual">Individuais</SelectItem>
+              <SelectItem value="groups">Grupos</SelectItem>
+            </SelectContent>
+          </Select>
+
           {!isOperator && (
             <Button 
               variant={selectionMode ? "secondary" : "ghost"} 
@@ -362,6 +381,9 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                       <div className="flex items-center gap-1.5 min-w-0 flex-1">
                         {conv.isUnread && (
                           <span className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" title="Não lida" />
+                        )}
+                        {conv.contact.isGroup && (
+                          <Users className="h-4 w-4 text-muted-foreground shrink-0" />
                         )}
                         <span className={cn(
                           "font-medium text-[15px] truncate",

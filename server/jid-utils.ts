@@ -127,9 +127,9 @@ export function isValidChatJid(jid: string): boolean {
   if (jid.includes("@newsletter")) return false;
   if (jid.includes("@broadcast")) return false;
   if (jid === "status@broadcast") return false;
-  // Grupos são aceitos (@g.us)
-  // Verificar se é um número que começa com 120363 (grupos internos do WhatsApp)
-  if (jid.startsWith("120363")) return false;
+  // Grupos são aceitos (@g.us) - note que IDs de grupos começam com 120363
+  // Apenas bloquear 120363 se NÃO for um grupo (120363@s.whatsapp.net não existe)
+  if (jid.startsWith("120363") && !jid.endsWith("@g.us")) return false;
   return true;
 }
 
