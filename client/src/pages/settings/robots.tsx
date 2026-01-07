@@ -23,7 +23,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import type { Robot, Tag, User } from "@shared/schema";
+import type { Robot, Tag, User, ContactAttribute } from "@shared/schema";
 
 const actionTypes = [
   { value: "send_text", label: "Enviar Texto", icon: MessageSquare, color: "#3B82F6", category: "mensagem" },
@@ -37,6 +37,9 @@ const actionTypes = [
   { value: "add_tag", label: "Adicionar Etiqueta", icon: TagIcon, color: "#14B8A6", category: "etiqueta" },
   { value: "remove_tag", label: "Remover Etiqueta", icon: TagIcon, color: "#EF4444", category: "etiqueta" },
   { value: "remove_all_tags", label: "Remover Todas Etiquetas", icon: TagIcon, color: "#DC2626", category: "etiqueta" },
+  { value: "add_attribute", label: "Adicionar Atributo", icon: Circle, color: "#8B5CF6", category: "atributo" },
+  { value: "remove_attribute", label: "Remover Atributo", icon: Circle, color: "#F59E0B", category: "atributo" },
+  { value: "remove_all_attributes", label: "Remover Todos Atributos", icon: Circle, color: "#EF4444", category: "atributo" },
   { value: "set_status", label: "Alterar Status", icon: Play, color: "#0EA5E9", category: "status" },
   { value: "assign_agent", label: "Atribuir Atendente", icon: UserCircle, color: "#84CC16", category: "atendente" },
   { value: "transfer", label: "Transferir", icon: ArrowRight, color: "#F43F5E", category: "atendente" },
@@ -53,13 +56,16 @@ const robotActionSchema = z.object({
   type: z.enum([
     "send_text", "send_image", "send_audio", "send_video", "send_document",
     "simulate_typing", "simulate_recording", "delay",
-    "add_tag", "remove_tag", "remove_all_tags", "set_status", "assign_agent", "transfer"
+    "add_tag", "remove_tag", "remove_all_tags", 
+    "add_attribute", "remove_attribute", "remove_all_attributes",
+    "set_status", "assign_agent", "transfer"
   ]),
   content: z.string().optional(),
   mediaUrl: z.string().optional(),
   fileName: z.string().optional(),
   delayMs: z.number().optional(),
   tagId: z.string().optional(),
+  attributeId: z.string().optional(),
   status: z.enum(["open", "pending", "resolved"]).optional(),
   agentId: z.string().optional(),
 });
@@ -81,6 +87,7 @@ interface FlowBlockProps {
   onRemove: () => void;
   tags: Tag[];
   users: User[];
+  contactAttributes: ContactAttribute[];
   form: any;
   onFileUpload: (file: File, index: number) => void;
   uploadingIndex: number | null;
@@ -95,6 +102,7 @@ function FlowBlock({
   onRemove, 
   tags, 
   users, 
+  contactAttributes,
   form,
   onFileUpload,
   uploadingIndex,
@@ -132,6 +140,12 @@ function FlowBlock({
         const tag = tags.find(t => t.id === action.tagId);
         return tag?.name || "";
       case "remove_all_tags":
+        return "";
+      case "add_attribute":
+      case "remove_attribute":
+        const attr = contactAttributes.find(a => a.id === action.attributeId);
+        return attr?.name || "";
+      case "remove_all_attributes":
         return "";
       case "set_status":
         return statusOptions.find(s => s.value === action.status)?.label || "";
@@ -377,6 +391,34 @@ function FlowBlock({
               )}
             />
           )}
+
+          {["add_attribute", "remove_attribute"].includes(action.type) && (
+            <FormField
+              control={form.control}
+              name={`actions.${index}.attributeId`}
+              render={({ field: inputField }) => (
+                <FormItem>
+                  <Select value={inputField.value || ""} onValueChange={inputField.onChange}>
+                    <FormControl>
+                      <SelectTrigger className="text-sm" data-testid={`select-block-attribute-${index}`}>
+                        <SelectValue placeholder="Selecione atributo" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {contactAttributes.map((attr) => (
+                        <SelectItem key={attr.id} value={attr.id}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: attr.color }} />
+                            {attr.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormItem>
+              )}
+            />
+          )}
         </div>
       </div>
 
@@ -532,6 +574,15 @@ export default function RobotsPage() {
     queryFn: async () => {
       const res = await authFetch("/api/users");
       if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
+  });
+
+  const { data: contactAttributes = [] } = useQuery<ContactAttribute[]>({
+    queryKey: ["/api/contact-attributes"],
+    queryFn: async () => {
+      const res = await authFetch("/api/contact-attributes");
+      if (!res.ok) throw new Error("Failed to fetch contact attributes");
       return res.json();
     },
   });
@@ -832,6 +883,25 @@ export default function RobotsPage() {
                       </div>
                       
                       <div>
+                        <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Atributos</p>
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {actionTypes.filter(t => t.category === "atributo").map((type) => (
+                            <button
+                              key={type.value}
+                              type="button"
+                              onClick={() => handleAddAction(type.value)}
+                              className="flex items-center gap-2 p-2 rounded-md border bg-card text-xs transition-all hover:shadow-md hover:scale-105"
+                              style={{ borderColor: type.color + "40" }}
+                              data-testid={`add-block-${type.value}`}
+                            >
+                              <type.icon className="h-4 w-4 shrink-0" style={{ color: type.color }} />
+                              <span className="text-[10px] leading-tight">{type.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div>
                         <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Atendente</p>
                         <div className="grid grid-cols-1 gap-1.5">
                           {actionTypes.filter(t => t.category === "status" || t.category === "atendente").map((type) => (
@@ -936,6 +1006,7 @@ export default function RobotsPage() {
                                     onRemove={() => remove(index)}
                                     tags={tags}
                                     users={users}
+                                    contactAttributes={contactAttributes}
                                     form={form}
                                     onFileUpload={handleFileUpload}
                                     uploadingIndex={uploadingIndex}
