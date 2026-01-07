@@ -473,7 +473,7 @@ export default function KanbanPage() {
     },
   });
 
-  const { data: conversations = [], isLoading: conversationsLoading } = useQuery<ConversationWithDetails[]>({
+  const { data: rawConversations = [], isLoading: conversationsLoading } = useQuery<ConversationWithDetails[]>({
     queryKey: ["/api/conversations"],
     queryFn: async () => {
       const res = await authFetch("/api/conversations");
@@ -481,6 +481,11 @@ export default function KanbanPage() {
       return res.json();
     },
   });
+
+  // Deduplicar conversas (evita chaves duplicadas no React)
+  const conversations = rawConversations.filter((conv, index, self) => 
+    self.findIndex(c => c.id === conv.id) === index
+  );
 
   const { data: cannedResponses = [] } = useQuery<CannedResponse[]>({
     queryKey: ["/api/canned-responses"],
