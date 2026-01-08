@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { LayoutGrid, Phone, MessageSquare, Settings, Tag as TagIcon, Clock, Eye, EyeOff, Zap, Search } from "lucide-react";
+import { LayoutGrid, Phone, MessageSquare, Settings, Tag as TagIcon, Clock, Eye, EyeOff, Bot, Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ import { useState, useEffect } from "react";
 import { GripVertical, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatPhoneNumber, cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
-import type { Tag, ConversationWithDetails, CannedResponse } from "@shared/schema";
+import type { Tag, ConversationWithDetails, Robot } from "@shared/schema";
 
 function formatTimeInStage(stageEnteredAt: Date | string | null | undefined): string {
   if (!stageEnteredAt) return "";
@@ -66,115 +66,53 @@ function getTimeColor(stageEnteredAt: Date | string | null | undefined): string 
   return "text-muted-foreground";
 }
 
-interface QuickReplyPopoverProps {
+interface RobotPopoverProps {
   conversationId: string;
-  contactId: string;
-  cannedResponses: CannedResponse[];
+  robots: Robot[];
   onSuccess: () => void;
 }
 
-function QuickReplyPopover({ conversationId, contactId, cannedResponses, onSuccess }: QuickReplyPopoverProps) {
+function RobotPopover({ conversationId, robots, onSuccess }: RobotPopoverProps) {
   const authFetch = useAuthFetch();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isSending, setIsSending] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
 
-  const filteredResponses = searchTerm
-    ? cannedResponses.filter(r => 
-        r.shortcut.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.content.toLowerCase().includes(searchTerm.toLowerCase())
+  const activeRobots = robots.filter(r => r.isActive);
+  const filteredRobots = searchTerm
+    ? activeRobots.filter(r => 
+        r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (r.description && r.description.toLowerCase().includes(searchTerm.toLowerCase()))
       )
-    : cannedResponses;
+    : activeRobots;
 
-  const handleSendQuickReply = async (response: CannedResponse, e: React.MouseEvent) => {
+  const handleExecuteRobot = async (robot: Robot, e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsSending(true);
+    setIsExecuting(true);
     
     try {
-      const msgRes = await authFetch(`/api/conversations/${conversationId}/messages`, {
+      const res = await authFetch(`/api/robots/${robot.id}/execute`, {
         method: "POST",
-        body: JSON.stringify({ content: response.content }),
+        body: JSON.stringify({ conversationId }),
       });
       
-      if (!msgRes.ok) {
-        const error = await msgRes.json().catch(() => ({ message: "Falha ao enviar" }));
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: "Falha ao executar robo" }));
         throw new Error(error.message);
-      }
-
-      let mutationErrors: string[] = [];
-      let capacityWarnings: string[] = [];
-
-      if (response.attributes && response.attributes.length > 0) {
-        const contactRes = await authFetch(`/api/contacts/${contactId}`);
-        if (contactRes.ok) {
-          const contact = await contactRes.json();
-          const currentAttrs: string[] = contact.attributes || [];
-          const newAttrsToAdd = response.attributes.filter(a => !currentAttrs.includes(a));
-          
-          if (newAttrsToAdd.length > 0) {
-            const availableSlots = 3 - currentAttrs.length;
-            if (availableSlots <= 0) {
-              capacityWarnings.push("Contato já tem 3 atributos");
-            } else if (newAttrsToAdd.length > availableSlots) {
-              const attrsToApply = newAttrsToAdd.slice(0, availableSlots);
-              const combinedAttrs = [...currentAttrs, ...attrsToApply];
-              const attrRes = await authFetch(`/api/contacts/${contactId}`, {
-                method: "PUT",
-                body: JSON.stringify({ attributes: combinedAttrs }),
-              });
-              if (!attrRes.ok) {
-                mutationErrors.push("Falha ao aplicar atributos");
-              } else {
-                capacityWarnings.push("Alguns atributos não foram aplicados (limite de 3)");
-              }
-            } else {
-              const combinedAttrs = [...currentAttrs, ...newAttrsToAdd];
-              const attrRes = await authFetch(`/api/contacts/${contactId}`, {
-                method: "PUT",
-                body: JSON.stringify({ attributes: combinedAttrs }),
-              });
-              if (!attrRes.ok) {
-                mutationErrors.push("Falha ao aplicar atributos");
-              }
-            }
-          }
-        }
-      }
-
-      if (response.tagIds && response.tagIds.length > 0) {
-        for (const tagId of response.tagIds) {
-          const tagRes = await authFetch(`/api/contacts/${contactId}/tags`, {
-            method: "POST",
-            body: JSON.stringify({ tagId }),
-          });
-          if (!tagRes.ok && tagRes.status !== 409) {
-            mutationErrors.push("Falha ao aplicar etiqueta");
-          }
-        }
       }
 
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
 
-      const allWarnings = [...mutationErrors, ...capacityWarnings];
-      if (allWarnings.length > 0) {
-        toast({ 
-          title: "Mensagem enviada", 
-          description: allWarnings.join(". "),
-          variant: "default" 
-        });
-      } else {
-        toast({ title: "Mensagem enviada" });
-      }
+      toast({ title: `Robo "${robot.name}" executado com sucesso` });
       setIsOpen(false);
       setSearchTerm("");
       onSuccess();
     } catch (error) {
-      toast({ title: error instanceof Error ? error.message : "Falha ao enviar", variant: "destructive" });
+      toast({ title: error instanceof Error ? error.message : "Falha ao executar robo", variant: "destructive" });
     } finally {
-      setIsSending(false);
+      setIsExecuting(false);
     }
   };
 
@@ -189,10 +127,10 @@ function QuickReplyPopover({ conversationId, contactId, cannedResponses, onSucce
             e.stopPropagation();
             setIsOpen(true);
           }}
-          data-testid={`button-quick-reply-${conversationId}`}
-          title="Resposta rápida"
+          data-testid={`button-robot-${conversationId}`}
+          title="Executar Robo"
         >
-          <Zap className="h-3 w-3" />
+          <Bot className="h-3 w-3 text-emerald-500" />
         </Button>
       </PopoverTrigger>
       <PopoverContent 
@@ -204,37 +142,41 @@ function QuickReplyPopover({ conversationId, contactId, cannedResponses, onSucce
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar resposta..."
+              placeholder="Buscar robo..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-8 h-8"
-              data-testid="input-quick-reply-search"
+              data-testid="input-robot-search"
             />
           </div>
           <ScrollArea className="max-h-60">
             <div className="space-y-1">
-              {filteredResponses.length === 0 ? (
+              {filteredRobots.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  {cannedResponses.length === 0 ? "Nenhuma resposta rápida configurada" : "Nenhuma resposta encontrada"}
+                  {activeRobots.length === 0 ? "Nenhum robo ativo configurado" : "Nenhum robo encontrado"}
                 </p>
               ) : (
-                filteredResponses.map((response) => (
+                filteredRobots.map((robot) => (
                   <button
-                    key={response.id}
+                    key={robot.id}
                     className="w-full text-left px-2 py-2 rounded-md hover-elevate active-elevate-2 transition-colors"
-                    onClick={(e) => handleSendQuickReply(response, e)}
-                    disabled={isSending}
-                    data-testid={`quick-reply-option-${response.id}`}
+                    onClick={(e) => handleExecuteRobot(robot, e)}
+                    disabled={isExecuting}
+                    data-testid={`robot-option-${robot.id}`}
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="secondary" className="font-mono text-xs">
-                        /{response.shortcut}
-                      </Badge>
-                      {isSending && <LoadingSpinner size="sm" />}
+                      <Bot className="h-4 w-4 text-emerald-500" />
+                      <span className="font-medium text-sm">{robot.name}</span>
+                      {isExecuting && <LoadingSpinner size="sm" />}
                     </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2">
-                      {response.content}
-                    </p>
+                    {robot.description && (
+                      <p className="text-xs text-muted-foreground line-clamp-2">
+                        {robot.description}
+                      </p>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {(robot.actions as any[]).length} acoes
+                    </span>
                   </button>
                 ))
               )}
@@ -251,10 +193,10 @@ interface SortableConversationCardProps {
   onClick: () => void;
   uniqueId: string;
   showTime?: boolean;
-  cannedResponses: CannedResponse[];
+  robots: Robot[];
 }
 
-function SortableConversationCard({ conversation, onClick, uniqueId, showTime, cannedResponses }: SortableConversationCardProps) {
+function SortableConversationCard({ conversation, onClick, uniqueId, showTime, robots }: SortableConversationCardProps) {
   const {
     attributes,
     listeners,
@@ -294,10 +236,9 @@ function SortableConversationCard({ conversation, onClick, uniqueId, showTime, c
             <div className="flex items-center justify-between gap-1">
               <p className="font-medium text-sm truncate">{conversation.contact.name}</p>
               <div className="flex items-center gap-1 shrink-0">
-                <QuickReplyPopover
+                <RobotPopover
                   conversationId={conversation.id}
-                  contactId={conversation.contactId}
-                  cannedResponses={cannedResponses}
+                  robots={robots}
                   onSuccess={() => {}}
                 />
                 {showTime && timeInStage && (
@@ -366,10 +307,10 @@ interface TagColumnProps {
   conversations: ConversationWithDetails[];
   onConversationClick: (conv: ConversationWithDetails) => void;
   showTime?: boolean;
-  cannedResponses: CannedResponse[];
+  robots: Robot[];
 }
 
-function SortableTagColumn({ tag, conversations, onConversationClick, showTime, cannedResponses }: TagColumnProps) {
+function SortableTagColumn({ tag, conversations, onConversationClick, showTime, robots }: TagColumnProps) {
   const {
     attributes,
     listeners,
@@ -424,7 +365,7 @@ function SortableTagColumn({ tag, conversations, onConversationClick, showTime, 
                 conversation={conv}
                 onClick={() => onConversationClick(conv)}
                 showTime={showTime}
-                cannedResponses={cannedResponses}
+                robots={robots}
               />
             ))}
             {conversations.length === 0 && (
@@ -487,11 +428,11 @@ export default function KanbanPage() {
     self.findIndex(c => c.id === conv.id) === index
   );
 
-  const { data: cannedResponses = [] } = useQuery<CannedResponse[]>({
-    queryKey: ["/api/canned-responses"],
+  const { data: robots = [] } = useQuery<Robot[]>({
+    queryKey: ["/api/robots"],
     queryFn: async () => {
-      const res = await authFetch("/api/canned-responses");
-      if (!res.ok) throw new Error("Falha ao buscar respostas rápidas");
+      const res = await authFetch("/api/robots");
+      if (!res.ok) throw new Error("Falha ao buscar robos");
       return res.json();
     },
   });
@@ -786,7 +727,7 @@ export default function KanbanPage() {
                             conversation={conv}
                             onClick={() => handleConversationClick(conv)}
                             showTime={showTimeInStage}
-                            cannedResponses={cannedResponses}
+                            robots={robots}
                           />
                         ))}
                         {noTagConversations.length === 0 && (
@@ -809,7 +750,7 @@ export default function KanbanPage() {
                     conversations={getConversationsForTag(tag.id)}
                     onConversationClick={handleConversationClick}
                     showTime={showTimeInStage}
-                    cannedResponses={cannedResponses}
+                    robots={robots}
                   />
                 ))}
               </div>
