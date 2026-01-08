@@ -2565,8 +2565,8 @@ export async function registerRoutes(
     }
   });
 
-  // Add item to queue
-  app.post("/api/robot-queue/add", authMiddleware(storage), async (req: AuthRequest, res) => {
+  // Add item to queue (admin only)
+  app.post("/api/robot-queue/add", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const { robotId, conversationId, priority } = req.body;
       
@@ -2600,8 +2600,8 @@ export async function registerRoutes(
     }
   });
 
-  // Cancel queue item
-  app.post("/api/robot-queue/cancel/:itemId", authMiddleware(storage), async (req: AuthRequest, res) => {
+  // Cancel queue item (admin only)
+  app.post("/api/robot-queue/cancel/:itemId", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
       const item = await robotQueueManager.cancelQueueItem(req.params.itemId);
       if (!item) {

@@ -15,12 +15,14 @@ const logger = {
 interface QueueProcessor {
   isRunning: boolean;
   nextProcessAt: Date | null;
-  intervalId: NodeJS.Timeout | null;
+  timeoutId: NodeJS.Timeout | null;
+  lastStartTime: number;
 }
 
 class RobotQueueManager {
   private processors: Map<string, QueueProcessor> = new Map();
   private io: SocketIOServer | null = null;
+  private processorLocks: Set<string> = new Set();
 
   setSocketIO(io: SocketIOServer) {
     this.io = io;
@@ -200,25 +202,44 @@ class RobotQueueManager {
   }
 
   private async startProcessor(companyId: string) {
+    if (this.processorLocks.has(companyId)) {
+      logger.debug({ companyId }, "Processor already starting, skipping");
+      return;
+    }
+    
     let processor = this.processors.get(companyId);
     
-    if (processor?.isRunning) {
+    if (processor?.isRunning && processor.timeoutId) {
+      logger.debug({ companyId }, "Processor already running with active timeout");
       return;
     }
 
-    processor = {
-      isRunning: true,
-      nextProcessAt: null,
-      intervalId: null,
-    };
-    this.processors.set(companyId, processor);
+    this.processorLocks.add(companyId);
+    
+    try {
+      if (processor?.timeoutId) {
+        clearTimeout(processor.timeoutId);
+      }
 
-    this.processQueue(companyId);
+      processor = {
+        isRunning: true,
+        nextProcessAt: null,
+        timeoutId: null,
+        lastStartTime: Date.now(),
+      };
+      this.processors.set(companyId, processor);
+
+      this.processQueue(companyId);
+    } finally {
+      this.processorLocks.delete(companyId);
+    }
   }
 
   private async processQueue(companyId: string) {
     const processor = this.processors.get(companyId);
     if (!processor) return;
+
+    processor.timeoutId = null;
 
     const settings = await this.getSettings(companyId);
     
@@ -235,7 +256,7 @@ class RobotQueueManager {
       .limit(1);
 
     if (processingItem) {
-      setTimeout(() => this.processQueue(companyId), 5000);
+      processor.timeoutId = setTimeout(() => this.processQueue(companyId), 5000);
       return;
     }
 
@@ -363,7 +384,7 @@ class RobotQueueManager {
 
     logger.info({ companyId, delaySeconds: settings.delayBetweenContacts }, "Aguardando delay anti-spam");
 
-    setTimeout(() => this.processQueue(companyId), delayMs);
+    processor.timeoutId = setTimeout(() => this.processQueue(companyId), delayMs);
   }
 
   async getQueueHistory(companyId: string, limit: number = 50): Promise<RobotQueueItem[]> {
