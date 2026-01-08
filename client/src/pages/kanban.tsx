@@ -201,9 +201,10 @@ interface SortableConversationCardProps {
   uniqueId: string;
   showTime?: boolean;
   robots: Robot[];
+  isInQueue?: boolean;
 }
 
-function SortableConversationCard({ conversation, onClick, uniqueId, showTime, robots }: SortableConversationCardProps) {
+function SortableConversationCard({ conversation, onClick, uniqueId, showTime, robots, isInQueue }: SortableConversationCardProps) {
   const {
     attributes,
     listeners,
@@ -262,6 +263,14 @@ function SortableConversationCard({ conversation, onClick, uniqueId, showTime, r
             </p>
           </div>
         </div>
+        {isInQueue && (
+          <div className="mt-2">
+            <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-600 border-amber-500/30">
+              <Bot className="h-3 w-3 mr-1" />
+              Na Fila
+            </Badge>
+          </div>
+        )}
         {conversation.tags && conversation.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {conversation.tags.slice(0, 3).map((tag) => (
@@ -315,9 +324,10 @@ interface TagColumnProps {
   onConversationClick: (conv: ConversationWithDetails) => void;
   showTime?: boolean;
   robots: Robot[];
+  queuedConversationIds: Set<string>;
 }
 
-function SortableTagColumn({ tag, conversations, onConversationClick, showTime, robots }: TagColumnProps) {
+function SortableTagColumn({ tag, conversations, onConversationClick, showTime, robots, queuedConversationIds }: TagColumnProps) {
   const {
     attributes,
     listeners,
@@ -373,6 +383,7 @@ function SortableTagColumn({ tag, conversations, onConversationClick, showTime, 
                 onClick={() => onConversationClick(conv)}
                 showTime={showTime}
                 robots={robots}
+                isInQueue={queuedConversationIds.has(conv.id)}
               />
             ))}
             {conversations.length === 0 && (
@@ -443,6 +454,20 @@ export default function KanbanPage() {
       return res.json();
     },
   });
+
+  const { data: queueItems = [] } = useQuery<{ conversationId: string; status: string }[]>({
+    queryKey: ["/api/robot-queue/items"],
+    queryFn: async () => {
+      const res = await authFetch("/api/robot-queue/items");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    refetchInterval: 5000,
+  });
+
+  const queuedConversationIds = new Set(
+    queueItems.filter(item => item.status === "pending" || item.status === "processing").map(item => item.conversationId)
+  );
 
   useEffect(() => {
     if (tags.length > 0 && orderedTags.length === 0) {
@@ -710,6 +735,7 @@ export default function KanbanPage() {
                     onConversationClick={handleConversationClick}
                     showTime={showTimeInStage}
                     robots={robots}
+                    queuedConversationIds={queuedConversationIds}
                   />
                 ))}
               </div>
