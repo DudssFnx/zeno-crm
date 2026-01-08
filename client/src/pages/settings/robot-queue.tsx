@@ -86,6 +86,14 @@ export default function RobotQueuePage() {
 
   const { data: pendingItems, isLoading: loadingPending } = useQuery<QueueItem[]>({
     queryKey: ["/api/robot-queue/items", "pending"],
+    queryFn: async () => {
+      const res = await fetch("/api/robot-queue/items?status=pending", {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    refetchInterval: 5000,
   });
 
   const { data: history, isLoading: loadingHistory } = useQuery<QueueItem[]>({

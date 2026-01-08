@@ -456,13 +456,14 @@ export default function KanbanPage() {
   });
 
   const { data: queueItems = [] } = useQuery<{ conversationId: string; status: string }[]>({
-    queryKey: ["/api/robot-queue/items"],
+    queryKey: ["/api/robot-queue/items", "active"],
     queryFn: async () => {
       const res = await authFetch("/api/robot-queue/items");
       if (!res.ok) return [];
-      return res.json();
+      const items = await res.json();
+      return items.filter((item: any) => item.status === "pending" || item.status === "processing");
     },
-    refetchInterval: 5000,
+    refetchInterval: 3000,
   });
 
   const queuedConversationIds = new Set(

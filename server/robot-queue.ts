@@ -393,6 +393,38 @@ class RobotQueueManager {
       .orderBy(desc(robotQueueItems.createdAt))
       .limit(limit);
   }
+
+  async resumePendingQueues(): Promise<void> {
+    logger.info({}, "Verificando filas pendentes para retomar...");
+
+    await db.update(robotQueueItems)
+      .set({ status: "pending", startedAt: null })
+      .where(eq(robotQueueItems.status, "processing"));
+
+    const pendingItems = await db.select({
+      companyId: robotQueueItems.companyId,
+      count: count(),
+    })
+      .from(robotQueueItems)
+      .where(eq(robotQueueItems.status, "pending"))
+      .groupBy(robotQueueItems.companyId);
+
+    for (const { companyId, count: pendingCount } of pendingItems) {
+      if (pendingCount > 0) {
+        const settings = await this.getSettings(companyId);
+        if (settings.isQueueActive) {
+          logger.info({ companyId, pendingCount }, "Retomando fila com itens pendentes");
+          this.startProcessor(companyId);
+        }
+      }
+    }
+  }
 }
 
 export const robotQueueManager = new RobotQueueManager();
+
+setTimeout(() => {
+  robotQueueManager.resumePendingQueues().catch((err) => {
+    console.error("[RobotQueue] Erro ao retomar filas pendentes:", err);
+  });
+}, 5000);
