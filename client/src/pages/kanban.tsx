@@ -92,9 +92,9 @@ function RobotPopover({ conversationId, robots, onSuccess }: RobotPopoverProps) 
     setIsExecuting(true);
     
     try {
-      const res = await authFetch(`/api/robots/${robot.id}/execute`, {
+      const res = await authFetch("/api/robots/execute", {
         method: "POST",
-        body: JSON.stringify({ conversationId }),
+        body: JSON.stringify({ robotId: robot.id, conversationId }),
       });
       
       if (!res.ok) {
@@ -102,10 +102,17 @@ function RobotPopover({ conversationId, robots, onSuccess }: RobotPopoverProps) 
         throw new Error(error.message);
       }
 
+      const result = await res.json();
+      
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/robot-queue/items"] });
 
-      toast({ title: `Robo "${robot.name}" executado com sucesso` });
+      if (result.queuedAt) {
+        toast({ title: `Robo "${robot.name}" adicionado a fila anti-spam`, description: "Sera executado respeitando os delays configurados" });
+      } else {
+        toast({ title: `Robo "${robot.name}" executado com sucesso` });
+      }
       setIsOpen(false);
       setSearchTerm("");
       onSuccess();
@@ -457,11 +464,6 @@ export default function KanbanPage() {
     return conversations.filter(c => c.tags && c.tags.length > 0 && c.tags[0].id === tagId);
   };
 
-  const getConversationsWithoutTag = (): ConversationWithDetails[] => {
-    return conversations.filter(c => !c.tags || c.tags.length === 0);
-  };
-
-  const noTagConversations = getConversationsWithoutTag();
 
   const handleConversationClick = (conversation: ConversationWithDetails) => {
     setLocation(`/?conversation=${conversation.id}`);
@@ -538,16 +540,13 @@ export default function KanbanPage() {
     }
   };
 
-  // All columns for mobile navigation (sem etiqueta + tags)
-  const allColumns = [
-    { id: "no-tag", name: "Sem Etiqueta", color: undefined, conversations: noTagConversations },
-    ...orderedTags.map(tag => ({
-      id: tag.id,
-      name: tag.name,
-      color: tag.color,
-      conversations: getConversationsForTag(tag.id),
-    })),
-  ];
+  // All columns for mobile navigation (apenas tags - sem etiqueta não aparece no kanban)
+  const allColumns = orderedTags.map(tag => ({
+    id: tag.id,
+    name: tag.name,
+    color: tag.color,
+    conversations: getConversationsForTag(tag.id),
+  }));
 
   const currentMobileColumn = allColumns[mobileColumnIndex] || allColumns[0];
 
@@ -703,46 +702,6 @@ export default function KanbanPage() {
               strategy={horizontalListSortingStrategy}
             >
               <div className="flex gap-4 h-[calc(100vh-180px)] overflow-x-auto pb-4">
-                <div className="w-72 shrink-0 flex flex-col bg-muted/30 rounded-lg">
-                  <div className="p-3 border-b flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                      <span className="font-medium text-sm text-muted-foreground">Sem Etiqueta</span>
-                    </div>
-                    <Badge variant="outline" className="text-xs shrink-0">
-                      {noTagConversations.length}
-                    </Badge>
-                  </div>
-                  <ScrollArea className="flex-1 p-2">
-                    <SortableContext
-                      id="no-tag"
-                      items={noTagConversations.map(c => `${c.id}_no-tag`)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <div className="space-y-2 min-h-[100px]" data-tag-id="no-tag">
-                        {noTagConversations.map((conv) => (
-                          <SortableConversationCard
-                            key={`${conv.id}_no-tag`}
-                            uniqueId={`${conv.id}_no-tag`}
-                            conversation={conv}
-                            onClick={() => handleConversationClick(conv)}
-                            showTime={showTimeInStage}
-                            robots={robots}
-                          />
-                        ))}
-                        {noTagConversations.length === 0 && (
-                          <div 
-                            className="text-center py-8 text-muted-foreground text-sm border-2 border-dashed rounded-lg"
-                            data-testid="tag-drop-no-tag"
-                          >
-                            Arraste conversas aqui
-                          </div>
-                        )}
-                      </div>
-                    </SortableContext>
-                  </ScrollArea>
-                </div>
-
                 {orderedTags.map((tag) => (
                   <SortableTagColumn
                     key={tag.id}

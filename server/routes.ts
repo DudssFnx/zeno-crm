@@ -2355,7 +2355,7 @@ export async function registerRoutes(
     }
   });
 
-  // Execute robot on conversation
+  // Execute robot on conversation - uses anti-spam queue
   app.post("/api/robots/execute", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
       const { robotId, conversationId } = req.body;
@@ -2379,127 +2379,28 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Contact not found" });
       }
 
-      // Import robot engine
-      const { robotEngine } = await import("./robot-engine");
+      // Import robot queue manager
+      const { robotQueueManager } = await import("./robot-queue");
 
-      // Define message sender function
-      const sendMessage = async (convId: string, content: string, mediaType?: string, mediaUrl?: string) => {
-        const chatId = normalizeJid(contact.phoneNumber);
-        
-        if (mediaType && mediaUrl) {
-          // Send media
-          const sent = await whatsappBaileys.sendMedia(
-            conversation.whatsappAccountId,
-            chatId,
-            mediaUrl,
-            mediaType,
-            content || undefined
-          );
-          
-          if (sent.success && sent.messageId) {
-            messageQueue.markMessageSentByCrm(sent.messageId);
-          }
-          
-          // Save message
-          const msg = await storage.createMessage({
-            conversationId: convId,
-            direction: "outgoing",
-            content: content || "",
-            mediaType,
-            mediaUrl,
-            senderUserId: req.user!.id,
-            senderDisplayName: req.user!.displayName || req.user!.name,
-          });
-          
-          io.to(`company:${req.user!.companyId}`).emit("message:created", {
-            companyId: req.user!.companyId,
-            conversationId: convId,
-            contactId: contact.id,
-            message: msg,
-          });
-          
-          // Atualizar lastOutboundAt para limpar badge de prioridade
-          const robotMediaNow = new Date();
-          await storage.updateConversation(convId, {
-            lastMessageAt: robotMediaNow,
-            lastOutboundAt: robotMediaNow,
-          });
-        } else {
-          // Send text
-          console.log(`[Robot] Sending text message to ${chatId}: "${content.substring(0, 50)}..."`);
-          const sent = await whatsappBaileys.sendMessage(
-            conversation.whatsappAccountId,
-            chatId,
-            content
-          );
-          console.log(`[Robot] WhatsApp sendMessage result:`, JSON.stringify(sent));
-          
-          if (sent.success && sent.messageId) {
-            messageQueue.markMessageSentByCrm(sent.messageId);
-            console.log(`[Robot] Text message sent successfully: ${sent.messageId}`);
-          } else {
-            console.error(`[Robot] Text message send failed:`, sent.error);
-          }
-          
-          // Save message
-          const msg = await storage.createMessage({
-            conversationId: convId,
-            direction: "outgoing",
-            content,
-            senderUserId: req.user!.id,
-            senderDisplayName: req.user!.displayName || req.user!.name,
-          });
-          
-          io.to(`company:${req.user!.companyId}`).emit("message:created", {
-            companyId: req.user!.companyId,
-            conversationId: convId,
-            contactId: contact.id,
-            message: msg,
-          });
-          
-          // Atualizar lastOutboundAt para limpar badge de prioridade
-          const robotTextNow = new Date();
-          await storage.updateConversation(convId, {
-            lastMessageAt: robotTextNow,
-            lastOutboundAt: robotTextNow,
-          });
-        }
-      };
-
-      // Define presence sender function
-      const sendPresence = async (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording" | "paused") => {
-        const chatId = normalizeJid(contactPhone);
-        await whatsappBaileys.sendPresenceUpdate(whatsappAccountId, chatId, type);
-      };
-
-      // Define progress callback
-      const onProgress = (data: any) => {
-        io.to(`company:${req.user!.companyId}`).emit("robot:progress", data);
-      };
-
-      // Execute robot asynchronously
-      robotEngine.executeRobot(
+      // Add to anti-spam queue instead of executing directly
+      const queueItem = await robotQueueManager.addToQueue(
+        req.user!.companyId,
         robotId,
-        {
-          conversationId,
-          contactId: contact.id,
-          contactName: contact.name,
-          contactPhone: contact.phoneNumber,
-          whatsappAccountId: conversation.whatsappAccountId,
-          companyId: req.user!.companyId,
-          executedBy: req.user!.id,
-        },
-        sendMessage,
-        sendPresence,
-        onProgress
-      ).catch(err => {
-        console.error("[Robot] Execution error:", err);
-      });
+        conversationId,
+        contact.id,
+        req.user!.id, // requestedBy
+        0 // priority
+      );
 
-      res.json({ success: true, message: "Robot execution started" });
+      res.json({ 
+        success: true, 
+        message: "Robot added to anti-spam queue",
+        queuedAt: queueItem.createdAt,
+        queueItemId: queueItem.id,
+      });
     } catch (error) {
       console.error("Execute robot error:", error);
-      res.status(500).json({ error: "Failed to execute robot" });
+      res.status(500).json({ error: "Failed to queue robot execution" });
     }
   });
 

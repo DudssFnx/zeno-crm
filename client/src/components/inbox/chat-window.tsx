@@ -501,12 +501,17 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setIsRobotDialogOpen(false);
-      toast({ title: "Robo iniciado com sucesso" });
+      if (data.queuedAt) {
+        toast({ title: "Robo adicionado a fila anti-spam", description: "Sera executado respeitando os delays configurados" });
+      } else {
+        toast({ title: "Robo iniciado com sucesso" });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/robot-queue/items"] });
     },
     onError: (error: Error) => {
       toast({ title: error.message, variant: "destructive" });
