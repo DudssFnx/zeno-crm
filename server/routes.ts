@@ -2503,6 +2503,126 @@ export async function registerRoutes(
     }
   });
 
+  // ============ ROBOT QUEUE (Anti-Spam) ============
+  const { robotQueueManager } = await import("./robot-queue");
+  
+  // Passar Socket.IO para o queue manager
+  robotQueueManager.setSocketIO(io);
+
+  // Get queue settings
+  app.get("/api/robot-queue/settings", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const settings = await robotQueueManager.getSettings(req.user!.companyId);
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch queue settings" });
+    }
+  });
+
+  // Update queue settings
+  app.put("/api/robot-queue/settings", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { delayBetweenContacts, isQueueActive } = req.body;
+      const settings = await robotQueueManager.updateSettings(req.user!.companyId, {
+        delayBetweenContacts,
+        isQueueActive,
+      });
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update queue settings" });
+    }
+  });
+
+  // Get queue status
+  app.get("/api/robot-queue/status", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const status = await robotQueueManager.getQueueStatus(req.user!.companyId);
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch queue status" });
+    }
+  });
+
+  // Get queue items
+  app.get("/api/robot-queue/items", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const items = await robotQueueManager.getQueueItems(req.user!.companyId, status);
+      res.json(items);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch queue items" });
+    }
+  });
+
+  // Get queue history
+  app.get("/api/robot-queue/history", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const history = await robotQueueManager.getQueueHistory(req.user!.companyId, limit);
+      res.json(history);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch queue history" });
+    }
+  });
+
+  // Add item to queue
+  app.post("/api/robot-queue/add", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const { robotId, conversationId, priority } = req.body;
+      
+      if (!robotId || !conversationId) {
+        return res.status(400).json({ error: "robotId and conversationId are required" });
+      }
+
+      const robot = await storage.getRobot(robotId);
+      if (!robot || robot.companyId !== req.user!.companyId) {
+        return res.status(404).json({ error: "Robot not found" });
+      }
+
+      const conversation = await storage.getConversation(conversationId);
+      if (!conversation || conversation.companyId !== req.user!.companyId) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      const item = await robotQueueManager.addToQueue(
+        req.user!.companyId,
+        robotId,
+        conversationId,
+        conversation.contactId,
+        req.user!.id,
+        priority || 0
+      );
+
+      res.json({ success: true, item });
+    } catch (error) {
+      console.error("Add to queue error:", error);
+      res.status(500).json({ error: "Failed to add to queue" });
+    }
+  });
+
+  // Cancel queue item
+  app.post("/api/robot-queue/cancel/:itemId", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const item = await robotQueueManager.cancelQueueItem(req.params.itemId);
+      if (!item) {
+        return res.status(404).json({ error: "Queue item not found" });
+      }
+      res.json({ success: true, item });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to cancel queue item" });
+    }
+  });
+
+  // Clear queue
+  app.post("/api/robot-queue/clear", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const count = await robotQueueManager.clearQueue(req.user!.companyId);
+      res.json({ success: true, cancelledCount: count });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to clear queue" });
+    }
+  });
+
   // ============ DEPARTMENTS ============
   app.get("/api/departments", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
