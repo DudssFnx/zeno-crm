@@ -784,3 +784,50 @@ export type Robot = typeof robots.$inferSelect;
 export const insertRobotExecutionSchema = createInsertSchema(robotExecutions).omit({ id: true, startedAt: true, completedAt: true });
 export type InsertRobotExecution = z.infer<typeof insertRobotExecutionSchema>;
 export type RobotExecution = typeof robotExecutions.$inferSelect;
+
+// Configurações de fila de robôs (anti-spam)
+export const robotQueueSettings = pgTable("robot_queue_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id).unique(),
+  delayBetweenContacts: integer("delay_between_contacts").notNull().default(30), // Delay em segundos entre contatos
+  isQueueActive: boolean("is_queue_active").notNull().default(true), // Se a fila está ativa
+  maxConcurrentSessions: integer("max_concurrent_sessions").notNull().default(1), // Máximo de sessões simultâneas (sempre 1 para segurança)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertRobotQueueSettingsSchema = createInsertSchema(robotQueueSettings).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertRobotQueueSettings = z.infer<typeof insertRobotQueueSettingsSchema>;
+export type RobotQueueSettings = typeof robotQueueSettings.$inferSelect;
+
+// Itens na fila de robôs
+export const robotQueueItems = pgTable("robot_queue_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id),
+  robotId: varchar("robot_id").notNull().references(() => robots.id),
+  conversationId: varchar("conversation_id").notNull().references(() => conversations.id),
+  contactId: varchar("contact_id").notNull().references(() => contacts.id),
+  requestedBy: varchar("requested_by").references(() => users.id),
+  status: text("status").notNull().default("pending"), // pending | processing | completed | failed | cancelled
+  priority: integer("priority").notNull().default(0), // Prioridade (maior = mais prioritário)
+  position: integer("position").notNull().default(0), // Posição na fila
+  error: text("error"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertRobotQueueItemSchema = createInsertSchema(robotQueueItems).omit({ id: true, createdAt: true, startedAt: true, completedAt: true });
+export type InsertRobotQueueItem = z.infer<typeof insertRobotQueueItemSchema>;
+export type RobotQueueItem = typeof robotQueueItems.$inferSelect;
+
+// Tipo para status da fila
+export type QueueStatus = {
+  isProcessing: boolean;
+  currentItem: RobotQueueItem | null;
+  pendingCount: number;
+  completedCount: number;
+  failedCount: number;
+  delayBetweenContacts: number;
+  nextProcessAt: Date | null;
+};
