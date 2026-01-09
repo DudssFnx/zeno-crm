@@ -97,6 +97,8 @@ export interface IStorage {
     inactiveMinDays?: number;
     inactiveMaxDays?: number;
     inactivePreset?: string; // "0_1" | "2_3" | "4_7" | "8_15" | "16_30" | "30_plus" | "never_inbound"
+    isUnread?: boolean;
+    limit?: number;
   }): Promise<ConversationWithDetails[]>;
   getOpenConversationByContact(contactId: string): Promise<Conversation | undefined>;
   getOpenConversationByAccountAndContact(whatsappAccountId: string, contactId: string): Promise<Conversation | undefined>;
@@ -645,12 +647,35 @@ export class DatabaseStorage implements IStorage {
     inactiveMinDays?: number;
     inactiveMaxDays?: number;
     inactivePreset?: string;
+    isUnread?: boolean;
+    limit?: number;
   }): Promise<ConversationWithDetails[]> {
+    // Build conditions for SQL filtering
+    const conditions = [eq(conversations.companyId, companyId)];
+    
+    if (filters?.status) {
+      conditions.push(eq(conversations.status, filters.status));
+    }
+    if (filters?.whatsappAccountId) {
+      conditions.push(eq(conversations.whatsappAccountId, filters.whatsappAccountId));
+    }
+    if (filters?.assignedToUserId) {
+      conditions.push(eq(conversations.assignedToUserId, filters.assignedToUserId));
+    }
+    if (filters?.isUnread !== undefined) {
+      conditions.push(eq(conversations.isUnread, filters.isUnread));
+    }
+
     let query = db
       .select()
       .from(conversations)
-      .where(eq(conversations.companyId, companyId))
+      .where(and(...conditions))
       .orderBy(desc(conversations.lastMessageAt));
+    
+    // Apply limit if specified
+    if (filters?.limit) {
+      query = query.limit(filters.limit) as typeof query;
+    }
 
     const allConvs = await query;
 
