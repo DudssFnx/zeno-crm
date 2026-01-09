@@ -273,9 +273,9 @@ function SortableConversationCard({ conversation, onClick, uniqueId, showTime, r
         )}
         {conversation.tags && conversation.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
-            {conversation.tags.slice(0, 3).map((tag) => (
+            {conversation.tags.slice(0, 3).map((tag, idx) => (
               <Badge
-                key={tag.id}
+                key={`${conversation.id}-tag-${idx}-${tag.id}`}
                 variant="secondary"
                 className="text-xs"
                 style={{ backgroundColor: tag.color + "20", color: tag.color }}

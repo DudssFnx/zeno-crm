@@ -386,7 +386,6 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     },
     onSuccess: async () => {
       setMessage("");
-      setIsTyping(false);
       clearSelectedFile();
       
       // Aplicar atributos se houver pendentes da resposta rápida (usando ref para evitar stale closure)
