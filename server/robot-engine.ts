@@ -236,9 +236,14 @@ class RobotEngine {
       }
 
       case "send_audio": {
+        logger.info({ mediaUrl: action.mediaUrl }, "Executing send_audio action");
         if (action.mediaUrl) {
+          logger.info({ audioUrl: action.mediaUrl }, "Sending audio via robot");
           await sendMessage(context.conversationId, "", "audio", action.mediaUrl);
           await this.sleep(this.generateFastDelay());
+          logger.info("Audio sent successfully");
+        } else {
+          logger.warn("send_audio action has no mediaUrl - skipping");
         }
         break;
       }

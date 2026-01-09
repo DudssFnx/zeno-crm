@@ -809,8 +809,40 @@ class WhatsAppBaileysGateway {
         }
 
         const buffer = fs.readFileSync(localPath);
-        const mimetype = mediaOptions.mimetype || "application/octet-stream";
         const fileName = mediaOptions.fileName || path.basename(localPath);
+        
+        // Auto-detect mimetype based on file extension if not provided
+        let mimetype = mediaOptions.mimetype;
+        if (!mimetype || mimetype === "application/octet-stream") {
+          const ext = path.extname(localPath).toLowerCase();
+          const mimetypeMap: Record<string, string> = {
+            // Audio
+            ".ogg": "audio/ogg; codecs=opus",
+            ".mp3": "audio/mpeg",
+            ".m4a": "audio/mp4",
+            ".wav": "audio/wav",
+            ".webm": "audio/webm",
+            // Image
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            // Video
+            ".mp4": "video/mp4",
+            ".mkv": "video/x-matroska",
+            ".avi": "video/x-msvideo",
+            // Document
+            ".pdf": "application/pdf",
+            ".doc": "application/msword",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls": "application/vnd.ms-excel",
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          };
+          mimetype = mimetypeMap[ext] || "application/octet-stream";
+        }
+        
+        console.log(`[Baileys] sendMessage media: path=${localPath}, type=${mediaOptions.mediaType}, mimetype=${mimetype}`);
 
         switch (mediaOptions.mediaType) {
           case "image":
