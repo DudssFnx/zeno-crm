@@ -1048,6 +1048,88 @@ export async function registerRoutes(
         .sort((a, b) => b.inbound - a.inbound)
         .slice(0, 10);
       
+      // 6. Messages by hour of day (0-23)
+      const messagesByHour: number[] = Array(24).fill(0);
+      // 7. Messages by day of week (0=Sunday, 6=Saturday)
+      const messagesByDayOfWeek: number[] = Array(7).fill(0);
+      
+      // 8. Response time analysis (time between incoming and next outgoing)
+      let totalResponseTimeMs = 0;
+      let responseCount = 0;
+      
+      // Group messages by conversation for response time calculation
+      const msgsByConv: Record<string, { createdAt: Date; direction: string }[]> = {};
+      
+      for (const msg of allMessages) {
+        const msgDate = new Date(msg.createdAt);
+        messagesByHour[msgDate.getHours()]++;
+        messagesByDayOfWeek[msgDate.getDay()]++;
+        
+        // Build conv message list for response time
+        if (!msgsByConv[msg.conversationId]) {
+          msgsByConv[msg.conversationId] = [];
+        }
+        msgsByConv[msg.conversationId].push({ createdAt: new Date(msg.createdAt), direction: msg.direction });
+      }
+      
+      // Calculate average response time
+      for (const convId of Object.keys(msgsByConv)) {
+        const msgs = msgsByConv[convId].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+        for (let i = 0; i < msgs.length - 1; i++) {
+          if (msgs[i].direction === "incoming" && msgs[i + 1].direction === "outgoing") {
+            const responseTime = msgs[i + 1].createdAt.getTime() - msgs[i].createdAt.getTime();
+            if (responseTime > 0 && responseTime < 24 * 60 * 60 * 1000) { // Max 24h
+              totalResponseTimeMs += responseTime;
+              responseCount++;
+            }
+          }
+        }
+      }
+      
+      const avgResponseTimeMinutes = responseCount > 0 
+        ? Math.round(totalResponseTimeMs / responseCount / 60000) 
+        : 0;
+      
+      // 9. Performance by agent
+      const agentPerformance: Record<string, { agentId: string; agentName: string; conversations: number; messagesOut: number }> = {};
+      
+      for (const conv of conversations) {
+        if (conv.assignedUserId) {
+          if (!agentPerformance[conv.assignedUserId]) {
+            agentPerformance[conv.assignedUserId] = {
+              agentId: conv.assignedUserId,
+              agentName: conv.assignedTo?.name || conv.assignedTo?.email || "Agente",
+              conversations: 0,
+              messagesOut: 0,
+            };
+          }
+          agentPerformance[conv.assignedUserId].conversations++;
+          const convCounts = convMessageCounts[conv.id];
+          if (convCounts) {
+            agentPerformance[conv.assignedUserId].messagesOut += convCounts.outbound;
+          }
+        }
+      }
+      
+      // 10. New vs returning contacts (contacts created in last 30 days vs older)
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      
+      let newContactsThisMonth = 0;
+      let newContactsThisWeek = 0;
+      
+      for (const contact of contacts) {
+        const createdAt = new Date(contact.createdAt);
+        if (createdAt >= thirtyDaysAgo) newContactsThisMonth++;
+        if (createdAt >= sevenDaysAgo) newContactsThisWeek++;
+      }
+      
+      // 11. Resolution rate
+      const resolutionRate = conversations.length > 0 
+        ? Math.round((resolvedConversations / conversations.length) * 100) 
+        : 0;
+      
       res.json({
         summary: {
           totalMessages: allMessages.length,
@@ -1058,11 +1140,18 @@ export async function registerRoutes(
           openConversations,
           pendingConversations,
           resolvedConversations,
+          avgResponseTimeMinutes,
+          resolutionRate,
+          newContactsThisWeek,
+          newContactsThisMonth,
         },
         messagesPerTag: Object.values(messagesPerTag).filter(t => t.total > 0),
         contactsPerAttribute: Object.values(contactsPerAttribute).filter(a => a.count > 0),
         contactsPerTag: Object.values(contactsPerTag).filter(t => t.count > 0),
         topContacts,
+        messagesByHour,
+        messagesByDayOfWeek,
+        agentPerformance: Object.values(agentPerformance).sort((a, b) => b.conversations - a.conversations),
       });
     } catch (error) {
       console.error("CRM stats error:", error);
