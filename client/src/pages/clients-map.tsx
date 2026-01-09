@@ -411,9 +411,9 @@ export default function ClientsMap() {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">
-                          {crmStats.summary.avgResponseTimeMinutes > 60 
-                            ? `${Math.round(crmStats.summary.avgResponseTimeMinutes / 60)}h` 
-                            : `${crmStats.summary.avgResponseTimeMinutes}m`}
+                          {(crmStats.summary.avgResponseTimeMinutes || 0) > 60 
+                            ? `${Math.round((crmStats.summary.avgResponseTimeMinutes || 0) / 60)}h` 
+                            : `${crmStats.summary.avgResponseTimeMinutes || 0}m`}
                         </p>
                         <p className="text-xs text-muted-foreground">Tempo Médio Resposta</p>
                       </div>
@@ -427,7 +427,7 @@ export default function ClientsMap() {
                         <CheckCircle2 className="h-5 w-5 text-emerald-600" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">{crmStats.summary.resolutionRate}%</p>
+                        <p className="text-2xl font-bold">{crmStats.summary.resolutionRate || 0}%</p>
                         <p className="text-xs text-muted-foreground">Taxa de Resolução</p>
                       </div>
                     </div>
@@ -440,7 +440,7 @@ export default function ClientsMap() {
                         <UserPlus className="h-5 w-5 text-cyan-600" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">{crmStats.summary.newContactsThisWeek}</p>
+                        <p className="text-2xl font-bold">{crmStats.summary.newContactsThisWeek || 0}</p>
                         <p className="text-xs text-muted-foreground">Novos Esta Semana</p>
                       </div>
                     </div>
@@ -453,7 +453,7 @@ export default function ClientsMap() {
                         <UserPlus className="h-5 w-5 text-pink-600" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">{crmStats.summary.newContactsThisMonth}</p>
+                        <p className="text-2xl font-bold">{crmStats.summary.newContactsThisMonth || 0}</p>
                         <p className="text-xs text-muted-foreground">Novos Este Mês</p>
                       </div>
                     </div>
@@ -648,8 +648,9 @@ export default function ClientsMap() {
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-end gap-1 h-32">
-                      {crmStats.messagesByHour.map((count, hour) => {
-                        const maxHour = Math.max(1, ...crmStats.messagesByHour);
+                      {(crmStats.messagesByHour || Array(24).fill(0)).map((count, hour) => {
+                        const hours = crmStats.messagesByHour || Array(24).fill(0);
+                        const maxHour = Math.max(1, ...hours);
                         const height = (count / maxHour) * 100;
                         return (
                           <div 
@@ -681,8 +682,9 @@ export default function ClientsMap() {
                   <CardContent>
                     <div className="space-y-2">
                       {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day, idx) => {
-                        const count = crmStats.messagesByDayOfWeek[idx] || 0;
-                        const maxDay = Math.max(1, ...crmStats.messagesByDayOfWeek);
+                        const days = crmStats.messagesByDayOfWeek || Array(7).fill(0);
+                        const count = days[idx] || 0;
+                        const maxDay = Math.max(1, ...days);
                         const width = (count / maxDay) * 100;
                         return (
                           <div key={day} className="flex items-center gap-2">
@@ -702,7 +704,7 @@ export default function ClientsMap() {
                 </Card>
               </div>
 
-              {crmStats.agentPerformance.length > 0 && (
+              {(crmStats.agentPerformance || []).length > 0 && (
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base flex items-center gap-2">
@@ -712,7 +714,7 @@ export default function ClientsMap() {
                   </CardHeader>
                   <CardContent>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {crmStats.agentPerformance.map((agent) => (
+                      {(crmStats.agentPerformance || []).map((agent) => (
                         <div key={agent.agentId} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                           <AvatarWithFallback name={agent.agentName} size="sm" />
                           <div className="flex-1 min-w-0">
