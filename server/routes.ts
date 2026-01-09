@@ -925,7 +925,7 @@ export async function registerRoutes(
     }
   });
 
-  // CRM Statistics endpoint
+  // CRM Statistics endpoint - optimized with maps and single-pass counting
   app.get("/api/crm-stats", authMiddleware(storage), async (req: AuthRequest, res) => {
     try {
       const companyId = req.user!.companyId;
@@ -939,71 +939,42 @@ export async function registerRoutes(
         storage.getContactAttributes(companyId),
       ]);
       
-      // 1. Messages per tag (funnel stats)
+      // Pre-build conversation map for O(1) lookup
+      const convMap = new Map(conversations.map(c => [c.id, c]));
+      
+      // Initialize tag structures
       const messagesPerTag: Record<string, { tagName: string; tagColor: string; inbound: number; outbound: number; total: number }> = {};
+      const contactsPerTag: Record<string, { tagName: string; tagColor: string; count: number }> = {};
       
       for (const tag of allTags) {
-        messagesPerTag[tag.id] = {
-          tagName: tag.name,
-          tagColor: tag.color,
-          inbound: 0,
-          outbound: 0,
-          total: 0,
-        };
+        messagesPerTag[tag.id] = { tagName: tag.name, tagColor: tag.color, inbound: 0, outbound: 0, total: 0 };
+        contactsPerTag[tag.id] = { tagName: tag.name, tagColor: tag.color, count: 0 };
       }
       
-      // Get contact tags to map contacts to tags
-      const contactTagsMap = new Map<string, string[]>();
-      for (const conv of conversations) {
-        if (conv.tags && conv.tags.length > 0) {
-          const contactId = conv.contactId;
-          const tagIds = conv.tags.map((t: any) => t.id);
-          contactTagsMap.set(contactId, tagIds);
-        }
-      }
-      
-      // Count messages per tag via conversations
-      for (const conv of conversations) {
-        if (conv.tags && conv.tags.length > 0) {
-          const tagId = conv.tags[0].id; // Primary tag
-          const convMessages = allMessages.filter(m => m.conversationId === conv.id);
-          const inbound = convMessages.filter(m => m.direction === "incoming").length;
-          const outbound = convMessages.filter(m => m.direction === "outgoing").length;
-          
-          if (messagesPerTag[tagId]) {
-            messagesPerTag[tagId].inbound += inbound;
-            messagesPerTag[tagId].outbound += outbound;
-            messagesPerTag[tagId].total += inbound + outbound;
-          }
-        }
-      }
-      
-      // 2. Contacts per attribute
-      const contactsPerAttribute: Record<string, { attributeName: string; attributeColor: string; count: number }> = {};
-      
-      for (const attr of allAttributes) {
-        contactsPerAttribute[attr.name] = {
-          attributeName: attr.name,
-          attributeColor: attr.color,
-          count: 0,
-        };
-      }
-      
-      for (const contact of contacts) {
-        if (contact.attributes && Array.isArray(contact.attributes)) {
-          for (const attrName of contact.attributes) {
-            if (contactsPerAttribute[attrName]) {
-              contactsPerAttribute[attrName].count++;
-            }
-          }
-        }
-      }
-      
-      // 3. Top contacts by message count
+      // Pre-aggregate message counts per conversation
+      const convMessageCounts: Record<string, { inbound: number; outbound: number }> = {};
       const contactMessageCounts: Record<string, { contactId: string; contactName: string; phoneNumber: string; avatarUrl: string | null; inbound: number; outbound: number; total: number }> = {};
       
+      let totalInbound = 0;
+      let totalOutbound = 0;
+      
+      // Single pass over messages
       for (const msg of allMessages) {
-        const conv = conversations.find(c => c.id === msg.conversationId);
+        const convId = msg.conversationId;
+        if (!convMessageCounts[convId]) {
+          convMessageCounts[convId] = { inbound: 0, outbound: 0 };
+        }
+        
+        if (msg.direction === "incoming") {
+          convMessageCounts[convId].inbound++;
+          totalInbound++;
+        } else {
+          convMessageCounts[convId].outbound++;
+          totalOutbound++;
+        }
+        
+        // Build contact counts
+        const conv = convMap.get(convId);
         if (conv && conv.contact) {
           const contactId = conv.contactId;
           if (!contactMessageCounts[contactId]) {
@@ -1026,23 +997,29 @@ export async function registerRoutes(
         }
       }
       
-      const topContacts = Object.values(contactMessageCounts)
-        .sort((a, b) => b.inbound - a.inbound)
-        .slice(0, 10);
+      // Count conversations status
+      let openConversations = 0;
+      let pendingConversations = 0;
+      let resolvedConversations = 0;
       
-      // 4. Contacts per tag (how many contacts in each funnel stage)
-      const contactsPerTag: Record<string, { tagName: string; tagColor: string; count: number }> = {};
-      
-      for (const tag of allTags) {
-        contactsPerTag[tag.id] = {
-          tagName: tag.name,
-          tagColor: tag.color,
-          count: 0,
-        };
-      }
-      
+      // Process conversations for tag stats
       for (const conv of conversations) {
+        // Status counting
+        if (conv.status === "open") openConversations++;
+        else if (conv.status === "pending") pendingConversations++;
+        else if (conv.status === "resolved") resolvedConversations++;
+        
+        // Tag-based stats
         if (conv.tags && conv.tags.length > 0) {
+          const convCounts = convMessageCounts[conv.id] || { inbound: 0, outbound: 0 };
+          const primaryTagId = conv.tags[0].id;
+          
+          if (messagesPerTag[primaryTagId]) {
+            messagesPerTag[primaryTagId].inbound += convCounts.inbound;
+            messagesPerTag[primaryTagId].outbound += convCounts.outbound;
+            messagesPerTag[primaryTagId].total += convCounts.inbound + convCounts.outbound;
+          }
+          
           for (const tag of conv.tags) {
             if (contactsPerTag[tag.id]) {
               contactsPerTag[tag.id].count++;
@@ -1051,23 +1028,33 @@ export async function registerRoutes(
         }
       }
       
-      // 5. Summary stats
-      const totalMessages = allMessages.length;
-      const totalInbound = allMessages.filter(m => m.direction === "incoming").length;
-      const totalOutbound = allMessages.filter(m => m.direction === "outgoing").length;
-      const totalContacts = contacts.length;
-      const totalConversations = conversations.length;
-      const openConversations = conversations.filter(c => c.status === "open").length;
-      const pendingConversations = conversations.filter(c => c.status === "pending").length;
-      const resolvedConversations = conversations.filter(c => c.status === "resolved").length;
+      // Contacts per attribute
+      const contactsPerAttribute: Record<string, { attributeName: string; attributeColor: string; count: number }> = {};
+      for (const attr of allAttributes) {
+        contactsPerAttribute[attr.name] = { attributeName: attr.name, attributeColor: attr.color, count: 0 };
+      }
+      for (const contact of contacts) {
+        if (contact.attributes && Array.isArray(contact.attributes)) {
+          for (const attrName of contact.attributes) {
+            if (contactsPerAttribute[attrName]) {
+              contactsPerAttribute[attrName].count++;
+            }
+          }
+        }
+      }
+      
+      // Top 10 contacts by inbound messages
+      const topContacts = Object.values(contactMessageCounts)
+        .sort((a, b) => b.inbound - a.inbound)
+        .slice(0, 10);
       
       res.json({
         summary: {
-          totalMessages,
+          totalMessages: allMessages.length,
           totalInbound,
           totalOutbound,
-          totalContacts,
-          totalConversations,
+          totalContacts: contacts.length,
+          totalConversations: conversations.length,
           openConversations,
           pendingConversations,
           resolvedConversations,

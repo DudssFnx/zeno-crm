@@ -419,13 +419,12 @@ export default function ClientsMap() {
                             </div>
                             <div className="flex items-center gap-2">
                               <div 
-                                className="h-2 rounded-full bg-muted" 
-                                style={{ width: '100px' }}
+                                className="h-2 rounded-full bg-muted flex-1 max-w-[100px]"
                               >
                                 <div 
                                   className="h-2 rounded-full transition-all"
                                   style={{ 
-                                    width: `${Math.min((tag.count / Math.max(...crmStats.contactsPerTag.map(t => t.count))) * 100, 100)}%`,
+                                    width: `${Math.min((tag.count / Math.max(1, ...crmStats.contactsPerTag.map(t => t.count))) * 100, 100)}%`,
                                     backgroundColor: tag.tagColor 
                                   }}
                                 />
@@ -462,13 +461,12 @@ export default function ClientsMap() {
                             </div>
                             <div className="flex items-center gap-2">
                               <div 
-                                className="h-2 rounded-full bg-muted" 
-                                style={{ width: '100px' }}
+                                className="h-2 rounded-full bg-muted flex-1 max-w-[100px]"
                               >
                                 <div 
                                   className="h-2 rounded-full transition-all"
                                   style={{ 
-                                    width: `${Math.min((attr.count / Math.max(...crmStats.contactsPerAttribute.map(a => a.count))) * 100, 100)}%`,
+                                    width: `${Math.min((attr.count / Math.max(1, ...crmStats.contactsPerAttribute.map(a => a.count))) * 100, 100)}%`,
                                     backgroundColor: attr.attributeColor 
                                   }}
                                 />
