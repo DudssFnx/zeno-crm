@@ -717,12 +717,14 @@ export type MessageWithSender = Message & {
 
 // Tipos de trigger do robô
 export const robotTriggerTypes = [
-  "manual",           // Gatilho manual (botão)
-  "first_message",    // Primeira mensagem do contato
-  "any_message",      // Qualquer mensagem recebida
-  "keyword",          // Mensagem contém palavras-chave
-  "no_response",      // Cliente não respondeu (inatividade)
-  "scheduled",        // Agendado
+  "manual",               // Gatilho manual (botão)
+  "first_message",        // Primeira mensagem do contato (novo contato)
+  "first_message_of_day", // Primeira mensagem do dia (mesmo contato, novo dia)
+  "any_message",          // Qualquer mensagem recebida
+  "keyword",              // Mensagem contém palavras-chave
+  "response",             // Resposta do cliente (qualquer texto/número)
+  "no_response",          // Cliente não respondeu (inatividade)
+  "scheduled",            // Agendado
 ] as const;
 
 export type RobotTriggerType = typeof robotTriggerTypes[number];

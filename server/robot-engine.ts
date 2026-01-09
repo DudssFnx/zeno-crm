@@ -544,7 +544,22 @@ class RobotEngine {
     }
   }
 
+  // Normalizar texto: remover acentos, pontuação e converter para minúsculo
+  private normalizeText(text: string): string {
+    return text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+      .replace(/[^\w\s]/g, "") // Remove pontuação
+      .trim();
+  }
+
   private async checkTriggers(robot: Robot, context: AutoMessageContext): Promise<boolean> {
+    // Robôs manuais não devem ser processados automaticamente
+    if (!robot.isAutomatic) {
+      return false;
+    }
+
     const triggers = (robot.triggers as RobotTrigger[]) || [];
 
     if (triggers.length === 0) {
@@ -554,29 +569,82 @@ class RobotEngine {
     for (const trigger of triggers) {
       switch (trigger.type) {
         case "first_message":
+          // Primeira mensagem do contato (novo contato)
           if (context.isFirstMessage) return true;
           break;
 
+        case "first_message_of_day":
+          // Primeira mensagem do dia (mesmo contato, novo dia)
+          if (await this.isFirstMessageOfDay(context)) return true;
+          break;
+
         case "any_message":
+          // Qualquer mensagem recebida
           if (context.messageDirection === "incoming") return true;
           break;
 
         case "keyword":
+          // Mensagem contém palavras-chave específicas
           if (trigger.keywords && trigger.keywords.length > 0) {
-            const messageLC = context.messageContent.toLowerCase();
-            const matched = trigger.keywords.some(kw =>
-              messageLC.includes(kw.toLowerCase())
-            );
+            // Normalizar mensagem: remover acentos, pontuação e converter para minúsculo
+            const messageNormalized = this.normalizeText(context.messageContent);
+            const matched = trigger.keywords.some(kw => {
+              const kwNormalized = this.normalizeText(kw);
+              // Match exato para números (1, 2, 3, etc) ou parcial para palavras
+              if (/^\d+$/.test(kwNormalized)) {
+                // Para números, aceitar variações como "1", "1.", "1,", "1!", etc
+                const words = messageNormalized.split(/\s+/);
+                return words.some(w => this.normalizeText(w) === kwNormalized);
+              }
+              return messageNormalized.includes(kwNormalized);
+            });
             if (matched) return true;
           }
           break;
 
+        case "response":
+          // Qualquer resposta do cliente (não é primeira mensagem)
+          if (context.messageDirection === "incoming" && !context.isFirstMessage) return true;
+          break;
+
         case "manual":
+          // Gatilho manual - não dispara automaticamente
+          break;
+
+        case "no_response":
+          // Tratado pelo scheduler, não aqui
+          break;
+
+        case "scheduled":
+          // Tratado pelo scheduler, não aqui
           break;
       }
     }
 
     return false;
+  }
+
+  private async isFirstMessageOfDay(context: AutoMessageContext): Promise<boolean> {
+    try {
+      // Buscar a última mensagem incoming do contato antes de hoje
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const lastInboundDate = context.conversation.lastInboundAt;
+      if (!lastInboundDate) {
+        // Se não tem lastInboundAt, é a primeira mensagem
+        return true;
+      }
+
+      const lastInbound = new Date(lastInboundDate);
+      lastInbound.setHours(0, 0, 0, 0);
+
+      // Se a última mensagem foi antes de hoje, é primeira do dia
+      return lastInbound.getTime() < today.getTime();
+    } catch (error) {
+      logger.error({ error }, "Error checking first message of day");
+      return false;
+    }
   }
 
   private async executeAutomaticRobot(

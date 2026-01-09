@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Bot, GripVertical, Clock, Timer, MessageSquare, Mic, Play, Tag as TagIcon, UserCircle, Image, FileText, Video, ArrowRight, Upload, X, ArrowDown, Circle } from "lucide-react";
+import { Plus, Pencil, Trash2, Bot, GripVertical, Clock, Timer, MessageSquare, Mic, Play, Tag as TagIcon, UserCircle, Image, FileText, Video, ArrowRight, Upload, X, ArrowDown, Circle, Zap, MessageCircle, Reply, Sun, Hash } from "lucide-react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -24,6 +24,15 @@ import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import type { Robot, Tag, User, ContactAttribute } from "@shared/schema";
+
+// Tipos de gatilho (triggers) para automacao
+const triggerTypes = [
+  { value: "first_message", label: "1a Msg Contato", description: "Primeira mensagem do contato", icon: MessageCircle, color: "#10B981" },
+  { value: "first_message_of_day", label: "1a Msg do Dia", description: "Primeira mensagem do dia", icon: Sun, color: "#F59E0B" },
+  { value: "keyword", label: "Palavra-chave", description: "Mensagem com palavras-chave", icon: Hash, color: "#8B5CF6" },
+  { value: "response", label: "Resposta", description: "Qualquer resposta do cliente", icon: Reply, color: "#3B82F6" },
+  { value: "any_message", label: "Qualquer Msg", description: "Qualquer mensagem recebida", icon: MessageSquare, color: "#6366F1" },
+];
 
 const actionTypes = [
   { value: "send_text", label: "Enviar Texto", icon: MessageSquare, color: "#3B82F6", category: "mensagem" },
@@ -71,12 +80,21 @@ const robotActionSchema = z.object({
   agentId: z.string().optional(),
 });
 
+const robotTriggerSchema = z.object({
+  type: z.enum(["manual", "first_message", "first_message_of_day", "any_message", "keyword", "response", "no_response", "scheduled"]),
+  keywords: z.array(z.string()).optional(),
+});
+
 const robotFormSchema = z.object({
   name: z.string().min(1, "Nome obrigatorio"),
   description: z.string().optional(),
   isActive: z.boolean().default(true),
+  isAutomatic: z.boolean().default(false),
+  triggers: z.array(robotTriggerSchema).default([]),
   actions: z.array(robotActionSchema),
 });
+
+type RobotTriggerData = z.infer<typeof robotTriggerSchema>;
 
 type RobotFormData = z.infer<typeof robotFormSchema>;
 type RobotActionData = z.infer<typeof robotActionSchema>;
@@ -546,13 +564,21 @@ export default function RobotsPage() {
 
   const form = useForm<RobotFormData>({
     resolver: zodResolver(robotFormSchema),
-    defaultValues: { name: "", description: "", isActive: true, actions: [] },
+    defaultValues: { name: "", description: "", isActive: true, isAutomatic: false, triggers: [], actions: [] },
   });
 
   const { fields, append, remove, move } = useFieldArray({
     control: form.control,
     name: "actions",
   });
+
+  const { fields: triggerFields, append: appendTrigger, remove: removeTrigger } = useFieldArray({
+    control: form.control,
+    name: "triggers",
+  });
+
+  // State for keyword input per trigger (indexed by trigger index)
+  const [keywordInputs, setKeywordInputs] = useState<{ [key: number]: string }>({});
 
   const { data: robots = [], isLoading } = useQuery<Robot[]>({
     queryKey: ["/api/robots"],
@@ -692,10 +718,16 @@ export default function RobotsPage() {
     if (robot) {
       setEditingRobot(robot);
       const actions = (robot.actions as RobotActionData[]) || [];
+      const triggers = (robot.triggers as RobotTriggerData[]) || [];
       form.reset({
         name: robot.name,
         description: robot.description || "",
         isActive: robot.isActive,
+        isAutomatic: robot.isAutomatic || false,
+        triggers: triggers.map((t) => ({
+          type: t.type as any,
+          keywords: t.keywords || [],
+        })),
         actions: actions.map((a) => ({
           id: a.id || crypto.randomUUID(),
           type: a.type as any,
@@ -710,9 +742,38 @@ export default function RobotsPage() {
       });
     } else {
       setEditingRobot(null);
-      form.reset({ name: "", description: "", isActive: true, actions: [] });
+      form.reset({ name: "", description: "", isActive: true, isAutomatic: false, triggers: [], actions: [] });
     }
+    setKeywordInputs({});
     setIsDialogOpen(true);
+  };
+
+  const handleAddTrigger = (type: string) => {
+    // Check if trigger already exists (except for keyword which can have multiple)
+    const existingTriggers = form.getValues("triggers");
+    if (type !== "keyword" && existingTriggers.some(t => t.type === type)) {
+      toast({ title: "Este gatilho ja foi adicionado", variant: "destructive" });
+      return;
+    }
+    appendTrigger({ type: type as any, keywords: type === "keyword" ? [] : undefined });
+  };
+
+  const handleAddKeyword = (triggerIndex: number) => {
+    const input = keywordInputs[triggerIndex] || "";
+    if (!input.trim()) return;
+    const currentKeywords = form.getValues(`triggers.${triggerIndex}.keywords`) || [];
+    form.setValue(`triggers.${triggerIndex}.keywords`, [...currentKeywords, input.trim()]);
+    setKeywordInputs(prev => ({ ...prev, [triggerIndex]: "" }));
+  };
+
+  const handleRemoveKeyword = (triggerIndex: number, keywordIndex: number) => {
+    const currentKeywords = form.getValues(`triggers.${triggerIndex}.keywords`) || [];
+    form.setValue(`triggers.${triggerIndex}.keywords`, currentKeywords.filter((_, i) => i !== keywordIndex));
+  };
+
+  const getKeywordInput = (index: number) => keywordInputs[index] || "";
+  const setKeywordInput = (index: number, value: string) => {
+    setKeywordInputs(prev => ({ ...prev, [index]: value }));
   };
 
   const handleAddAction = (type: string) => {
@@ -809,6 +870,28 @@ export default function RobotsPage() {
                     <h3 className="font-semibold text-sm mb-3">Blocos</h3>
                     
                     <div className="space-y-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide flex items-center gap-1">
+                          <Zap className="h-3 w-3" />
+                          Gatilhos
+                        </p>
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {triggerTypes.map((type) => (
+                            <button
+                              key={type.value}
+                              type="button"
+                              onClick={() => handleAddTrigger(type.value)}
+                              className="flex items-center gap-2 p-2 rounded-md border bg-card text-xs transition-all hover:shadow-md hover:scale-105"
+                              style={{ borderColor: type.color + "40" }}
+                              data-testid={`add-trigger-${type.value}`}
+                            >
+                              <type.icon className="h-4 w-4 shrink-0" style={{ color: type.color }} />
+                              <span className="text-[10px] leading-tight">{type.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
                       <div>
                         <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Mensagens</p>
                         <div className="grid grid-cols-2 gap-1.5">
@@ -985,14 +1068,103 @@ export default function RobotsPage() {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-6 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] dark:bg-[radial-gradient(#374151_1px,transparent_1px)] [background-size:16px_16px]">
-                      {fields.length === 0 ? (
+                      {/* Seção de Gatilhos Configurados */}
+                      {triggerFields.length > 0 && (
+                        <div className="mb-6">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Zap className="h-4 w-4 text-amber-500" />
+                            <h4 className="font-medium text-sm">Gatilhos Configurados</h4>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {triggerFields.map((trigger, index) => {
+                              const triggerType = triggerTypes.find(t => t.value === trigger.type);
+                              const TriggerIcon = triggerType?.icon || Zap;
+                              return (
+                                <div
+                                  key={index}
+                                  className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-card shadow-sm"
+                                  style={{ borderColor: triggerType?.color + "40" }}
+                                >
+                                  <TriggerIcon className="h-4 w-4" style={{ color: triggerType?.color }} />
+                                  <div className="flex-1">
+                                    <span className="text-sm font-medium">{triggerType?.label || trigger.type}</span>
+                                    {trigger.type === "keyword" && (
+                                      <div className="mt-1 flex flex-wrap gap-1 items-center">
+                                        {(form.watch(`triggers.${index}.keywords`) || []).map((kw: string, kwIndex: number) => (
+                                          <Badge key={kwIndex} variant="secondary" className="text-xs">
+                                            {kw}
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveKeyword(index, kwIndex)}
+                                              className="ml-1 hover:text-destructive"
+                                              data-testid={`button-remove-keyword-${index}-${kwIndex}`}
+                                            >
+                                              <X className="h-3 w-3" />
+                                            </button>
+                                          </Badge>
+                                        ))}
+                                        <div className="flex items-center gap-1">
+                                          <Input
+                                            value={getKeywordInput(index)}
+                                            onChange={(e) => setKeywordInput(index, e.target.value)}
+                                            placeholder="Digite..."
+                                            className="h-6 w-20 text-xs"
+                                            data-testid={`input-keyword-${index}`}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                handleAddKeyword(index);
+                                              }
+                                            }}
+                                          />
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-6 px-2"
+                                            onClick={() => handleAddKeyword(index)}
+                                            data-testid={`button-add-keyword-${index}`}
+                                          >
+                                            <Plus className="h-3 w-3" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeTrigger(index)}
+                                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {fields.length === 0 && triggerFields.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-center">
                           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                            <Circle className="h-8 w-8 text-muted-foreground" />
+                            <Zap className="h-8 w-8 text-muted-foreground" />
                           </div>
-                          <h3 className="font-medium mb-1">Comece seu fluxo</h3>
+                          <h3 className="font-medium mb-1">Configure seu Robo</h3>
                           <p className="text-sm text-muted-foreground max-w-xs">
-                            Clique nos blocos a esquerda para adicionar acoes ao seu robo
+                            1. Adicione um <span className="text-amber-500 font-medium">Gatilho</span> para definir quando o robo sera ativado
+                            <br />
+                            2. Adicione <span className="text-blue-500 font-medium">Acoes</span> para definir o que o robo fara
+                          </p>
+                        </div>
+                      ) : fields.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-64 text-center">
+                          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                            <Circle className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                          <h3 className="font-medium mb-1 text-sm">Adicione Acoes</h3>
+                          <p className="text-xs text-muted-foreground max-w-xs">
+                            Clique nos blocos de Mensagens, Etiquetas ou outros para definir o comportamento do robo
                           </p>
                         </div>
                       ) : (
