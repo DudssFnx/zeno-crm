@@ -33,7 +33,9 @@ export function AttributeChip({ name, contactId, count, className, size = "sm" }
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
   
-  // Fetch attribute counts for this contact if contactId is provided
+  // Fetch attribute counts for this contact if contactId is provided AND count not already supplied
+  // Skip fetch when count prop is provided (performance optimization)
+  const shouldFetchCounts = !!contactId && count === undefined;
   const { data: attributeCounts = [] } = useQuery<ContactAttributeCount[]>({
     queryKey: ["/api/contacts", contactId, "attribute-counts"],
     queryFn: async () => {
@@ -42,7 +44,7 @@ export function AttributeChip({ name, contactId, count, className, size = "sm" }
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!contactId,
+    enabled: shouldFetchCounts,
     staleTime: 1000 * 60 * 2, // Cache for 2 minutes
   });
   

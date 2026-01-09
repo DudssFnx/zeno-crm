@@ -397,7 +397,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                           {conv.contact.name}
                         </span>
                         {conv.contact.attributes && conv.contact.attributes.slice(0, 2).map((attr, idx) => (
-                          <AttributeChip key={`${conv.id}-attr-${idx}`} name={attr} contactId={conv.contact.id} size="xs" />
+                          <AttributeChip key={`${conv.id}-attr-${idx}`} name={attr} size="xs" count={1} />
                         ))}
                         {conv.contact.attributes && conv.contact.attributes.length > 2 && (
                           <span className="text-[9px] text-muted-foreground shrink-0" title={conv.contact.attributes.slice(2).join(", ")}>

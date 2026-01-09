@@ -699,18 +699,15 @@ export class DatabaseStorage implements IStorage {
     const now = Date.now();
     const msPerDay = 24 * 60 * 60 * 1000;
 
+    // Apply inactivity filters in memory (only for special cases)
     const filtered = allConvs.filter((conv) => {
-      if (filters?.status && conv.status !== filters.status) return false;
-      if (filters?.whatsappAccountId && conv.whatsappAccountId !== filters.whatsappAccountId) return false;
-      if (filters?.assignedToUserId && conv.assignedToUserId !== filters.assignedToUserId) return false;
-      
       // Filtro de inatividade
       if (neverInbound) {
         return conv.lastInboundAt === null;
       }
       
       if (minDays !== undefined || maxDays !== undefined) {
-        if (!conv.lastInboundAt) return false; // Sem msg recebida = não entra no filtro de dias
+        if (!conv.lastInboundAt) return false;
         const inactiveDays = (now - new Date(conv.lastInboundAt).getTime()) / msPerDay;
         if (minDays !== undefined && inactiveDays < minDays) return false;
         if (maxDays !== undefined && inactiveDays > maxDays) return false;
@@ -719,11 +716,82 @@ export class DatabaseStorage implements IStorage {
       return true;
     });
 
-    const result: ConversationWithDetails[] = [];
-    for (const conv of filtered) {
-      const details = await this.getConversationWithDetails(conv.id);
-      if (details) result.push(details);
+    if (filtered.length === 0) return [];
+
+    // OPTIMIZED: Batch fetch all related data in single queries instead of N+1
+    const convIds = filtered.map(c => c.id);
+    const contactIds = [...new Set(filtered.map(c => c.contactId))];
+    const accountIds = [...new Set(filtered.map(c => c.whatsappAccountId))];
+
+    // Fetch all contacts at once
+    const allContacts = await db
+      .select()
+      .from(contacts)
+      .where(inArray(contacts.id, contactIds));
+    const contactMap = new Map(allContacts.map(c => [c.id, c]));
+
+    // Fetch all WhatsApp accounts at once
+    const allAccounts = await db
+      .select()
+      .from(whatsappAccounts)
+      .where(inArray(whatsappAccounts.id, accountIds));
+    const accountMap = new Map(allAccounts.map(a => [a.id, a]));
+
+    // Fetch last message for each conversation using a subquery
+    const lastMessages = await db
+      .select()
+      .from(messages)
+      .where(inArray(messages.conversationId, convIds))
+      .orderBy(desc(messages.createdAt));
+    
+    // Group messages by conversation, keep only the latest
+    const lastMessageMap = new Map<string, typeof lastMessages[0]>();
+    for (const msg of lastMessages) {
+      if (!lastMessageMap.has(msg.conversationId)) {
+        lastMessageMap.set(msg.conversationId, msg);
+      }
     }
+
+    // Fetch all contact tags at once
+    const allContactTagRels = await db
+      .select()
+      .from(contactTags)
+      .where(inArray(contactTags.contactId, contactIds));
+    
+    const tagIds = [...new Set(allContactTagRels.map(ct => ct.tagId))];
+    const allTags = tagIds.length > 0 
+      ? await db.select().from(tags).where(inArray(tags.id, tagIds))
+      : [];
+    const tagMap = new Map(allTags.map(t => [t.id, t]));
+
+    // Group tags by contact
+    const contactTagsMap = new Map<string, typeof allTags>();
+    for (const ct of allContactTagRels) {
+      const tag = tagMap.get(ct.tagId);
+      if (tag) {
+        if (!contactTagsMap.has(ct.contactId)) {
+          contactTagsMap.set(ct.contactId, []);
+        }
+        contactTagsMap.get(ct.contactId)!.push(tag);
+      }
+    }
+
+    // Build result
+    const result: ConversationWithDetails[] = filtered.map(conv => {
+      const contact = contactMap.get(conv.contactId);
+      const account = accountMap.get(conv.whatsappAccountId);
+      const lastMessage = lastMessageMap.get(conv.id);
+      const convTags = contactTagsMap.get(conv.contactId) || [];
+
+      return {
+        ...conv,
+        contact: contact || null,
+        whatsappAccount: account || null,
+        lastMessage: lastMessage || null,
+        tags: convTags,
+      } as ConversationWithDetails;
+    });
+
     return result;
   }
 
