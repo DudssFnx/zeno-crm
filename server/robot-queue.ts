@@ -69,14 +69,11 @@ class RobotQueueManager {
     requestedBy?: string,
     priority: number = 0
   ): Promise<RobotQueueItem> {
-    const pendingItems = await db.select({ count: count() })
+    const [maxResult] = await db.select({ maxPos: sql<number>`COALESCE(MAX(${robotQueueItems.position}), 0)` })
       .from(robotQueueItems)
-      .where(and(
-        eq(robotQueueItems.companyId, companyId),
-        eq(robotQueueItems.status, "pending")
-      ));
+      .where(eq(robotQueueItems.companyId, companyId));
 
-    const position = (pendingItems[0]?.count || 0) + 1;
+    const position = (maxResult?.maxPos || 0) + 1;
 
     const [item] = await db.insert(robotQueueItems).values({
       companyId,

@@ -37,9 +37,13 @@ type OnProgressCallback = (data: RobotProgressData) => void;
 class RobotEngine {
   private activeExecutions: Map<string, { cancelled: boolean }> = new Map();
 
-  generateHumanizedDelay(baseMs: number = 2000): number {
-    const jitter = Math.random() * 1000 - 500;
-    return Math.max(1500, baseMs + jitter);
+  generateHumanizedDelay(baseMs: number = 800): number {
+    const jitter = Math.random() * 400 - 200;
+    return Math.max(400, baseMs + jitter);
+  }
+
+  generateFastDelay(): number {
+    return Math.floor(Math.random() * 200) + 100;
   }
 
   async sleep(ms: number): Promise<void> {
@@ -214,7 +218,7 @@ class RobotEngine {
           const processedContent = this.processTemplateVariables(action.content, context);
           logger.info({ processedContent: processedContent.substring(0, 50) }, "Sending text message via robot");
           await sendMessage(context.conversationId, processedContent);
-          await this.sleep(this.generateHumanizedDelay(500));
+          await this.sleep(this.generateFastDelay());
           logger.info("Text message sent successfully");
         } else {
           logger.warn("send_text action has no content - skipping");
@@ -226,7 +230,7 @@ class RobotEngine {
         if (action.mediaUrl) {
           const caption = action.content ? this.processTemplateVariables(action.content, context) : "";
           await sendMessage(context.conversationId, caption, "image", action.mediaUrl);
-          await this.sleep(this.generateHumanizedDelay(1000));
+          await this.sleep(this.generateFastDelay());
         }
         break;
       }
@@ -234,7 +238,7 @@ class RobotEngine {
       case "send_audio": {
         if (action.mediaUrl) {
           await sendMessage(context.conversationId, "", "audio", action.mediaUrl);
-          await this.sleep(this.generateHumanizedDelay(1000));
+          await this.sleep(this.generateFastDelay());
         }
         break;
       }
@@ -243,7 +247,7 @@ class RobotEngine {
         if (action.mediaUrl) {
           const caption = action.content ? this.processTemplateVariables(action.content, context) : "";
           await sendMessage(context.conversationId, caption, "video", action.mediaUrl);
-          await this.sleep(this.generateHumanizedDelay(1000));
+          await this.sleep(this.generateFastDelay());
         }
         break;
       }
@@ -252,7 +256,7 @@ class RobotEngine {
         if (action.mediaUrl) {
           const fileName = action.fileName ? this.processTemplateVariables(action.fileName, context) : "document";
           await sendMessage(context.conversationId, fileName, "document", action.mediaUrl);
-          await this.sleep(this.generateHumanizedDelay(1000));
+          await this.sleep(this.generateFastDelay());
         }
         break;
       }
