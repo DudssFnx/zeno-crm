@@ -246,10 +246,16 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     enabled: !!conversationId,
   });
 
-  const { data: messages = [], isLoading: msgsLoading } = useQuery<MessageWithSender[]>({
+  const [olderMessages, setOlderMessages] = useState<MessageWithSender[]>([]);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [oldestMessageId, setOldestMessageId] = useState<string | null>(null);
+  const [prevConversationId, setPrevConversationId] = useState<string | null>(null);
+
+  const { data: messagesData, isLoading: msgsLoading } = useQuery<{ messages: MessageWithSender[]; hasMore: boolean }>({
     queryKey: ["/api/conversations", conversationId, "messages"],
     queryFn: async () => {
-      const res = await authFetch(`/api/conversations/${conversationId}/messages`);
+      const res = await authFetch(`/api/conversations/${conversationId}/messages?limit=50`);
       if (!res.ok) throw new Error("Failed to fetch messages");
       return res.json();
     },
@@ -257,6 +263,44 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     refetchInterval: 3000,
     staleTime: 2000,
   });
+
+  // Reset older messages when conversation changes
+  if (conversationId !== prevConversationId) {
+    setOlderMessages([]);
+    setHasMoreMessages(false);
+    setOldestMessageId(null);
+    setPrevConversationId(conversationId);
+  }
+
+  // Calculate messages and hasMore from messagesData
+  const latestMessages = messagesData?.messages || [];
+  const messages = [...olderMessages, ...latestMessages];
+  const currentHasMore = olderMessages.length > 0 ? hasMoreMessages : (messagesData?.hasMore || false);
+  
+  // Update oldest message ID when we get new data
+  const firstMessageId = messages.length > 0 ? messages[0].id : null;
+  if (firstMessageId && firstMessageId !== oldestMessageId && olderMessages.length === 0) {
+    setOldestMessageId(firstMessageId);
+  }
+
+  const loadMoreMessages = async () => {
+    if (!oldestMessageId || loadingMore) return;
+    
+    setLoadingMore(true);
+    try {
+      const res = await authFetch(`/api/conversations/${conversationId}/messages?limit=50&before=${oldestMessageId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setOlderMessages(prev => [...data.messages, ...prev]);
+        setHasMoreMessages(data.hasMore);
+        if (data.messages.length > 0) {
+          setOldestMessageId(data.messages[0].id);
+        }
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const { data: agents = [] } = useQuery<User[]>({
     queryKey: ["/api/users"],
@@ -1272,6 +1316,27 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
           />
         ) : (
           <div className="space-y-6">
+            {currentHasMore && (
+              <div className="flex justify-center mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadMoreMessages}
+                  disabled={loadingMore}
+                  className="text-xs"
+                  data-testid="button-load-more-messages"
+                >
+                  {loadingMore ? (
+                    <>
+                      <LoadingSpinner className="mr-2 h-3 w-3" />
+                      Carregando...
+                    </>
+                  ) : (
+                    "Carregar mensagens anteriores"
+                  )}
+                </Button>
+              </div>
+            )}
             {messageGroups.map((group) => (
               <div key={group.date}>
                 <div className="flex justify-center mb-4">

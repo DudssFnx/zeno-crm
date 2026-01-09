@@ -1554,8 +1554,11 @@ export async function registerRoutes(
       return res.status(404).json({ message: "Conversation not found" });
     }
     
-    const messages = await storage.getMessages(req.params.id);
-    res.json(messages);
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+    const before = req.query.before as string | undefined;
+    
+    const result = await storage.getMessages(req.params.id, { limit, before });
+    res.json(result);
   });
 
   app.post("/api/conversations/:id/messages", authMiddleware(storage), async (req: AuthRequest, res) => {

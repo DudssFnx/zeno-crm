@@ -105,7 +105,7 @@ export interface IStorage {
 
   // Messages
   createMessage(data: InsertMessage): Promise<Message>;
-  getMessages(conversationId: string): Promise<MessageWithSender[]>;
+  getMessages(conversationId: string, options?: { limit?: number; before?: string }): Promise<{ messages: MessageWithSender[]; hasMore: boolean }>;
   getLastMessage(conversationId: string): Promise<Message | undefined>;
   updateMessage(id: string, data: Partial<InsertMessage>): Promise<Message | undefined>;
 
@@ -793,22 +793,45 @@ export class DatabaseStorage implements IStorage {
     return message;
   }
 
-  async getMessages(conversationId: string): Promise<MessageWithSender[]> {
+  async getMessages(conversationId: string, options?: { limit?: number; before?: string }): Promise<{ messages: MessageWithSender[]; hasMore: boolean }> {
+    const limit = options?.limit || 50;
+    
+    // Build query conditions
+    const conditions = [eq(messages.conversationId, conversationId)];
+    
+    if (options?.before) {
+      // Get the createdAt of the "before" message
+      const [beforeMsg] = await db.select().from(messages).where(eq(messages.id, options.before));
+      if (beforeMsg) {
+        conditions.push(sql`${messages.createdAt} < ${beforeMsg.createdAt}`);
+      }
+    }
+    
+    // Get limit + 1 to check if there are more messages
     const msgs = await db
       .select()
       .from(messages)
-      .where(eq(messages.conversationId, conversationId))
-      .orderBy(messages.createdAt);
+      .where(and(...conditions))
+      .orderBy(desc(messages.createdAt))
+      .limit(limit + 1);
+    
+    const hasMore = msgs.length > limit;
+    const messagesToReturn = hasMore ? msgs.slice(0, limit) : msgs;
+    
+    // Get unique sender IDs to batch fetch
+    const senderIds = Array.from(new Set(messagesToReturn.filter(m => m.senderUserId).map(m => m.senderUserId!)));
+    const senders = senderIds.length > 0 
+      ? await db.select().from(users).where(inArray(users.id, senderIds))
+      : [];
+    const senderMap = new Map(senders.map(s => [s.id, s]));
 
-    const result: MessageWithSender[] = [];
-    for (const msg of msgs) {
-      let sender: User | undefined;
-      if (msg.senderUserId) {
-        [sender] = await db.select().from(users).where(eq(users.id, msg.senderUserId));
-      }
-      result.push({ ...msg, sender });
-    }
-    return result;
+    const result: MessageWithSender[] = messagesToReturn.map(msg => ({
+      ...msg,
+      sender: msg.senderUserId ? senderMap.get(msg.senderUserId) : undefined,
+    }));
+    
+    // Return in chronological order (oldest first)
+    return { messages: result.reverse(), hasMore };
   }
 
   async getLastMessage(conversationId: string): Promise<Message | undefined> {
