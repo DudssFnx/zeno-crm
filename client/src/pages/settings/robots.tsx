@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Bot, GripVertical, Clock, Timer, MessageSquare, Mic, Play, Tag as TagIcon, UserCircle, Image, FileText, Video, ArrowRight, Upload, X, ArrowDown, Circle, Zap, MessageCircle, Reply, Sun, Hash } from "lucide-react";
+import { Plus, Pencil, Trash2, Bot, GripVertical, Clock, Timer, MessageSquare, Mic, Play, Tag as TagIcon, UserCircle, Image, FileText, Video, ArrowRight, Upload, X, ArrowDown, Circle, Zap, MessageCircle, Reply, Sun, Hash, Layers, Calendar, Search } from "lucide-react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -53,6 +53,9 @@ const actionTypes = [
   { value: "set_status", label: "Alterar Status", icon: Play, color: "#0EA5E9", category: "status" },
   { value: "assign_agent", label: "Atribuir Atendente", icon: UserCircle, color: "#84CC16", category: "atendente" },
   { value: "transfer", label: "Transferir", icon: ArrowRight, color: "#F43F5E", category: "atendente" },
+  { value: "move_stage", label: "Mover Estagio", icon: Layers, color: "#1565C0", category: "kanban" },
+  { value: "extract_data", label: "Extrair Dados", icon: Search, color: "#7C3AED", category: "dados" },
+  { value: "schedule_followup", label: "Agendar Followup", icon: Calendar, color: "#059669", category: "tempo" },
 ];
 
 const statusOptions = [
@@ -68,7 +71,8 @@ const robotActionSchema = z.object({
     "simulate_typing", "simulate_recording", "delay", "random_delay",
     "add_tag", "remove_tag", "remove_all_tags", 
     "add_attribute", "remove_attribute", "remove_all_attributes",
-    "set_status", "assign_agent", "transfer"
+    "set_status", "assign_agent", "transfer",
+    "move_stage", "extract_data", "schedule_followup"
   ]),
   content: z.string().optional(),
   mediaUrl: z.string().optional(),
@@ -78,6 +82,15 @@ const robotActionSchema = z.object({
   attributeId: z.string().optional(),
   status: z.enum(["open", "pending", "resolved"]).optional(),
   agentId: z.string().optional(),
+  stageId: z.string().optional(),
+  followupDelayMinutes: z.number().optional(),
+  onlyIfNoResponse: z.boolean().optional(),
+  extractionRule: z.object({
+    pattern: z.string(),
+    extractName: z.boolean().optional(),
+    extractCity: z.boolean().optional(),
+    extractState: z.boolean().optional(),
+  }).optional(),
 });
 
 const robotTriggerSchema = z.object({
@@ -107,6 +120,7 @@ interface FlowBlockProps {
   tags: Tag[];
   users: User[];
   contactAttributes: ContactAttribute[];
+  stages: { id: string; name: string; color: string }[];
   form: any;
   onFileUpload: (file: File, index: number) => void;
   uploadingIndex: number | null;
@@ -122,6 +136,7 @@ function FlowBlock({
   tags, 
   users, 
   contactAttributes,
+  stages,
   form,
   onFileUpload,
   uploadingIndex,
@@ -175,6 +190,13 @@ function FlowBlock({
         return agent?.name || "";
       case "transfer":
         return "";
+      case "move_stage":
+        const stage = stages.find(s => s.id === action.stageId);
+        return stage?.name || "";
+      case "extract_data":
+        return action.extractionRule?.pattern ? `/${action.extractionRule.pattern.substring(0, 20)}${action.extractionRule.pattern.length > 20 ? "..." : ""}/` : "";
+      case "schedule_followup":
+        return action.followupDelayMinutes ? `${action.followupDelayMinutes}min` : "";
       default:
         return "";
     }
@@ -440,6 +462,139 @@ function FlowBlock({
               )}
             />
           )}
+
+          {action.type === "move_stage" && (
+            <FormField
+              control={form.control}
+              name={`actions.${index}.stageId`}
+              render={({ field: inputField }) => (
+                <FormItem>
+                  <Select value={inputField.value || ""} onValueChange={inputField.onChange}>
+                    <FormControl>
+                      <SelectTrigger className="text-sm" data-testid={`select-block-stage-${index}`}>
+                        <SelectValue placeholder="Selecione estagio" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {stages.map((stage) => (
+                        <SelectItem key={stage.id} value={stage.id}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
+                            {stage.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormItem>
+              )}
+            />
+          )}
+
+          {action.type === "extract_data" && (
+            <div className="space-y-2">
+              <FormField
+                control={form.control}
+                name={`actions.${index}.extractionRule.pattern`}
+                render={({ field: inputField }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">Padrao Regex</FormLabel>
+                    <FormControl>
+                      <Input 
+                        {...inputField} 
+                        placeholder="sou (\w+) de (\w+)" 
+                        className="text-sm font-mono"
+                        data-testid={`input-block-extraction-pattern-${index}`} 
+                      />
+                    </FormControl>
+                    <FormDescription className="text-[10px]">
+                      Use grupos (parênteses) para capturar nome e cidade
+                    </FormDescription>
+                  </FormItem>
+                )}
+              />
+              <div className="flex gap-4 text-xs">
+                <FormField
+                  control={form.control}
+                  name={`actions.${index}.extractionRule.extractName`}
+                  render={({ field: inputField }) => (
+                    <FormItem className="flex items-center gap-1.5">
+                      <FormControl>
+                        <Switch checked={inputField.value || false} onCheckedChange={inputField.onChange} />
+                      </FormControl>
+                      <FormLabel className="text-xs !mt-0">Extrair Nome</FormLabel>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name={`actions.${index}.extractionRule.extractCity`}
+                  render={({ field: inputField }) => (
+                    <FormItem className="flex items-center gap-1.5">
+                      <FormControl>
+                        <Switch checked={inputField.value || false} onCheckedChange={inputField.onChange} />
+                      </FormControl>
+                      <FormLabel className="text-xs !mt-0">Extrair Cidade</FormLabel>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+          )}
+
+          {action.type === "schedule_followup" && (
+            <div className="space-y-2">
+              <FormField
+                control={form.control}
+                name={`actions.${index}.followupDelayMinutes`}
+                render={({ field: inputField }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">Agendar em (minutos)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number"
+                        value={inputField.value || ""}
+                        onChange={(e) => inputField.onChange(parseInt(e.target.value) || 0)}
+                        placeholder="30" 
+                        className="text-sm"
+                        data-testid={`input-block-followup-delay-${index}`} 
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name={`actions.${index}.content`}
+                render={({ field: inputField }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">Mensagem</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        {...inputField} 
+                        placeholder="Mensagem de follow-up..." 
+                        rows={2} 
+                        className="text-sm resize-none"
+                        data-testid={`input-block-followup-content-${index}`} 
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name={`actions.${index}.onlyIfNoResponse`}
+                render={({ field: inputField }) => (
+                  <FormItem className="flex items-center gap-1.5">
+                    <FormControl>
+                      <Switch checked={inputField.value || false} onCheckedChange={inputField.onChange} />
+                    </FormControl>
+                    <FormLabel className="text-xs !mt-0">Somente se nao houver resposta</FormLabel>
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -612,6 +767,15 @@ export default function RobotsPage() {
     queryFn: async () => {
       const res = await authFetch("/api/contact-attributes");
       if (!res.ok) throw new Error("Failed to fetch contact attributes");
+      return res.json();
+    },
+  });
+
+  const { data: stages = [] } = useQuery<{ id: string; name: string; color: string }[]>({
+    queryKey: ["/api/stages"],
+    queryFn: async () => {
+      const res = await authFetch("/api/stages");
+      if (!res.ok) throw new Error("Failed to fetch stages");
       return res.json();
     },
   });
@@ -1189,6 +1353,7 @@ export default function RobotsPage() {
                                     tags={tags}
                                     users={users}
                                     contactAttributes={contactAttributes}
+                                    stages={stages}
                                     form={form}
                                     onFileUpload={handleFileUpload}
                                     uploadingIndex={uploadingIndex}

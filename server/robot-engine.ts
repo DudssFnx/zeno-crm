@@ -412,6 +412,75 @@ class RobotEngine {
         break;
       }
 
+      case "move_stage": {
+        if (action.stageId) {
+          await db.update(conversations)
+            .set({ stageId: action.stageId, stageEnteredAt: new Date() })
+            .where(eq(conversations.id, context.conversationId));
+          logger.info({ conversationId: context.conversationId, stageId: action.stageId }, "Conversa movida para estagio");
+        }
+        break;
+      }
+
+      case "extract_data": {
+        const extractionRule = action.extractionRule as any;
+        if (extractionRule?.pattern && context.lastMessage) {
+          try {
+            const regex = new RegExp(extractionRule.pattern, "i");
+            const match = context.lastMessage.match(regex);
+            if (match) {
+              const updateData: any = {};
+              if (extractionRule.extractName && match[1]) {
+                updateData.name = match[1].trim();
+              }
+              if (extractionRule.extractCity && match[2]) {
+                updateData.city = match[2].trim();
+              }
+              if (extractionRule.extractState && match[3]) {
+                updateData.state = match[3].trim();
+              }
+              if (Object.keys(updateData).length > 0) {
+                const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
+                if (conv) {
+                  await db.update(contacts)
+                    .set(updateData)
+                    .where(eq(contacts.id, conv.contactId));
+                  logger.info({ contactId: conv.contactId, data: updateData }, "Dados extraidos e atualizados no contato");
+                }
+              }
+            }
+          } catch (error) {
+            logger.error({ error }, "Erro ao extrair dados com regex");
+          }
+        }
+        break;
+      }
+
+      case "schedule_followup": {
+        if (action.followupDelayMinutes && action.content) {
+          const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
+          if (conv) {
+            const scheduledFor = new Date(Date.now() + action.followupDelayMinutes * 60 * 1000);
+            const processedContent = this.processTemplateVariables(action.content, context);
+            
+            await db.insert(scheduledMessages).values({
+              companyId: context.companyId,
+              conversationId: context.conversationId,
+              contactId: conv.contactId,
+              whatsappAccountId: context.whatsappAccountId,
+              content: processedContent,
+              mediaUrl: null,
+              mediaType: null,
+              scheduledFor,
+              status: "pending",
+              createdBy: null,
+            });
+            logger.info({ scheduledFor, delayMinutes: action.followupDelayMinutes }, "Follow-up agendado");
+          }
+        }
+        break;
+      }
+
       default:
         logger.warn({ actionType: type }, "Tipo de ação desconhecido");
     }
