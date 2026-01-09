@@ -720,8 +720,8 @@ export class DatabaseStorage implements IStorage {
 
     // OPTIMIZED: Batch fetch all related data in single queries instead of N+1
     const convIds = filtered.map(c => c.id);
-    const contactIds = [...new Set(filtered.map(c => c.contactId))];
-    const accountIds = [...new Set(filtered.map(c => c.whatsappAccountId))];
+    const contactIds = Array.from(new Set(filtered.map(c => c.contactId)));
+    const accountIds = Array.from(new Set(filtered.map(c => c.whatsappAccountId)));
 
     // Fetch all contacts at once
     const allContacts = await db
@@ -758,7 +758,7 @@ export class DatabaseStorage implements IStorage {
       .from(contactTags)
       .where(inArray(contactTags.contactId, contactIds));
     
-    const tagIds = [...new Set(allContactTagRels.map(ct => ct.tagId))];
+    const tagIds = Array.from(new Set(allContactTagRels.map(ct => ct.tagId)));
     const allTags = tagIds.length > 0 
       ? await db.select().from(tags).where(inArray(tags.id, tagIds))
       : [];

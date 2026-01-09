@@ -160,6 +160,9 @@ export function useRealtime() {
       if (data.companyId === user.companyId) {
         console.log("[Realtime] Invalidating caches for conversation:", data.conversationId);
         
+        // Cancel pending queries to avoid race conditions
+        queryClient.cancelQueries({ queryKey: ["/api/conversations"] });
+        
         // Use refetchType: 'all' to force immediate refetch
         queryClient.invalidateQueries({ 
           queryKey: ["/api/conversations", data.conversationId, "messages"],
@@ -182,6 +185,7 @@ export function useRealtime() {
       console.log("[Realtime] conversation:updated received:", data.conversationId);
       
       if (data.companyId === user.companyId) {
+        queryClient.cancelQueries({ queryKey: ["/api/conversations"] });
         queryClient.invalidateQueries({ 
           queryKey: ["/api/conversations"],
           refetchType: 'all'
@@ -193,6 +197,8 @@ export function useRealtime() {
       console.log("[Realtime] contact:updated received:", data.contactId);
       
       if (data.companyId === user.companyId) {
+        queryClient.cancelQueries({ queryKey: ["/api/contacts"] });
+        queryClient.cancelQueries({ queryKey: ["/api/conversations"] });
         queryClient.invalidateQueries({ 
           queryKey: ["/api/contacts"],
           refetchType: 'all'
@@ -219,10 +225,9 @@ export function useRealtime() {
       console.log("[Realtime] conversation:deleted received:", data.conversationId);
       
       if (data.companyId === user.companyId) {
-        queryClient.invalidateQueries({ 
-          queryKey: ["/api/conversations"],
-          refetchType: 'all'
-        });
+        // Cancel and reset cache to avoid stale references
+        queryClient.cancelQueries({ queryKey: ["/api/conversations"] });
+        queryClient.resetQueries({ queryKey: ["/api/conversations"] });
       }
     });
 
@@ -230,14 +235,10 @@ export function useRealtime() {
       console.log("[Realtime] contact:deleted received:", data.contactId);
       
       if (data.companyId === user.companyId) {
-        queryClient.invalidateQueries({ 
-          queryKey: ["/api/contacts"],
-          refetchType: 'all'
-        });
-        queryClient.invalidateQueries({ 
-          queryKey: ["/api/conversations"],
-          refetchType: 'all'
-        });
+        queryClient.cancelQueries({ queryKey: ["/api/contacts"] });
+        queryClient.cancelQueries({ queryKey: ["/api/conversations"] });
+        queryClient.resetQueries({ queryKey: ["/api/contacts"] });
+        queryClient.resetQueries({ queryKey: ["/api/conversations"] });
       }
     });
 
