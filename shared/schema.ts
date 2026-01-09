@@ -713,30 +713,100 @@ export type MessageWithSender = Message & {
   sender?: User;
 };
 
-// ============ Robô (Auto Atendimento Scripts) ============
+// ============ Robô Inteligente (Cérebro Único do Sistema) ============
 
-// Ações disponíveis no robô
+// Tipos de trigger do robô
+export const robotTriggerTypes = [
+  "manual",           // Gatilho manual (botão)
+  "first_message",    // Primeira mensagem do contato
+  "any_message",      // Qualquer mensagem recebida
+  "keyword",          // Mensagem contém palavras-chave
+  "no_response",      // Cliente não respondeu (inatividade)
+  "scheduled",        // Agendado
+] as const;
+
+export type RobotTriggerType = typeof robotTriggerTypes[number];
+
+// Schema de trigger do robô
+export const robotTriggerSchema = z.object({
+  type: z.enum(robotTriggerTypes),
+  keywords: z.array(z.string()).optional(),     // Para type: keyword
+  inactivityMinutes: z.number().optional(),     // Para type: no_response
+  scheduleDelayMinutes: z.number().optional(),  // Para type: scheduled (delay após trigger anterior)
+  priority: z.number().optional().default(0),   // Prioridade (maior = executa primeiro)
+});
+
+export type RobotTrigger = z.infer<typeof robotTriggerSchema>;
+
+// Regras de roteamento inteligente por intenção
+export const intentRouteSchema = z.object({
+  id: z.string(),
+  name: z.string(),                             // Nome da intenção (ex: "Comercial", "Financeiro")
+  keywords: z.array(z.string()),                // Palavras-chave que ativam essa rota
+  tagId: z.string().optional(),                 // Tag a adicionar
+  stageId: z.string().optional(),               // Estágio Kanban para mover
+  agentId: z.string().optional(),               // Agente para atribuir
+  departmentId: z.string().optional(),          // Departamento para encaminhar
+  responseMessage: z.string().optional(),       // Mensagem de resposta automática
+});
+
+export type IntentRoute = z.infer<typeof intentRouteSchema>;
+
+// Schema de extração de dados do contato
+export const dataExtractionRuleSchema = z.object({
+  id: z.string(),
+  pattern: z.string(),      // Regex pattern (ex: "sou (\\w+) de (\\w+)")
+  extractName: z.boolean().optional(),
+  extractCity: z.boolean().optional(),
+  extractState: z.boolean().optional(),
+  customFields: z.array(z.object({
+    fieldName: z.string(),
+    groupIndex: z.number(),
+  })).optional(),
+});
+
+export type DataExtractionRule = z.infer<typeof dataExtractionRuleSchema>;
+
+// Schema de mensagem agendada do robô
+export const robotScheduledMessageSchema = z.object({
+  id: z.string(),
+  delayMinutes: z.number(),           // Delay em minutos após trigger
+  message: z.string(),                // Conteúdo da mensagem
+  onlyIfNoResponse: z.boolean(),      // Só envia se cliente não respondeu
+  mediaUrl: z.string().optional(),    // Mídia opcional
+  mediaType: z.enum(["image", "audio", "video", "document"]).optional(),
+});
+
+export type RobotScheduledMessage = z.infer<typeof robotScheduledMessageSchema>;
+
+// Ações disponíveis no robô (expandidas)
 export const robotActionSchema = z.object({
   id: z.string(),
   type: z.enum([
-    "send_text",        // Enviar texto
-    "send_image",       // Enviar imagem
-    "send_audio",       // Enviar áudio
-    "send_video",       // Enviar vídeo
-    "send_document",    // Enviar documento
-    "simulate_typing",  // Simular digitando
-    "simulate_recording", // Simular gravando áudio
-    "delay",            // Aguardar tempo
-    "random_delay",     // Aguardar tempo randomico (15-45s)
-    "add_tag",          // Adicionar tag
-    "remove_tag",       // Remover tag
-    "remove_all_tags",  // Remover todas as tags
-    "add_attribute",    // Adicionar atributo ao contato
-    "remove_attribute", // Remover atributo do contato
+    "send_text",            // Enviar texto
+    "send_image",           // Enviar imagem
+    "send_audio",           // Enviar áudio
+    "send_video",           // Enviar vídeo
+    "send_document",        // Enviar documento
+    "simulate_typing",      // Simular digitando
+    "simulate_recording",   // Simular gravando áudio
+    "delay",                // Aguardar tempo
+    "random_delay",         // Aguardar tempo randomico (15-45s)
+    "add_tag",              // Adicionar tag
+    "remove_tag",           // Remover tag
+    "remove_all_tags",      // Remover todas as tags
+    "add_attribute",        // Adicionar atributo ao contato
+    "remove_attribute",     // Remover atributo do contato
     "remove_all_attributes", // Remover todos atributos do contato
-    "set_status",       // Alterar status da conversa
-    "assign_agent",     // Atribuir atendente
-    "transfer",         // Transferir atendimento
+    "set_status",           // Alterar status da conversa
+    "assign_agent",         // Atribuir atendente
+    "transfer",             // Transferir atendimento
+    "move_stage",           // Mover para estágio Kanban
+    "extract_data",         // Extrair dados da mensagem (nome, cidade)
+    "schedule_followup",    // Agendar mensagem de follow-up
+    "route_by_intent",      // Rotear baseado na intenção detectada
+    "ask_question",         // Perguntar algo ao cliente
+    "conditional",          // Ação condicional (if/else)
   ]),
   // Campos específicos por tipo de ação
   content: z.string().optional(),         // Texto da mensagem ou URL do arquivo
@@ -748,18 +818,72 @@ export const robotActionSchema = z.object({
   status: z.enum(["open", "pending", "resolved"]).optional(),
   agentId: z.string().optional(),         // ID do agente
   departmentId: z.string().optional(),    // ID do departamento para transferência
+  stageId: z.string().optional(),         // ID do estágio Kanban
+  followupDelayMinutes: z.number().optional(), // Delay para follow-up
+  onlyIfNoResponse: z.boolean().optional(),    // Só executa se cliente não responder
+  extractionRule: dataExtractionRuleSchema.optional(), // Regra de extração
+  intentRoutes: z.array(intentRouteSchema).optional(), // Rotas de intenção
+  condition: z.object({
+    field: z.enum(["message", "contact_name", "has_tag", "stage", "time_since_last_message"]),
+    operator: z.enum(["contains", "not_contains", "equals", "not_equals", "greater_than", "less_than"]),
+    value: z.string(),
+    thenActions: z.array(z.string()).optional(), // IDs das ações se condição for verdadeira
+    elseActions: z.array(z.string()).optional(), // IDs das ações se condição for falsa
+  }).optional(),
 });
 
 export type RobotAction = z.infer<typeof robotActionSchema>;
 
-// Tabela de robôs
+// Tabela de robôs (Cérebro Único)
 export const robots = pgTable("robots", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull().references(() => companies.id),
+  whatsappAccountId: varchar("whatsapp_account_id").references(() => whatsappAccounts.id), // Opcional: robô específico por conta
   name: text("name").notNull(),
   description: text("description"),
+  
+  // Triggers automáticos
+  triggers: jsonb("triggers").notNull().default([]), // Array de RobotTrigger
+  
+  // Roteamento inteligente por intenção
+  intentRoutes: jsonb("intent_routes").notNull().default([]), // Array de IntentRoute
+  
+  // Regras de extração de dados
+  dataExtractionRules: jsonb("data_extraction_rules").notNull().default([]), // Array de DataExtractionRule
+  
+  // Mensagens agendadas automáticas
+  scheduledMessages: jsonb("scheduled_messages").notNull().default([]), // Array de RobotScheduledMessage
+  
+  // Ações do robô
   actions: jsonb("actions").notNull().default([]), // Array de RobotAction
+  
+  // Configurações
   isActive: boolean("is_active").notNull().default(true),
+  isAutomatic: boolean("is_automatic").notNull().default(false), // Se executa automaticamente
+  priority: integer("priority").notNull().default(0), // Prioridade de execução (maior = primeiro)
+  stopOnMatch: boolean("stop_on_match").notNull().default(true), // Para de processar outros robôs após match
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Estado de execução do robô por conversa
+export const robotConversationState = pgTable("robot_conversation_state", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  robotId: varchar("robot_id").references(() => robots.id, { onDelete: "cascade" }),
+  
+  // Estado atual
+  currentIntent: text("current_intent"), // Intenção detectada
+  lastTriggerType: text("last_trigger_type"), // Último tipo de trigger ativado
+  pendingFollowups: jsonb("pending_followups").notNull().default([]), // Follow-ups pendentes
+  extractedData: jsonb("extracted_data").notNull().default({}), // Dados extraídos da conversa
+  
+  // Controle
+  isAwaitingResponse: boolean("is_awaiting_response").notNull().default(false),
+  lastRobotMessageAt: timestamp("last_robot_message_at"),
+  messagesSinceLastRobot: integer("messages_since_last_robot").notNull().default(0),
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -780,6 +904,10 @@ export const robotExecutions = pgTable("robot_executions", {
 export const insertRobotSchema = createInsertSchema(robots).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertRobot = z.infer<typeof insertRobotSchema>;
 export type Robot = typeof robots.$inferSelect;
+
+export const insertRobotConversationStateSchema = createInsertSchema(robotConversationState).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertRobotConversationState = z.infer<typeof insertRobotConversationStateSchema>;
+export type RobotConversationState = typeof robotConversationState.$inferSelect;
 
 export const insertRobotExecutionSchema = createInsertSchema(robotExecutions).omit({ id: true, startedAt: true, completedAt: true });
 export type InsertRobotExecution = z.infer<typeof insertRobotExecutionSchema>;

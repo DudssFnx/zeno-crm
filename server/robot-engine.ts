@@ -1,7 +1,8 @@
 import { db } from "./db";
-import { robots, robotExecutions, conversations, contacts, messages, contactTags, tags, contactAttributes } from "@shared/schema";
-import type { Robot, RobotAction, RobotExecution } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { robots, robotExecutions, conversations, contacts, messages, contactTags, tags, contactAttributes, scheduledMessages, robotConversationState } from "@shared/schema";
+import type { Robot, RobotAction, RobotExecution, RobotTrigger, IntentRoute, Contact, Conversation } from "@shared/schema";
+import { eq, and, desc, isNull } from "drizzle-orm";
+import { storage } from "./storage";
 
 const logger = {
   info: (data: any, msg?: string) => console.log(`[RobotEngine] ${msg || ""}`, data),
@@ -18,6 +19,31 @@ interface ExecutionContext {
   whatsappAccountId: string;
   companyId: string;
   executedBy?: string;
+}
+
+interface AutoMessageContext {
+  conversationId: string;
+  contactId: string;
+  companyId: string;
+  whatsappAccountId: string;
+  messageContent: string;
+  messageDirection: "incoming" | "outgoing";
+  isFirstMessage: boolean;
+  contact: Contact;
+  conversation: Conversation;
+}
+
+interface IntentMatch {
+  route: IntentRoute;
+  matchedKeywords: string[];
+  confidence: number;
+}
+
+interface ExtractedContactData {
+  name?: string;
+  city?: string;
+  state?: string;
+  [key: string]: string | undefined;
 }
 
 interface RobotProgressData {
@@ -474,6 +500,319 @@ class RobotEngine {
         eq(robotExecutions.conversationId, conversationId),
         eq(robotExecutions.status, "running")
       ));
+  }
+
+  async processIncomingMessage(
+    context: AutoMessageContext,
+    sendMessage: (conversationId: string, content: string, mediaType?: string, mediaUrl?: string) => Promise<void>,
+    sendPresence: (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording" | "paused") => Promise<void>
+  ): Promise<void> {
+    logger.info({ conversationId: context.conversationId }, "Processing incoming message for automatic robots");
+
+    try {
+      const allRobots = await db.select().from(robots)
+        .where(and(
+          eq(robots.companyId, context.companyId),
+          eq(robots.isActive, true),
+          eq(robots.isAutomatic, true)
+        ))
+        .orderBy(desc(robots.priority));
+
+      if (allRobots.length === 0) {
+        logger.debug({}, "No automatic robots configured");
+        return;
+      }
+
+      for (const robot of allRobots) {
+        if (robot.whatsappAccountId && robot.whatsappAccountId !== context.whatsappAccountId) {
+          continue;
+        }
+
+        const shouldTrigger = await this.checkTriggers(robot, context);
+        if (shouldTrigger) {
+          logger.info({ robotId: robot.id, robotName: robot.name }, "Triggering automatic robot");
+          await this.executeAutomaticRobot(robot, context, sendMessage, sendPresence);
+
+          if (robot.stopOnMatch) {
+            logger.debug({}, "Stop on match - skipping remaining robots");
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      logger.error({ error }, "Error processing incoming message for robots");
+    }
+  }
+
+  private async checkTriggers(robot: Robot, context: AutoMessageContext): Promise<boolean> {
+    const triggers = (robot.triggers as RobotTrigger[]) || [];
+
+    if (triggers.length === 0) {
+      return false;
+    }
+
+    for (const trigger of triggers) {
+      switch (trigger.type) {
+        case "first_message":
+          if (context.isFirstMessage) return true;
+          break;
+
+        case "any_message":
+          if (context.messageDirection === "incoming") return true;
+          break;
+
+        case "keyword":
+          if (trigger.keywords && trigger.keywords.length > 0) {
+            const messageLC = context.messageContent.toLowerCase();
+            const matched = trigger.keywords.some(kw =>
+              messageLC.includes(kw.toLowerCase())
+            );
+            if (matched) return true;
+          }
+          break;
+
+        case "manual":
+          break;
+      }
+    }
+
+    return false;
+  }
+
+  private async executeAutomaticRobot(
+    robot: Robot,
+    context: AutoMessageContext,
+    sendMessage: (conversationId: string, content: string, mediaType?: string, mediaUrl?: string) => Promise<void>,
+    sendPresence: (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording" | "paused") => Promise<void>
+  ): Promise<void> {
+    const intentRoutes = (robot.intentRoutes as IntentRoute[]) || [];
+    if (intentRoutes.length > 0) {
+      const intentMatch = this.detectIntent(context.messageContent, intentRoutes);
+      if (intentMatch) {
+        logger.info({ intent: intentMatch.route.name, confidence: intentMatch.confidence }, "Detected intent");
+        await this.applyIntentRoute(intentMatch.route, context, sendMessage, sendPresence);
+      }
+    }
+
+    const extractionRules = (robot.dataExtractionRules as any[]) || [];
+    for (const rule of extractionRules) {
+      const extracted = this.extractContactData(context.messageContent, rule);
+      if (Object.keys(extracted).length > 0) {
+        await this.updateContactWithExtractedData(context.contactId, extracted);
+      }
+    }
+
+    const actions = (robot.actions as RobotAction[]) || [];
+    const execContext: ExecutionContext = {
+      conversationId: context.conversationId,
+      contactId: context.contactId,
+      contactName: context.contact.name,
+      contactPhone: context.contact.phoneNumber,
+      whatsappAccountId: context.whatsappAccountId,
+      companyId: context.companyId,
+    };
+
+    for (const action of actions) {
+      await this.executeAction(action, execContext, sendMessage, sendPresence);
+    }
+
+    const scheduledMsgs = (robot.scheduledMessages as any[]) || [];
+    for (const scheduled of scheduledMsgs) {
+      await this.scheduleFollowup(scheduled, context);
+    }
+  }
+
+  private detectIntent(messageContent: string, routes: IntentRoute[]): IntentMatch | null {
+    const messageLC = messageContent.toLowerCase();
+    let bestMatch: IntentMatch | null = null;
+    let maxMatches = 0;
+
+    for (const route of routes) {
+      const matchedKeywords = route.keywords.filter(kw =>
+        messageLC.includes(kw.toLowerCase())
+      );
+
+      if (matchedKeywords.length > maxMatches) {
+        maxMatches = matchedKeywords.length;
+        bestMatch = {
+          route,
+          matchedKeywords,
+          confidence: matchedKeywords.length / route.keywords.length,
+        };
+      }
+    }
+
+    return bestMatch;
+  }
+
+  private async applyIntentRoute(
+    route: IntentRoute,
+    context: AutoMessageContext,
+    sendMessage: (conversationId: string, content: string, mediaType?: string, mediaUrl?: string) => Promise<void>,
+    sendPresence: (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording" | "paused") => Promise<void>
+  ): Promise<void> {
+    if (route.tagId) {
+      const existing = await db.select().from(contactTags)
+        .where(and(
+          eq(contactTags.contactId, context.contactId),
+          eq(contactTags.tagId, route.tagId)
+        ));
+      if (existing.length === 0) {
+        await db.insert(contactTags).values({
+          contactId: context.contactId,
+          tagId: route.tagId,
+        });
+      }
+      logger.info({ tagId: route.tagId }, "Added tag to contact via intent route");
+    }
+
+    if (route.stageId) {
+      await db.update(conversations)
+        .set({ stageId: route.stageId, stageEnteredAt: new Date() })
+        .where(eq(conversations.id, context.conversationId));
+      logger.info({ stageId: route.stageId }, "Moved conversation to stage via intent route");
+    }
+
+    if (route.agentId) {
+      await db.update(conversations)
+        .set({ assignedToUserId: route.agentId, status: "open" })
+        .where(eq(conversations.id, context.conversationId));
+      logger.info({ agentId: route.agentId }, "Assigned conversation to agent via intent route");
+    }
+
+    if (route.responseMessage) {
+      const processedMessage = this.processAutoTemplateVariables(route.responseMessage, context);
+      await sendPresence(context.whatsappAccountId, context.contact.phoneNumber, "composing");
+      await this.sleep(this.generateHumanizedDelay(1500));
+      await sendPresence(context.whatsappAccountId, context.contact.phoneNumber, "paused");
+      await sendMessage(context.conversationId, processedMessage);
+      logger.info({}, "Sent intent response message");
+    }
+  }
+
+  private extractContactData(messageContent: string, rule: any): ExtractedContactData {
+    const result: ExtractedContactData = {};
+
+    try {
+      const regex = new RegExp(rule.pattern, "i");
+      const match = messageContent.match(regex);
+
+      if (match) {
+        if (rule.extractName && match[1]) {
+          result.name = match[1].trim();
+        }
+        if (rule.extractCity && match[2]) {
+          result.city = match[2].trim();
+        }
+        if (rule.extractState && match[3]) {
+          result.state = match[3].trim();
+        }
+
+        if (rule.customFields) {
+          for (const field of rule.customFields) {
+            if (match[field.groupIndex]) {
+              result[field.fieldName] = match[field.groupIndex].trim();
+            }
+          }
+        }
+      }
+    } catch (error) {
+      logger.error({ error }, "Error in data extraction");
+    }
+
+    return result;
+  }
+
+  private async updateContactWithExtractedData(contactId: string, data: ExtractedContactData): Promise<void> {
+    const updateData: any = {};
+
+    if (data.name) updateData.name = data.name;
+    if (data.city) updateData.city = data.city;
+    if (data.state) updateData.state = data.state;
+
+    if (Object.keys(updateData).length > 0) {
+      await db.update(contacts)
+        .set(updateData)
+        .where(eq(contacts.id, contactId));
+      logger.info({ contactId, data: updateData }, "Updated contact with extracted data");
+    }
+  }
+
+  private async scheduleFollowup(scheduled: any, context: AutoMessageContext): Promise<void> {
+    const scheduledFor = new Date(Date.now() + scheduled.delayMinutes * 60 * 1000);
+
+    await db.insert(scheduledMessages).values({
+      companyId: context.companyId,
+      conversationId: context.conversationId,
+      contactId: context.contactId,
+      whatsappAccountId: context.whatsappAccountId,
+      content: this.processAutoTemplateVariables(scheduled.message, context),
+      mediaUrl: scheduled.mediaUrl || null,
+      mediaType: scheduled.mediaType || null,
+      scheduledFor,
+      status: "pending",
+      createdBy: null,
+    });
+
+    logger.info({ scheduledFor, delayMinutes: scheduled.delayMinutes }, "Scheduled followup message");
+  }
+
+  private processAutoTemplateVariables(content: string, context: AutoMessageContext): string {
+    const contact = context.contact;
+    const hora = new Date().getHours();
+
+    const periodoVariacoes = hora >= 5 && hora < 12
+      ? ["bom dia", "um bom dia", "um ótimo dia"]
+      : hora >= 12 && hora < 18
+        ? ["boa tarde", "uma boa tarde", "uma ótima tarde"]
+        : ["boa noite", "uma boa noite", "uma ótima noite"];
+
+    const saudacaoVariacoes = [
+      "Olá, tudo bem?",
+      "Oi, tudo bem?",
+      "Olá, como vai?",
+    ];
+
+    const periodoDoDia = periodoVariacoes[Math.floor(Math.random() * periodoVariacoes.length)];
+    const saudacao = saudacaoVariacoes[Math.floor(Math.random() * saudacaoVariacoes.length)];
+
+    return content
+      .replace(/\{\{nome\}\}/gi, contact.name || "")
+      .replace(/\{\{telefone\}\}/gi, contact.phoneNumber || "")
+      .replace(/\{\{primeiro_nome\}\}/gi, contact.name?.split(" ")[0] || contact.name || "")
+      .replace(/\{\{cidade\}\}/gi, contact.city || "")
+      .replace(/\{\{estado\}\}/gi, contact.state || "")
+      .replace(/\{\{periodo_do_dia\}\}/gi, periodoDoDia)
+      .replace(/\{\{saudacao\}\}/gi, saudacao);
+  }
+
+  getDefaultIntentRoutes(): IntentRoute[] {
+    return [
+      {
+        id: "comercial",
+        name: "Comercial",
+        keywords: ["preço", "valor", "atacado", "comprar", "orçamento", "cotação", "quanto custa"],
+        responseMessage: "Você foi direcionado para o setor Comercial. Um atendente irá te responder em breve.",
+      },
+      {
+        id: "financeiro",
+        name: "Financeiro",
+        keywords: ["pedido", "nota", "boleto", "pagamento", "pix", "fatura", "cobrança"],
+        responseMessage: "Você foi direcionado para o setor Financeiro. Um atendente irá te responder em breve.",
+      },
+      {
+        id: "posvenda",
+        name: "Pós-venda",
+        keywords: ["troca", "problema", "defeito", "garantia", "devolução", "reclamação", "erro"],
+        responseMessage: "Você foi direcionado para o setor de Pós-venda. Um atendente irá te responder em breve.",
+      },
+      {
+        id: "saudacao",
+        name: "Saudação",
+        keywords: ["oi", "olá", "bom dia", "boa tarde", "boa noite", "hey", "eae"],
+        responseMessage: "Olá! Seja bem-vindo! Como posso te ajudar hoje?",
+      },
+    ];
   }
 }
 

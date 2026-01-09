@@ -6,6 +6,7 @@ import { dispatchWebhook } from "./webhook-dispatcher";
 import { whatsappBaileys, MediaInfo } from "./whatsapp-baileys";
 import { processFlowMessage } from "./flow-processor";
 import { triageEngine } from "./triage-engine";
+import { robotEngine } from "./robot-engine";
 import fs from "fs";
 import path from "path";
 import { proto } from "@whiskeysockets/baileys";
@@ -588,6 +589,34 @@ async function processMessageInBackground(msg: QueuedMessage) {
         } catch (flowErr) {
           console.error("[FlowProcessor] Error processing flow:", flowErr);
         }
+      }
+      
+      // Processar robôs automáticos (cérebro único do sistema)
+      try {
+        const isFirstMessage = conversationCreated;
+        await robotEngine.processIncomingMessage(
+          {
+            conversationId: conversation.id,
+            contactId: contact.id,
+            companyId,
+            whatsappAccountId: accountId,
+            messageContent: content,
+            messageDirection: direction,
+            isFirstMessage,
+            contact,
+            conversation,
+          },
+          async (convId, msgContent, mediaType, mediaUrl) => {
+            await whatsappBaileys.sendMessage(accountId, phoneNumber, msgContent, undefined, 
+              mediaUrl ? { mediaUrl, mediaType: mediaType as any } : undefined
+            );
+          },
+          async (waAccountId, phone, presenceType) => {
+            await whatsappBaileys.sendPresence(waAccountId, phone, presenceType);
+          }
+        );
+      } catch (robotErr) {
+        console.error("[RobotEngine] Error processing automatic robot:", robotErr);
       }
     }
     
