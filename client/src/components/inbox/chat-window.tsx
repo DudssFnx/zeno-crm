@@ -602,19 +602,21 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
     setIsAtBottom(true);
   }, [conversationId, scrollToBottom]);
 
-  // Mark conversation as read when opened
+  // Mark conversation as read immediately when opened (don't wait for conversation data)
   useEffect(() => {
-    if (conversationId && conversation?.isUnread) {
+    if (conversationId) {
+      // Mark as read immediately when conversation is selected
       authFetch(`/api/conversations/${conversationId}/mark-read`, {
         method: "POST",
       }).then(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+        // Invalidate caches immediately to update the list
         queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
       }).catch((err) => {
         console.error("Failed to mark conversation as read:", err);
       });
     }
-  }, [conversationId, conversation?.isUnread, authFetch]);
+  }, [conversationId, authFetch]);
 
   useEffect(() => {
     const scrollArea = scrollAreaRef.current;
