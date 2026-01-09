@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
-import { ArrowLeft, MapPin, Users, Filter, Phone, RefreshCw, BarChart3, MessageSquare, Tag, TrendingUp, User } from "lucide-react";
+import { ArrowLeft, MapPin, Users, Filter, Phone, RefreshCw, BarChart3, MessageSquare, Tag, TrendingUp, User, Clock, UserPlus, CheckCircle2, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,11 +25,18 @@ interface CrmStats {
     openConversations: number;
     pendingConversations: number;
     resolvedConversations: number;
+    avgResponseTimeMinutes: number;
+    resolutionRate: number;
+    newContactsThisWeek: number;
+    newContactsThisMonth: number;
   };
   messagesPerTag: Array<{ tagName: string; tagColor: string; inbound: number; outbound: number; total: number }>;
   contactsPerAttribute: Array<{ attributeName: string; attributeColor: string; count: number }>;
   contactsPerTag: Array<{ tagName: string; tagColor: string; count: number }>;
   topContacts: Array<{ contactId: string; contactName: string; phoneNumber: string; avatarUrl: string | null; inbound: number; outbound: number; total: number }>;
+  messagesByHour: number[];
+  messagesByDayOfWeek: number[];
+  agentPerformance: Array<{ agentId: string; agentName: string; conversations: number; messagesOut: number }>;
 }
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -395,6 +402,65 @@ export default function ClientsMap() {
                 </Card>
               </div>
 
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-orange-500/10">
+                        <Clock className="h-5 w-5 text-orange-600" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">
+                          {crmStats.summary.avgResponseTimeMinutes > 60 
+                            ? `${Math.round(crmStats.summary.avgResponseTimeMinutes / 60)}h` 
+                            : `${crmStats.summary.avgResponseTimeMinutes}m`}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Tempo Médio Resposta</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-emerald-500/10">
+                        <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">{crmStats.summary.resolutionRate}%</p>
+                        <p className="text-xs text-muted-foreground">Taxa de Resolução</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-cyan-500/10">
+                        <UserPlus className="h-5 w-5 text-cyan-600" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">{crmStats.summary.newContactsThisWeek}</p>
+                        <p className="text-xs text-muted-foreground">Novos Esta Semana</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-pink-500/10">
+                        <UserPlus className="h-5 w-5 text-pink-600" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">{crmStats.summary.newContactsThisMonth}</p>
+                        <p className="text-xs text-muted-foreground">Novos Este Mês</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
               <div className="grid md:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader className="pb-2">
@@ -571,6 +637,97 @@ export default function ClientsMap() {
                   </div>
                 </CardContent>
               </Card>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Mensagens por Hora do Dia
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-end gap-1 h-32">
+                      {crmStats.messagesByHour.map((count, hour) => {
+                        const maxHour = Math.max(1, ...crmStats.messagesByHour);
+                        const height = (count / maxHour) * 100;
+                        return (
+                          <div 
+                            key={hour} 
+                            className="flex-1 flex flex-col items-center gap-1"
+                            title={`${hour}h: ${count} mensagens`}
+                          >
+                            <div 
+                              className="w-full bg-primary/70 rounded-t transition-all hover:bg-primary"
+                              style={{ height: `${Math.max(2, height)}%` }}
+                            />
+                            {hour % 4 === 0 && (
+                              <span className="text-[10px] text-muted-foreground">{hour}h</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Activity className="h-4 w-4" />
+                      Mensagens por Dia da Semana
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day, idx) => {
+                        const count = crmStats.messagesByDayOfWeek[idx] || 0;
+                        const maxDay = Math.max(1, ...crmStats.messagesByDayOfWeek);
+                        const width = (count / maxDay) * 100;
+                        return (
+                          <div key={day} className="flex items-center gap-2">
+                            <span className="text-xs w-8 text-muted-foreground">{day}</span>
+                            <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-primary/70 rounded-full transition-all"
+                                style={{ width: `${Math.max(2, width)}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-muted-foreground w-8 text-right">{count}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {crmStats.agentPerformance.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Performance por Agente
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {crmStats.agentPerformance.map((agent) => (
+                        <div key={agent.agentId} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                          <AvatarWithFallback name={agent.agentName} size="sm" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{agent.agentName}</p>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              <span>{agent.conversations} conversas</span>
+                              <span>{agent.messagesOut} enviadas</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-center h-64">
