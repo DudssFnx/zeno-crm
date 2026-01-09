@@ -29,14 +29,32 @@ interface TriageResult {
 
 export class TriageEngine {
   private sendMessageFn: ((conversationId: string, content: string, delayMs?: number) => Promise<void>) | null = null;
+  private menuCache: Map<string, { menu: TriageMenu | null; timestamp: number }> = new Map();
+  private menuMessageCache: Map<string, string> = new Map();
+  private readonly MENU_CACHE_TTL = 60000;
 
   setSendMessageFunction(fn: (conversationId: string, content: string, delayMs?: number) => Promise<void>) {
     this.sendMessageFn = fn;
   }
 
+  clearMenuCache(companyId?: string) {
+    if (companyId) {
+      const keys = Array.from(this.menuCache.keys());
+      for (const key of keys) {
+        if (key.startsWith(companyId)) {
+          this.menuCache.delete(key);
+          this.menuMessageCache.delete(key);
+        }
+      }
+    } else {
+      this.menuCache.clear();
+      this.menuMessageCache.clear();
+    }
+  }
+
   private generateHumanizedDelay(): number {
-    const baseDelay = 1500;
-    const randomJitter = Math.floor(Math.random() * 2000);
+    const baseDelay = 500;
+    const randomJitter = Math.floor(Math.random() * 500);
     return baseDelay + randomJitter;
   }
 
@@ -86,6 +104,13 @@ export class TriageEngine {
     companyId: string,
     whatsappAccountId?: string
   ): Promise<TriageMenu | null> {
+    const cacheKey = `${companyId}:${whatsappAccountId || "global"}`;
+    const cached = this.menuCache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < this.MENU_CACHE_TTL) {
+      return cached.menu;
+    }
+
     const menus = await db
       .select()
       .from(triageMenus)
@@ -100,7 +125,10 @@ export class TriageEngine {
       )
       .limit(1);
 
-    if (menus.length > 0) return menus[0];
+    if (menus.length > 0) {
+      this.menuCache.set(cacheKey, { menu: menus[0], timestamp: Date.now() });
+      return menus[0];
+    }
 
     const globalMenus = await db
       .select()
@@ -114,7 +142,9 @@ export class TriageEngine {
       )
       .limit(1);
 
-    return globalMenus[0] || null;
+    const result = globalMenus[0] || null;
+    this.menuCache.set(cacheKey, { menu: result, timestamp: Date.now() });
+    return result;
   }
 
   async getActiveSession(conversationId: string): Promise<TriageSession | null> {

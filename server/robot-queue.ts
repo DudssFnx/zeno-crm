@@ -42,7 +42,7 @@ class RobotQueueManager {
 
     const [newSettings] = await db.insert(robotQueueSettings).values({
       companyId,
-      delayBetweenContacts: 30,
+      delayBetweenContacts: 5,
       isQueueActive: true,
       maxConcurrentSessions: 1,
     }).returning();
@@ -253,7 +253,7 @@ class RobotQueueManager {
       .limit(1);
 
     if (processingItem) {
-      processor.timeoutId = setTimeout(() => this.processQueue(companyId), 5000);
+      processor.timeoutId = setTimeout(() => this.processQueue(companyId), 1000);
       return;
     }
 
