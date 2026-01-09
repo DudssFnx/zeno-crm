@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { useRobotProgress, useContactPresence } from "@/hooks/use-realtime";
+import { useRobotProgress } from "@/hooks/use-realtime";
 import { queryClient } from "@/lib/queryClient";
 import { Progress } from "@/components/ui/progress";
 import { cn, formatPhoneNumber } from "@/lib/utils";
@@ -233,9 +233,6 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
 
   // Robot execution progress
   const robotProgress = useRobotProgress(conversationId);
-  
-  // Contact presence (typing/recording indicator)
-  const contactPresence = useContactPresence(conversationId);
 
   const { data: conversation, isLoading: convLoading } = useQuery<ConversationWithDetails>({
     queryKey: ["/api/conversations", conversationId],
@@ -1412,32 +1409,6 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
                 </div>
               </div>
             ))}
-            {contactPresence && (
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-2">
-                  <div className="flex items-center gap-1.5">
-                    {contactPresence === "recording" ? (
-                      <>
-                        <div className="flex items-center gap-1">
-                          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-                          <Mic className="h-3 w-3 text-red-500" />
-                        </div>
-                        <span className="text-xs text-muted-foreground ml-1">Gravando áudio...</span>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex gap-1">
-                          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"></span>
-                        </div>
-                        <span className="text-xs text-muted-foreground ml-1">Digitando...</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
             <div ref={messagesEndRef} />
           </div>
         )}
