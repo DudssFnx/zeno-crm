@@ -1620,7 +1620,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/conversations", authMiddleware(storage), async (req: AuthRequest, res) => {
-    const { status, whatsappAccountId, assignedToUserId, inactiveMinDays, inactiveMaxDays, inactivePreset, isUnread, limit } = req.query;
+    const { status, whatsappAccountId, assignedToUserId, inactiveMinDays, inactiveMaxDays, inactivePreset, isUnread, limit, search } = req.query;
     const conversations = await storage.getConversations(req.user!.companyId, {
       status: status as string | undefined,
       whatsappAccountId: whatsappAccountId as string | undefined,
@@ -1630,6 +1630,7 @@ export async function registerRoutes(
       inactivePreset: inactivePreset as string | undefined,
       isUnread: isUnread === "true" ? true : isUnread === "false" ? false : undefined,
       limit: limit ? parseInt(limit as string) : undefined,
+      search: search as string | undefined,
     });
     res.json(conversations);
   });

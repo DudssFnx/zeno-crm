@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, desc, sql, asc, lte, or, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, asc, lte, or, inArray, ilike } from "drizzle-orm";
 import {
   companies, users, whatsappAccounts, contacts, tags, contactTags,
   conversations, messages, webhookConfigs, automationLogs, cannedResponses,
@@ -99,6 +99,7 @@ export interface IStorage {
     inactivePreset?: string; // "0_1" | "2_3" | "4_7" | "8_15" | "16_30" | "30_plus" | "never_inbound"
     isUnread?: boolean;
     limit?: number;
+    search?: string; // Busca em nome do contato e conteúdo das mensagens
   }): Promise<ConversationWithDetails[]>;
   getOpenConversationByContact(contactId: string): Promise<Conversation | undefined>;
   getOpenConversationByAccountAndContact(whatsappAccountId: string, contactId: string): Promise<Conversation | undefined>;
@@ -661,9 +662,58 @@ export class DatabaseStorage implements IStorage {
     inactivePreset?: string;
     isUnread?: boolean;
     limit?: number;
+    search?: string;
   }): Promise<ConversationWithDetails[]> {
     // Build conditions for SQL filtering
     const conditions = [eq(conversations.companyId, companyId)];
+    
+    // If search is provided, find matching conversation IDs from messages AND contacts
+    let searchMatchingConvIds: Set<string> | null = null;
+    if (filters?.search && filters.search.trim().length >= 1) {
+      const searchTerm = `%${filters.search.trim().toLowerCase()}%`;
+      
+      // Search in messages content (only for 2+ chars to avoid performance issues)
+      let messageMatches: { conversationId: string }[] = [];
+      if (filters.search.trim().length >= 2) {
+        messageMatches = await db
+          .selectDistinct({ conversationId: messages.conversationId })
+          .from(messages)
+          .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+          .where(and(
+            eq(conversations.companyId, companyId),
+            ilike(messages.content, searchTerm)
+          ))
+          .limit(200); // Increased limit for comprehensive results
+      }
+      
+      // Search in contact names/phones (works for 1+ chars)
+      const contactMatches = await db
+        .selectDistinct({ id: conversations.id })
+        .from(conversations)
+        .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+        .where(and(
+          eq(conversations.companyId, companyId),
+          or(
+            ilike(contacts.name, searchTerm),
+            ilike(contacts.phoneNumber, searchTerm)
+          )
+        ))
+        .limit(200); // Increased limit for comprehensive results
+      
+      // Combine results
+      searchMatchingConvIds = new Set([
+        ...messageMatches.map(m => m.conversationId),
+        ...contactMatches.map(c => c.id)
+      ]);
+      
+      // If no matches found, return empty
+      if (searchMatchingConvIds.size === 0) {
+        return [];
+      }
+      
+      // Add condition to filter by matching conversation IDs
+      conditions.push(inArray(conversations.id, Array.from(searchMatchingConvIds)));
+    }
     
     if (filters?.status) {
       conditions.push(eq(conversations.status, filters.status));

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Search, MessageSquare, Trash2, X, MessageCircle, Users } from "lucide-react";
+import { useDebounce } from "@/hooks/use-debounce";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -42,6 +43,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
   const isOperator = user?.role === "operator";
   const { toast } = useToast();
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 400); // Debounce 400ms
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [accountFilter, setAccountFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
@@ -96,12 +98,15 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
   };
 
   const { data: conversations = [], isLoading } = useQuery<ConversationWithDetails[]>({
-    queryKey: ["/api/conversations", statusFilter, accountFilter, assigneeFilter],
+    queryKey: ["/api/conversations", statusFilter, accountFilter, assigneeFilter, debouncedSearch],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (accountFilter !== "all") params.set("whatsappAccountId", accountFilter);
       if (assigneeFilter === "mine") params.set("assignedToUserId", currentUserId);
+      if (debouncedSearch && debouncedSearch.trim().length >= 1) {
+        params.set("search", debouncedSearch.trim());
+      }
       const res = await authFetch(`/api/conversations?${params}`);
       if (!res.ok) throw new Error("Failed to fetch conversations");
       return res.json();
@@ -133,12 +138,8 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
   );
 
   const filteredConversations = uniqueConversations.filter((conv) => {
-    if (search) {
-      const searchLower = search.toLowerCase();
-      const matchesSearch = conv.contact.name.toLowerCase().includes(searchLower) ||
-        conv.contact.phoneNumber.includes(search);
-      if (!matchesSearch) return false;
-    }
+    // A busca por nome/telefone/mensagens agora é feita no backend
+    // Aqui fazemos apenas filtros locais adicionais
     
     if (tagFilter !== "all") {
       const hasTag = conv.tags?.some(t => t.id === tagFilter);
