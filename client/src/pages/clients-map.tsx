@@ -2,17 +2,35 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
-import { ArrowLeft, MapPin, Users, Filter, Phone, RefreshCw } from "lucide-react";
+import { ArrowLeft, MapPin, Users, Filter, Phone, RefreshCw, BarChart3, MessageSquare, Tag, TrendingUp, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
 import { useAuthFetch } from "@/lib/auth";
 import { useLocation } from "wouter";
 import type { Contact } from "@shared/schema";
 import "leaflet/dist/leaflet.css";
+
+interface CrmStats {
+  summary: {
+    totalMessages: number;
+    totalInbound: number;
+    totalOutbound: number;
+    totalContacts: number;
+    totalConversations: number;
+    openConversations: number;
+    pendingConversations: number;
+    resolvedConversations: number;
+  };
+  messagesPerTag: Array<{ tagName: string; tagColor: string; inbound: number; outbound: number; total: number }>;
+  contactsPerAttribute: Array<{ attributeName: string; attributeColor: string; count: number }>;
+  contactsPerTag: Array<{ tagName: string; tagColor: string; count: number }>;
+  topContacts: Array<{ contactId: string; contactName: string; phoneNumber: string; avatarUrl: string | null; inbound: number; outbound: number; total: number }>;
+}
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -59,6 +77,7 @@ export default function ClientsMap() {
   const [, setLocation] = useLocation();
   const [cityFilter, setCityFilter] = useState<string>("all");
   const [stateFilter, setStateFilter] = useState<string>("all");
+  const [activeTab, setActiveTab] = useState<string>("map");
 
   const { data: contacts = [], isLoading, refetch } = useQuery<Contact[]>({
     queryKey: ["/api/contacts/with-location"],
@@ -76,6 +95,16 @@ export default function ClientsMap() {
       if (!res.ok) throw new Error("Failed to fetch contacts");
       return res.json();
     },
+  });
+
+  const { data: crmStats, isLoading: isLoadingStats, refetch: refetchStats } = useQuery<CrmStats>({
+    queryKey: ["/api/crm-stats"],
+    queryFn: async () => {
+      const res = await authFetch("/api/crm-stats");
+      if (!res.ok) throw new Error("Failed to fetch CRM stats");
+      return res.json();
+    },
+    enabled: activeTab === "reports",
   });
 
   const cities = Array.from(new Set(contacts.map(c => c.city).filter(Boolean))).sort() as string[];
@@ -122,10 +151,22 @@ export default function ClientsMap() {
         <MapPin className="h-5 w-5 text-primary" />
         <h1 className="font-semibold text-lg">Mapa dos Clientes</h1>
         <div className="ml-auto flex items-center gap-2">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mr-4">
+            <TabsList>
+              <TabsTrigger value="map" className="gap-2" data-testid="tab-map">
+                <MapPin className="h-4 w-4" />
+                Mapa
+              </TabsTrigger>
+              <TabsTrigger value="reports" className="gap-2" data-testid="tab-reports">
+                <BarChart3 className="h-4 w-4" />
+                Relatórios
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => refetch()}
+            onClick={() => activeTab === "map" ? refetch() : refetchStats()}
             className="gap-2"
             data-testid="button-refresh-map"
           >
@@ -135,7 +176,8 @@ export default function ClientsMap() {
         </div>
       </header>
 
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      {activeTab === "map" && (
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         <aside className="w-full md:w-72 border-b md:border-b-0 md:border-r bg-sidebar p-4 overflow-auto shrink-0">
           <div className="space-y-4">
             <div>
@@ -288,6 +330,257 @@ export default function ClientsMap() {
           )}
         </div>
       </div>
+      )}
+
+      {activeTab === "reports" && (
+        <div className="flex-1 overflow-auto p-4 md:p-6">
+          {isLoadingStats ? (
+            <div className="flex items-center justify-center h-64">
+              <LoadingSpinner />
+            </div>
+          ) : crmStats ? (
+            <div className="space-y-6 max-w-6xl mx-auto">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10">
+                        <MessageSquare className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">{crmStats.summary.totalMessages}</p>
+                        <p className="text-xs text-muted-foreground">Total de Mensagens</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-green-500/10">
+                        <TrendingUp className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">{crmStats.summary.totalInbound}</p>
+                        <p className="text-xs text-muted-foreground">Recebidas</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-blue-500/10">
+                        <MessageSquare className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">{crmStats.summary.totalOutbound}</p>
+                        <p className="text-xs text-muted-foreground">Enviadas</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-purple-500/10">
+                        <Users className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">{crmStats.summary.totalContacts}</p>
+                        <p className="text-xs text-muted-foreground">Contatos</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Tag className="h-4 w-4" />
+                      Contatos por Funil (Tags)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {crmStats.contactsPerTag.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">Nenhuma tag atribuída</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {crmStats.contactsPerTag.map((tag, idx) => (
+                          <div key={idx} className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div 
+                                className="w-3 h-3 rounded-full" 
+                                style={{ backgroundColor: tag.tagColor }}
+                              />
+                              <span className="text-sm">{tag.tagName}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div 
+                                className="h-2 rounded-full bg-muted" 
+                                style={{ width: '100px' }}
+                              >
+                                <div 
+                                  className="h-2 rounded-full transition-all"
+                                  style={{ 
+                                    width: `${Math.min((tag.count / Math.max(...crmStats.contactsPerTag.map(t => t.count))) * 100, 100)}%`,
+                                    backgroundColor: tag.tagColor 
+                                  }}
+                                />
+                              </div>
+                              <Badge variant="secondary" className="min-w-[40px] justify-center">{tag.count}</Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Contatos por Atributo
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {crmStats.contactsPerAttribute.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">Nenhum atributo atribuído</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {crmStats.contactsPerAttribute.map((attr, idx) => (
+                          <div key={idx} className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div 
+                                className="w-3 h-3 rounded-full" 
+                                style={{ backgroundColor: attr.attributeColor }}
+                              />
+                              <span className="text-sm">{attr.attributeName}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div 
+                                className="h-2 rounded-full bg-muted" 
+                                style={{ width: '100px' }}
+                              >
+                                <div 
+                                  className="h-2 rounded-full transition-all"
+                                  style={{ 
+                                    width: `${Math.min((attr.count / Math.max(...crmStats.contactsPerAttribute.map(a => a.count))) * 100, 100)}%`,
+                                    backgroundColor: attr.attributeColor 
+                                  }}
+                                />
+                              </div>
+                              <Badge variant="secondary" className="min-w-[40px] justify-center">{attr.count}</Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      Mensagens por Funil (Tags)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {crmStats.messagesPerTag.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">Nenhuma mensagem com tag</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {crmStats.messagesPerTag.map((tag, idx) => (
+                          <div key={idx} className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div 
+                                className="w-3 h-3 rounded-full" 
+                                style={{ backgroundColor: tag.tagColor }}
+                              />
+                              <span className="text-sm">{tag.tagName}</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs">
+                              <span className="text-green-600">↓ {tag.inbound}</span>
+                              <span className="text-blue-600">↑ {tag.outbound}</span>
+                              <Badge variant="secondary" className="min-w-[40px] justify-center">{tag.total}</Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Top 10 Clientes (Mais Mensagens Recebidas)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {crmStats.topContacts.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">Nenhum contato com mensagens</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {crmStats.topContacts.map((contact, idx) => (
+                          <div key={contact.contactId} className="flex items-center gap-2 p-2 rounded-md hover-elevate">
+                            <span className="text-xs text-muted-foreground w-4">{idx + 1}.</span>
+                            <AvatarWithFallback name={contact.contactName} src={contact.avatarUrl} size="sm" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{contact.contactName}</p>
+                              <p className="text-xs text-muted-foreground">{contact.phoneNumber}</p>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs shrink-0">
+                              <span className="text-green-600" title="Recebidas">↓{contact.inbound}</span>
+                              <span className="text-blue-600" title="Enviadas">↑{contact.outbound}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Status das Conversas</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-6 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-green-500" />
+                      <span className="text-sm">Abertas: <strong>{crmStats.summary.openConversations}</strong></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                      <span className="text-sm">Pendentes: <strong>{crmStats.summary.pendingConversations}</strong></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-gray-400" />
+                      <span className="text-sm">Resolvidas: <strong>{crmStats.summary.resolvedConversations}</strong></span>
+                    </div>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <span className="text-sm text-muted-foreground">Total: <strong>{crmStats.summary.totalConversations}</strong></span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-64">
+              <p className="text-muted-foreground">Erro ao carregar estatísticas</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
