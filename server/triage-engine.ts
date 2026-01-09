@@ -296,52 +296,22 @@ export class TriageEngine {
         return this.routeToDepartment(conversationId, companyId, menu[0].id, keywordMatch, userChoice);
       }
 
-      // Invalid choice - increment counter
-      const currentAttempts = (session.invalidAttempts || 0) + 1;
-      
-      // After 2 invalid attempts, auto-route to human
-      if (currentAttempts >= 2) {
-        await db
-          .update(triageSessions)
-          .set({ 
-            state: "human_handoff", 
-            invalidAttempts: currentAttempts,
-            completedAt: new Date(),
-            lastInteractionAt: new Date(),
-          })
-          .where(eq(triageSessions.id, session.id));
-
-        logger.info({ conversationId, invalidAttempts: currentAttempts }, "Auto-routing to human after 2 invalid attempts");
-
-        return {
-          action: "human_handoff",
-          message: "Percebi que você está com dificuldades. Vou te direcionar para um atendente que poderá te ajudar melhor. Aguarde um momento.",
-        };
-      }
-
-      // First invalid attempt - show warning and update counter
+      // Invalid choice - immediately route to human (no second chances)
       await db
         .update(triageSessions)
         .set({ 
-          invalidAttempts: currentAttempts,
+          state: "human_handoff", 
+          invalidAttempts: 1,
+          completedAt: new Date(),
           lastInteractionAt: new Date(),
         })
         .where(eq(triageSessions.id, session.id));
 
-      const invalidMessage = menu[0].invalidMessage || "Desculpe, não entendi. Por favor, digite apenas o número da opção desejada.";
-      const messageHash = this.hashMessage(invalidMessage);
-      
-      const canSend = await this.checkAntiSpam(companyId, conversationId, messageHash);
-      if (!canSend) {
-        return { action: "already_routed" };
-      }
-
-      const delay = this.generateHumanizedDelay();
-      await this.logAntiSpam(companyId, conversationId, invalidMessage, "invalid_choice", delay);
+      logger.info({ conversationId }, "Auto-routing to human on first invalid attempt");
 
       return {
-        action: "invalid_choice",
-        message: invalidMessage,
+        action: "human_handoff",
+        message: "Entendido! Um atendente irá te responder em breve. Aguarde um momento.",
       };
     }
 
