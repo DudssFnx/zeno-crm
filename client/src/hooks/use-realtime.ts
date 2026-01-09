@@ -101,6 +101,84 @@ interface ContactDeletedEvent {
   contactId: string;
 }
 
+interface ContactPresenceEvent {
+  companyId: string;
+  conversationId: string;
+  contactId: string;
+  phoneNumber: string;
+  presence: "typing" | "recording" | "available";
+}
+
+// Global state for contact presence (accessible across components)
+type ContactPresenceListener = (conversationId: string, presence: "typing" | "recording" | "available" | null) => void;
+const contactPresenceListeners: Set<ContactPresenceListener> = new Set();
+const contactPresenceState: Map<string, { presence: "typing" | "recording"; timeout: NodeJS.Timeout }> = new Map();
+
+export function subscribeToContactPresence(listener: ContactPresenceListener) {
+  contactPresenceListeners.add(listener);
+  return () => {
+    contactPresenceListeners.delete(listener);
+  };
+}
+
+function notifyContactPresence(conversationId: string, presence: "typing" | "recording" | "available" | null) {
+  contactPresenceListeners.forEach(listener => listener(conversationId, presence));
+}
+
+function handleContactPresence(conversationId: string, presence: "typing" | "recording" | "available") {
+  const existing = contactPresenceState.get(conversationId);
+  
+  if (presence === "available") {
+    // Contact stopped typing/recording
+    if (existing) {
+      clearTimeout(existing.timeout);
+      contactPresenceState.delete(conversationId);
+    }
+    notifyContactPresence(conversationId, null);
+  } else {
+    // Contact is typing or recording
+    if (existing) {
+      clearTimeout(existing.timeout);
+    }
+    
+    // Auto-clear after 5 seconds (in case we miss the "available" event)
+    const timeout = setTimeout(() => {
+      contactPresenceState.delete(conversationId);
+      notifyContactPresence(conversationId, null);
+    }, 5000);
+    
+    contactPresenceState.set(conversationId, { presence, timeout });
+    notifyContactPresence(conversationId, presence);
+  }
+}
+
+export function useContactPresence(conversationId: string | null) {
+  const [presence, setPresence] = useState<"typing" | "recording" | null>(null);
+  
+  useEffect(() => {
+    if (!conversationId) {
+      setPresence(null);
+      return;
+    }
+    
+    const unsubscribe = subscribeToContactPresence((convId, pres) => {
+      if (convId === conversationId) {
+        setPresence(pres === "available" ? null : pres);
+      }
+    });
+    
+    // Check initial state
+    const existing = contactPresenceState.get(conversationId);
+    if (existing) {
+      setPresence(existing.presence);
+    }
+    
+    return unsubscribe;
+  }, [conversationId]);
+  
+  return presence;
+}
+
 export function useRealtime() {
   const socketRef = useRef<Socket | null>(null);
   const { user } = useAuth();
@@ -252,6 +330,14 @@ export function useRealtime() {
       // Clear progress after completion
       if (data.status === "completed" || data.status === "failed" || data.status === "cancelled") {
         setTimeout(() => notifyRobotProgress(null), 5000);
+      }
+    });
+
+    socket.on("contact:presence", (data: ContactPresenceEvent) => {
+      console.log("[Realtime] contact:presence received:", data.conversationId, data.presence);
+      
+      if (data.companyId === user.companyId) {
+        handleContactPresence(data.conversationId, data.presence);
       }
     });
 

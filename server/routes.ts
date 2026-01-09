@@ -197,6 +197,31 @@ export async function registerRoutes(
     }
   });
 
+  // Handler para eventos de presença (digitando/gravando)
+  whatsappBaileys.setPresenceUpdateHandler(async (accountId, phoneNumber, presence) => {
+    try {
+      const account = await storage.getWhatsappAccount(accountId);
+      if (!account) return;
+
+      // Buscar conversa pelo número de telefone
+      const contact = await storage.getContactByPhoneAndAccount(phoneNumber, accountId);
+      if (!contact) return;
+
+      const conversation = await storage.getOpenConversationByContact(contact.id);
+      if (!conversation) return;
+
+      io.to(`company:${account.companyId}`).emit("contact:presence", {
+        companyId: account.companyId,
+        conversationId: conversation.id,
+        contactId: contact.id,
+        phoneNumber,
+        presence, // "typing" | "recording" | "available"
+      });
+    } catch (error) {
+      console.error(`[Presence] Error emitting presence:`, error);
+    }
+  });
+
   io.use(async (socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) {

@@ -80,6 +80,7 @@ export interface IncomingMessage {
 export type MessageHandler = (accountId: string, message: IncomingMessage) => Promise<void>;
 export type StatusUpdateHandler = (accountId: string, status: string) => Promise<void>;
 export type LidMappingDiscoveredHandler = (accountId: string, lid: string, phoneNumber: string) => Promise<void>;
+export type PresenceUpdateHandler = (accountId: string, phoneNumber: string, presence: "typing" | "recording" | "available") => void;
 
 class WhatsAppBaileysGateway {
   private sessions: Map<string, BaileysSession> = new Map();
@@ -87,6 +88,7 @@ class WhatsAppBaileysGateway {
   private messageHandler: MessageHandler | null = null;
   private statusUpdateHandler: StatusUpdateHandler | null = null;
   private lidMappingDiscoveredHandler: LidMappingDiscoveredHandler | null = null;
+  private presenceUpdateHandler: PresenceUpdateHandler | null = null;
   private isInitialized: boolean = false;
   private msgRetryCounterCache = new NodeCache();
   private logger = pino({ level: "silent" });
@@ -212,6 +214,10 @@ class WhatsAppBaileysGateway {
 
   setLidMappingDiscoveredHandler(handler: LidMappingDiscoveredHandler) {
     this.lidMappingDiscoveredHandler = handler;
+  }
+
+  setPresenceUpdateHandler(handler: PresenceUpdateHandler) {
+    this.presenceUpdateHandler = handler;
   }
 
   setSocketServer(io: SocketServer) {
@@ -467,6 +473,35 @@ class WhatsAppBaileysGateway {
                 this.notifyLidMappingDiscovered(accountId, lidNumber, phoneNumber);
               }
             }
+          }
+        }
+      }
+    });
+
+    // Listen for presence updates (typing indicator from contacts)
+    sock.ev.on("presence.update", (presence) => {
+      const { id: jid, presences } = presence;
+      if (!jid || !presences) return;
+      
+      // Extract phone number from jid
+      const phoneNumber = extractPhoneFromJid(jid);
+      if (!phoneNumber) return;
+      
+      for (const [participantJid, presenceData] of Object.entries(presences)) {
+        const lastKnownPresence = (presenceData as any).lastKnownPresence;
+        const isTyping = lastKnownPresence === "composing";
+        const isRecording = lastKnownPresence === "recording";
+        
+        if (isTyping || isRecording) {
+          console.log(`[Baileys] Presence update: ${phoneNumber} is ${isTyping ? "typing" : "recording"}`);
+          
+          if (this.presenceUpdateHandler) {
+            this.presenceUpdateHandler(accountId, phoneNumber, isTyping ? "typing" : "recording");
+          }
+        } else if (lastKnownPresence === "paused" || lastKnownPresence === "available") {
+          // Contact stopped typing
+          if (this.presenceUpdateHandler) {
+            this.presenceUpdateHandler(accountId, phoneNumber, "available");
           }
         }
       }

@@ -432,8 +432,8 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                           conv.isUnread
                         )}
                       />
-                      {conv.tags && conv.tags.slice(0, 2).map((tag) => (
-                        <TagChip key={`${conv.id}-${tag.id}`} tag={tag} size="sm" />
+                      {conv.tags && conv.tags.slice(0, 2).map((tag, idx) => (
+                        <TagChip key={`${conv.id}-tag-${idx}-${tag.id}`} tag={tag} size="sm" />
                       ))}
                     </div>
                   </div>

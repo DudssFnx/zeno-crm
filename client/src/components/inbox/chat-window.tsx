@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuthFetch, useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { useRobotProgress } from "@/hooks/use-realtime";
+import { useRobotProgress, useContactPresence } from "@/hooks/use-realtime";
 import { queryClient } from "@/lib/queryClient";
 import { Progress } from "@/components/ui/progress";
 import { cn, formatPhoneNumber } from "@/lib/utils";
@@ -202,7 +202,6 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   const [showCannedResponses, setShowCannedResponses] = useState(false);
   const [cannedSearchTerm, setCannedSearchTerm] = useState("");
   const [selectedCannedIndex, setSelectedCannedIndex] = useState(0);
-  const [isTyping, setIsTyping] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
@@ -227,7 +226,6 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const cannedDropdownRef = useRef<HTMLDivElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -235,6 +233,9 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
 
   // Robot execution progress
   const robotProgress = useRobotProgress(conversationId);
+  
+  // Contact presence (typing/recording indicator)
+  const contactPresence = useContactPresence(conversationId);
 
   const { data: conversation, isLoading: convLoading } = useQuery<ConversationWithDetails>({
     queryKey: ["/api/conversations", conversationId],
@@ -702,19 +703,6 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
 
   const handleMessageChange = (value: string) => {
     setMessage(value);
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-    
-    if (value.trim()) {
-      setIsTyping(true);
-      typingTimeoutRef.current = setTimeout(() => {
-        setIsTyping(false);
-      }, 2000);
-    } else {
-      setIsTyping(false);
-    }
 
     if (value.startsWith("/")) {
       const searchTerm = value.slice(1);
@@ -1425,16 +1413,28 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
                 </div>
               </div>
             ))}
-            {isTyping && (
+            {contactPresence && (
               <div className="flex justify-start">
                 <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-2">
                   <div className="flex items-center gap-1.5">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"></span>
-                    </div>
-                    <span className="text-xs text-muted-foreground ml-1">Digitando...</span>
+                    {contactPresence === "recording" ? (
+                      <>
+                        <div className="flex items-center gap-1">
+                          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                          <Mic className="h-3 w-3 text-red-500" />
+                        </div>
+                        <span className="text-xs text-muted-foreground ml-1">Gravando áudio...</span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex gap-1">
+                          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                          <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"></span>
+                        </div>
+                        <span className="text-xs text-muted-foreground ml-1">Digitando...</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
