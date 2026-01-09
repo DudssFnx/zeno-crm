@@ -550,6 +550,17 @@ export class DatabaseStorage implements IStorage {
 
   // Contact Tags
   async addContactTag(contactId: string, tagId: string): Promise<ContactTag> {
+    // Check if tag already exists for this contact (prevent duplicates)
+    const existing = await db
+      .select()
+      .from(contactTags)
+      .where(and(eq(contactTags.contactId, contactId), eq(contactTags.tagId, tagId)))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      return existing[0]; // Return existing instead of creating duplicate
+    }
+    
     const [contactTag] = await db
       .insert(contactTags)
       .values({ contactId, tagId })
