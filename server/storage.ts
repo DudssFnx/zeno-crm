@@ -108,6 +108,7 @@ export interface IStorage {
   // Messages
   createMessage(data: InsertMessage): Promise<Message>;
   getMessages(conversationId: string, options?: { limit?: number; before?: string }): Promise<{ messages: MessageWithSender[]; hasMore: boolean }>;
+  getCompanyMessages(companyId: string): Promise<Message[]>;
   getLastMessage(conversationId: string): Promise<Message | undefined>;
   updateMessage(id: string, data: Partial<InsertMessage>): Promise<Message | undefined>;
 
@@ -936,6 +937,25 @@ export class DatabaseStorage implements IStorage {
     
     // Return in chronological order (oldest first)
     return { messages: result.reverse(), hasMore };
+  }
+
+  async getCompanyMessages(companyId: string): Promise<Message[]> {
+    // Get all messages for conversations belonging to this company
+    const companyConversations = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.companyId, companyId));
+    
+    if (companyConversations.length === 0) return [];
+    
+    const conversationIds = companyConversations.map(c => c.id);
+    
+    const allMessages = await db
+      .select()
+      .from(messages)
+      .where(inArray(messages.conversationId, conversationIds));
+    
+    return allMessages;
   }
 
   async getLastMessage(conversationId: string): Promise<Message | undefined> {

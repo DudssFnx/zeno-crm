@@ -925,6 +925,164 @@ export async function registerRoutes(
     }
   });
 
+  // CRM Statistics endpoint
+  app.get("/api/crm-stats", authMiddleware(storage), async (req: AuthRequest, res) => {
+    try {
+      const companyId = req.user!.companyId;
+      
+      // Get all data needed for stats
+      const [contacts, conversations, allMessages, allTags, allAttributes] = await Promise.all([
+        storage.getContacts(companyId),
+        storage.getConversations(companyId, {}),
+        storage.getCompanyMessages(companyId),
+        storage.getTags(companyId),
+        storage.getContactAttributes(companyId),
+      ]);
+      
+      // 1. Messages per tag (funnel stats)
+      const messagesPerTag: Record<string, { tagName: string; tagColor: string; inbound: number; outbound: number; total: number }> = {};
+      
+      for (const tag of allTags) {
+        messagesPerTag[tag.id] = {
+          tagName: tag.name,
+          tagColor: tag.color,
+          inbound: 0,
+          outbound: 0,
+          total: 0,
+        };
+      }
+      
+      // Get contact tags to map contacts to tags
+      const contactTagsMap = new Map<string, string[]>();
+      for (const conv of conversations) {
+        if (conv.tags && conv.tags.length > 0) {
+          const contactId = conv.contactId;
+          const tagIds = conv.tags.map((t: any) => t.id);
+          contactTagsMap.set(contactId, tagIds);
+        }
+      }
+      
+      // Count messages per tag via conversations
+      for (const conv of conversations) {
+        if (conv.tags && conv.tags.length > 0) {
+          const tagId = conv.tags[0].id; // Primary tag
+          const convMessages = allMessages.filter(m => m.conversationId === conv.id);
+          const inbound = convMessages.filter(m => m.direction === "incoming").length;
+          const outbound = convMessages.filter(m => m.direction === "outgoing").length;
+          
+          if (messagesPerTag[tagId]) {
+            messagesPerTag[tagId].inbound += inbound;
+            messagesPerTag[tagId].outbound += outbound;
+            messagesPerTag[tagId].total += inbound + outbound;
+          }
+        }
+      }
+      
+      // 2. Contacts per attribute
+      const contactsPerAttribute: Record<string, { attributeName: string; attributeColor: string; count: number }> = {};
+      
+      for (const attr of allAttributes) {
+        contactsPerAttribute[attr.name] = {
+          attributeName: attr.name,
+          attributeColor: attr.color,
+          count: 0,
+        };
+      }
+      
+      for (const contact of contacts) {
+        if (contact.attributes && Array.isArray(contact.attributes)) {
+          for (const attrName of contact.attributes) {
+            if (contactsPerAttribute[attrName]) {
+              contactsPerAttribute[attrName].count++;
+            }
+          }
+        }
+      }
+      
+      // 3. Top contacts by message count
+      const contactMessageCounts: Record<string, { contactId: string; contactName: string; phoneNumber: string; avatarUrl: string | null; inbound: number; outbound: number; total: number }> = {};
+      
+      for (const msg of allMessages) {
+        const conv = conversations.find(c => c.id === msg.conversationId);
+        if (conv && conv.contact) {
+          const contactId = conv.contactId;
+          if (!contactMessageCounts[contactId]) {
+            contactMessageCounts[contactId] = {
+              contactId,
+              contactName: conv.contact.name,
+              phoneNumber: conv.contact.phoneNumber,
+              avatarUrl: conv.contact.avatarUrl || null,
+              inbound: 0,
+              outbound: 0,
+              total: 0,
+            };
+          }
+          if (msg.direction === "incoming") {
+            contactMessageCounts[contactId].inbound++;
+          } else {
+            contactMessageCounts[contactId].outbound++;
+          }
+          contactMessageCounts[contactId].total++;
+        }
+      }
+      
+      const topContacts = Object.values(contactMessageCounts)
+        .sort((a, b) => b.inbound - a.inbound)
+        .slice(0, 10);
+      
+      // 4. Contacts per tag (how many contacts in each funnel stage)
+      const contactsPerTag: Record<string, { tagName: string; tagColor: string; count: number }> = {};
+      
+      for (const tag of allTags) {
+        contactsPerTag[tag.id] = {
+          tagName: tag.name,
+          tagColor: tag.color,
+          count: 0,
+        };
+      }
+      
+      for (const conv of conversations) {
+        if (conv.tags && conv.tags.length > 0) {
+          for (const tag of conv.tags) {
+            if (contactsPerTag[tag.id]) {
+              contactsPerTag[tag.id].count++;
+            }
+          }
+        }
+      }
+      
+      // 5. Summary stats
+      const totalMessages = allMessages.length;
+      const totalInbound = allMessages.filter(m => m.direction === "incoming").length;
+      const totalOutbound = allMessages.filter(m => m.direction === "outgoing").length;
+      const totalContacts = contacts.length;
+      const totalConversations = conversations.length;
+      const openConversations = conversations.filter(c => c.status === "open").length;
+      const pendingConversations = conversations.filter(c => c.status === "pending").length;
+      const resolvedConversations = conversations.filter(c => c.status === "resolved").length;
+      
+      res.json({
+        summary: {
+          totalMessages,
+          totalInbound,
+          totalOutbound,
+          totalContacts,
+          totalConversations,
+          openConversations,
+          pendingConversations,
+          resolvedConversations,
+        },
+        messagesPerTag: Object.values(messagesPerTag).filter(t => t.total > 0),
+        contactsPerAttribute: Object.values(contactsPerAttribute).filter(a => a.count > 0),
+        contactsPerTag: Object.values(contactsPerTag).filter(t => t.count > 0),
+        topContacts,
+      });
+    } catch (error) {
+      console.error("CRM stats error:", error);
+      res.status(500).json({ message: "Failed to get CRM statistics" });
+    }
+  });
+
   app.get("/api/contacts/:id", authMiddleware(storage), async (req: AuthRequest, res) => {
     const contact = await storage.getContactWithTags(req.params.id);
     if (!contact || contact.companyId !== req.user!.companyId) {
