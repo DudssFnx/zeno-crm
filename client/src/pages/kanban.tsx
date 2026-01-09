@@ -463,7 +463,8 @@ export default function KanbanPage() {
       const items = await res.json();
       return items.filter((item: any) => item.status === "pending" || item.status === "processing");
     },
-    refetchInterval: 3000,
+    refetchInterval: 10000, // Reduced polling frequency
+    staleTime: 5000,
   });
 
   const queuedConversationIds = new Set(

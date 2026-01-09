@@ -258,8 +258,7 @@ export function ChatWindow({ conversationId, onContactClick, onBack, isMobile }:
       return res.json();
     },
     enabled: !!conversationId,
-    refetchInterval: 3000,
-    staleTime: 2000,
+    staleTime: 30000, // Socket.IO handles real-time updates
   });
 
   // Reset older messages when conversation changes
