@@ -619,22 +619,22 @@ export class DatabaseStorage implements IStorage {
     const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
     if (!conv) return undefined;
 
-    const [contact] = await db.select().from(contacts).where(eq(contacts.id, conv.contactId));
-    const [account] = await db.select().from(whatsappAccounts).where(eq(whatsappAccounts.id, conv.whatsappAccountId));
-    
-    let assignedTo: User | undefined;
-    if (conv.assignedToUserId) {
-      [assignedTo] = await db.select().from(users).where(eq(users.id, conv.assignedToUserId));
-    }
-
-    const lastMsg = await this.getLastMessage(id);
-    const contactTagsList = await this.getContactTags(conv.contactId);
+    // Execute all queries in parallel for better performance
+    const [contactResult, accountResult, assignedToResult, lastMsg, contactTagsList] = await Promise.all([
+      db.select().from(contacts).where(eq(contacts.id, conv.contactId)),
+      db.select().from(whatsappAccounts).where(eq(whatsappAccounts.id, conv.whatsappAccountId)),
+      conv.assignedToUserId 
+        ? db.select().from(users).where(eq(users.id, conv.assignedToUserId))
+        : Promise.resolve([]),
+      this.getLastMessage(id),
+      this.getContactTags(conv.contactId),
+    ]);
 
     return {
       ...conv,
-      contact,
-      whatsappAccount: account,
-      assignedTo,
+      contact: contactResult[0],
+      whatsappAccount: accountResult[0],
+      assignedTo: assignedToResult[0],
       lastMessage: lastMsg,
       tags: contactTagsList,
     };

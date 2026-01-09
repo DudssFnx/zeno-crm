@@ -128,9 +128,9 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
     },
   });
 
-  // Deduplicar conversas (evita chaves duplicadas no React)
-  const uniqueConversations = conversations.filter((conv, index, self) => 
-    self.findIndex(c => c.id === conv.id) === index
+  // Deduplicar conversas usando Map (mais eficiente e robusto)
+  const uniqueConversations = Array.from(
+    new Map(conversations.map(conv => [conv.id, conv])).values()
   );
 
   const filteredConversations = uniqueConversations.filter((conv) => {
@@ -433,7 +433,7 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
                         )}
                       />
                       {conv.tags && conv.tags.slice(0, 2).map((tag) => (
-                        <TagChip key={tag.id} tag={tag} size="sm" />
+                        <TagChip key={`${conv.id}-${tag.id}`} tag={tag} size="sm" />
                       ))}
                     </div>
                   </div>

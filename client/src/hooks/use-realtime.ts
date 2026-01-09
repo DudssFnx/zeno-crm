@@ -147,6 +147,9 @@ export function useRealtime() {
 
     socket.on("reconnect", (attemptNumber) => {
       console.log("[Realtime] Socket reconnected after", attemptNumber, "attempts");
+      // Clear stale cache on reconnection to prevent duplicate key errors
+      queryClient.cancelQueries({ queryKey: ["/api/conversations"] });
+      queryClient.resetQueries({ queryKey: ["/api/conversations"] });
     });
 
     socket.on("message:created", (data: MessageCreatedEvent) => {
