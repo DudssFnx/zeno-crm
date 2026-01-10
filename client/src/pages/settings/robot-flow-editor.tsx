@@ -590,6 +590,32 @@ export default function RobotFlowEditor() {
                     rows={4}
                     data-testid="input-block-content"
                   />
+                  <div className="text-xs text-muted-foreground space-y-1 p-2 bg-muted rounded">
+                    <p className="font-medium">Variaveis disponiveis:</p>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant="outline" className="text-xs cursor-pointer" onClick={() => {
+                        const current = selectedNode.data.content || "";
+                        updateNodeData(selectedNode.id, { content: current + "{{nome}}" });
+                      }}>{"{{nome}}"}</Badge>
+                      <Badge variant="outline" className="text-xs cursor-pointer" onClick={() => {
+                        const current = selectedNode.data.content || "";
+                        updateNodeData(selectedNode.id, { content: current + "{{primeiro_nome}}" });
+                      }}>{"{{primeiro_nome}}"}</Badge>
+                      <Badge variant="outline" className="text-xs cursor-pointer" onClick={() => {
+                        const current = selectedNode.data.content || "";
+                        updateNodeData(selectedNode.id, { content: current + "{{telefone}}" });
+                      }}>{"{{telefone}}"}</Badge>
+                      <Badge variant="outline" className="text-xs cursor-pointer" onClick={() => {
+                        const current = selectedNode.data.content || "";
+                        updateNodeData(selectedNode.id, { content: current + "{{saudacao}}" });
+                      }}>{"{{saudacao}}"}</Badge>
+                      <Badge variant="outline" className="text-xs cursor-pointer" onClick={() => {
+                        const current = selectedNode.data.content || "";
+                        updateNodeData(selectedNode.id, { content: current + "{{periodo_do_dia}}" });
+                      }}>{"{{periodo_do_dia}}"}</Badge>
+                    </div>
+                    <p className="text-muted-foreground mt-1">Clique para inserir</p>
+                  </div>
                 </div>
               )}
 
