@@ -94,7 +94,7 @@ const robotActionSchema = z.object({
   onlyIfNoResponse: z.boolean().optional(),
   waitTimeoutSeconds: z.number().optional(),
   fallbackAction: z.enum(["continue", "stop", "goto"]).optional(),
-  conditionType: z.enum(["keyword", "has_tag", "no_tag", "has_attribute"]).optional(),
+  conditionType: z.enum(["keyword", "has_tag", "no_tag", "has_attribute", "first_message"]).optional(),
   conditionValue: z.string().optional(),
   gotoRobotId: z.string().optional(),
   extractionRule: z.object({
@@ -189,8 +189,18 @@ function FlowBlock({
         return `${(action.minDelayMs || 1000)/1000}-${(action.maxDelayMs || 3000)/1000}s`;
       case "wait_response":
         return `${action.waitTimeoutSeconds || 60}s`;
-      case "conditional":
-        return action.conditionValue?.substring(0, 15) || "";
+      case "conditional": {
+        const condTypes: Record<string, string> = {
+          "keyword": "palavra",
+          "has_tag": "tem tag",
+          "no_tag": "sem tag",
+          "has_attribute": "atributo",
+          "first_message": "1a msg"
+        };
+        const typeLabel = condTypes[action.conditionType || "keyword"] || "";
+        const value = action.conditionValue?.substring(0, 10) || "";
+        return `${typeLabel}${value ? `: ${value}` : ""}`;
+      }
       case "add_tag":
       case "remove_tag":
         const tag = tags.find(t => t.id === action.tagId);
@@ -725,6 +735,7 @@ function FlowBlock({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        <SelectItem value="first_message">Primeira mensagem (sem FILA)</SelectItem>
                         <SelectItem value="keyword">Palavra-chave na mensagem</SelectItem>
                         <SelectItem value="has_tag">Contato tem etiqueta</SelectItem>
                         <SelectItem value="no_tag">Contato NAO tem etiqueta</SelectItem>
