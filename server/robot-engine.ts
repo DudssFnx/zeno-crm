@@ -20,6 +20,7 @@ interface ExecutionContext {
   companyId: string;
   executedBy?: string;
   lastMessage?: string;
+  messageContent?: string;
   actions?: RobotAction[];
 }
 
@@ -774,10 +775,14 @@ class RobotEngine {
         const conditionValue = (action as any).conditionValue || "";
         let conditionMet = false;
 
-        if (conditionType === "keyword" && context.lastMessage) {
-          const normalizedMessage = this.normalizeText(context.lastMessage);
+        // Usa messageContent (mensagem atual) ou lastMessage como fallback
+        const messageToCheck = context.messageContent || context.lastMessage;
+        
+        if (conditionType === "keyword" && messageToCheck) {
+          const normalizedMessage = this.normalizeText(messageToCheck);
           const normalizedKeyword = this.normalizeText(conditionValue);
           conditionMet = normalizedMessage.includes(normalizedKeyword);
+          logger.debug({ messageToCheck, normalizedMessage, normalizedKeyword, conditionMet }, "Keyword condition check");
         } else if (conditionType === "has_tag" || conditionType === "no_tag") {
           const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
           if (conv) {
@@ -1157,7 +1162,7 @@ class RobotEngine {
       }
     }
 
-    const actions = (robot.actions as RobotAction[]) || [];
+    // Usa executeRobot para respeitar flowEdges (execução em grafo)
     const execContext: ExecutionContext = {
       conversationId: context.conversationId,
       contactId: context.contactId,
@@ -1165,11 +1170,11 @@ class RobotEngine {
       contactPhone: context.contact.phoneNumber,
       whatsappAccountId: context.whatsappAccountId,
       companyId: context.companyId,
+      messageContent: context.messageContent,
     };
 
-    for (const action of actions) {
-      await this.executeAction(action, execContext, sendMessage, sendPresence);
-    }
+    // Chamar executeRobot que usará executeRobotGraph se houver flowEdges
+    await this.executeRobot(robot.id, execContext, sendMessage, sendPresence);
 
     const scheduledMsgs = (robot.scheduledMessages as any[]) || [];
     for (const scheduled of scheduledMsgs) {

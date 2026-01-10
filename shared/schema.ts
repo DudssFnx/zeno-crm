@@ -812,6 +812,9 @@ export const robotActionSchema = z.object({
     "smart_typing",         // Digitação inteligente proporcional ao tamanho
     "human_delay",          // Pausa humanizada com variação aleatória
     "wait_response",        // Aguardar resposta do cliente com timeout
+    "button_choice",        // Menu de botões com escolhas
+    "goto_robot",           // Ir para outro robô
+    "webhook",              // Chamada HTTP externa
   ]),
   // Campos específicos por tipo de ação
   content: z.string().optional(),         // Texto da mensagem ou URL do arquivo
@@ -835,6 +838,31 @@ export const robotActionSchema = z.object({
     thenActions: z.array(z.string()).optional(), // IDs das ações se condição for verdadeira
     elseActions: z.array(z.string()).optional(), // IDs das ações se condição for falsa
   }).optional(),
+  // Campos para button_choice
+  buttons: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    value: z.string(),
+  })).optional(),
+  variableName: z.string().optional(),  // Para ask_question
+  waitTimeoutSeconds: z.number().optional(), // Para wait_response
+  fallbackActionId: z.string().optional(), // Para wait_response
+  // Campos para goto_robot
+  gotoRobotId: z.string().optional(),
+  // Campos para webhook
+  webhookUrl: z.string().optional(),
+  webhookMethod: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
+  webhookHeaders: z.record(z.string()).optional(),
+  webhookBody: z.string().optional(),
+  // Campos para conditional
+  conditionType: z.enum(["keyword", "has_tag", "no_tag", "has_attribute", "no_attribute", "first_message"]).optional(),
+  conditionValue: z.string().optional(),
+  // Campos para human_delay
+  minDelayMs: z.number().optional(),
+  maxDelayMs: z.number().optional(),
+  // Campos para posição no editor visual
+  positionX: z.number().optional(),
+  positionY: z.number().optional(),
 });
 
 export type RobotAction = z.infer<typeof robotActionSchema>;
