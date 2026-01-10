@@ -265,7 +265,57 @@ export default function RobotFlowEditor() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const sortedNodes = [...nodes].sort((a, b) => a.position.y - b.position.y);
+      const topologicalSort = (): Node<FlowNodeData>[] => {
+        const nodeMap = new Map(nodes.map(n => [n.id, n]));
+        const incomingEdges = new Map<string, string[]>();
+        const outgoingEdges = new Map<string, string[]>();
+        
+        nodes.forEach(n => {
+          incomingEdges.set(n.id, []);
+          outgoingEdges.set(n.id, []);
+        });
+        
+        edges.forEach(e => {
+          incomingEdges.get(e.target)?.push(e.source);
+          outgoingEdges.get(e.source)?.push(e.target);
+        });
+        
+        const noIncoming = nodes.filter(n => (incomingEdges.get(n.id)?.length || 0) === 0);
+        const startNode = noIncoming.length > 0 
+          ? noIncoming.sort((a, b) => a.position.y - b.position.y)[0]
+          : nodes.sort((a, b) => a.position.y - b.position.y)[0];
+        
+        if (!startNode) return [];
+        
+        const result: Node<FlowNodeData>[] = [];
+        const visited = new Set<string>();
+        const queue = [startNode.id];
+        
+        while (queue.length > 0) {
+          const nodeId = queue.shift()!;
+          if (visited.has(nodeId)) continue;
+          visited.add(nodeId);
+          
+          const node = nodeMap.get(nodeId);
+          if (node) result.push(node);
+          
+          const children = outgoingEdges.get(nodeId) || [];
+          children.sort((a, b) => {
+            const nodeA = nodeMap.get(a);
+            const nodeB = nodeMap.get(b);
+            return (nodeA?.position.y || 0) - (nodeB?.position.y || 0);
+          });
+          queue.push(...children);
+        }
+        
+        nodes.forEach(n => {
+          if (!visited.has(n.id)) result.push(n);
+        });
+        
+        return result;
+      };
+      
+      const sortedNodes = topologicalSort();
       
       const actions = sortedNodes.map((node) => ({
         id: node.id,
