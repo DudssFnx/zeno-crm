@@ -94,10 +94,12 @@ function FlowNode({ data, selected }: NodeProps<Node<FlowNodeData>>) {
         )}
         {data.type === "conditional" && (
           <p className="text-muted-foreground">
-            {data.conditionType === "keyword" && `Palavra: ${data.conditionValue || "..."}`}
             {data.conditionType === "first_message" && "Primeira mensagem"}
+            {data.conditionType === "keyword" && `Palavra: ${data.conditionValue || "..."}`}
             {data.conditionType === "has_tag" && `Tem tag: ${data.conditionValue || "..."}`}
             {data.conditionType === "no_tag" && `Sem tag: ${data.conditionValue || "..."}`}
+            {data.conditionType === "has_attribute" && `Tem atributo: ${data.conditionValue || "..."}`}
+            {!data.conditionType && "Clique para configurar"}
           </p>
         )}
         {data.type === "human_delay" && (
