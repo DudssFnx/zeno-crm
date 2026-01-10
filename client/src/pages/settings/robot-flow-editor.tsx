@@ -468,7 +468,7 @@ export default function RobotFlowEditor() {
         id: `edge_${Date.now()}`,
         source: lastNode.id,
         target: newNode.id,
-        type: "smoothstep",
+        type: "deletable",
         animated: true,
         markerEnd: { type: MarkerType.ArrowClosed },
       }]);
