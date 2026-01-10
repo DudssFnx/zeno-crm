@@ -104,6 +104,7 @@ class RobotEngine {
       "simulate_typing": "Digitando...",
       "simulate_recording": "Gravando...",
       "delay": "Aguardando",
+      "random_delay": "Aguardando tempo aleatorio",
       "add_tag": "Adicionando etiqueta",
       "remove_tag": "Removendo etiqueta",
       "remove_all_tags": "Removendo todas etiquetas",
@@ -113,6 +114,14 @@ class RobotEngine {
       "set_status": "Alterando status",
       "assign_agent": "Atribuindo atendente",
       "transfer": "Transferindo",
+      "smart_typing": "Digitacao inteligente",
+      "human_delay": "Pausa humanizada",
+      "wait_response": "Aguardando resposta",
+      "conditional": "Avaliando condicao",
+      "ask_question": "Fazendo pergunta",
+      "button_choice": "Enviando opcoes",
+      "goto_robot": "Transferindo para robo",
+      "webhook": "Executando webhook",
     };
     return labels[type] || type;
   }
@@ -650,6 +659,93 @@ class RobotEngine {
 
         logger.info({ conditionType, conditionValue, conditionMet }, "Condicao avaliada");
         return { conditionMet };
+      }
+
+      case "ask_question": {
+        if (action.content) {
+          const processedContent = this.processTemplateVariables(action.content, context);
+          await sendPresence(context.whatsappAccountId, context.contactPhone, "composing");
+          await this.delay(1500);
+          await sendMessage(context.conversationId, processedContent);
+          await sendPresence(context.whatsappAccountId, context.contactPhone, "paused");
+          logger.info({ 
+            variableName: (action as any).variableName,
+            timeout: (action as any).waitTimeoutSeconds || 60
+          }, "Pergunta enviada - aguardando resposta");
+          return { waitForResponse: true, nextNodeId: action.id };
+        }
+        break;
+      }
+
+      case "button_choice": {
+        if (action.content) {
+          const buttons = (action as any).buttons || [];
+          let buttonMessage = this.processTemplateVariables(action.content, context);
+          if (buttons.length > 0) {
+            buttonMessage += "\n\n";
+            buttons.forEach((btn: string, idx: number) => {
+              buttonMessage += `*${idx + 1}* - ${btn}\n`;
+            });
+          }
+          await sendPresence(context.whatsappAccountId, context.contactPhone, "composing");
+          await this.delay(1500);
+          await sendMessage(context.conversationId, buttonMessage);
+          await sendPresence(context.whatsappAccountId, context.contactPhone, "paused");
+          logger.info({ buttons, variableName: (action as any).variableName }, "Botoes enviados - aguardando escolha");
+          return { waitForResponse: true, nextNodeId: action.id };
+        }
+        break;
+      }
+
+      case "goto_robot": {
+        const gotoRobotId = (action as any).gotoRobotId;
+        if (gotoRobotId) {
+          logger.info({ gotoRobotId }, "Transferindo para outro robo");
+        }
+        break;
+      }
+
+      case "webhook": {
+        const webhookUrl = (action as any).webhookUrl;
+        const webhookMethod = (action as any).webhookMethod || "POST";
+        if (webhookUrl) {
+          try {
+            const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
+            const [contact] = conv ? await db.select().from(contacts).where(eq(contacts.id, conv.contactId)) : [null];
+            
+            const payload = {
+              conversationId: context.conversationId,
+              contactId: context.contactId,
+              contactName: context.contactName,
+              contactPhone: context.contactPhone,
+              companyId: context.companyId,
+              lastMessage: context.lastMessage,
+              timestamp: new Date().toISOString(),
+            };
+            
+            const response = await fetch(webhookUrl, {
+              method: webhookMethod,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            
+            logger.info({ webhookUrl, status: response.status }, "Webhook executado");
+          } catch (error: any) {
+            logger.error({ webhookUrl, error: error.message }, "Erro ao executar webhook");
+          }
+        }
+        break;
+      }
+
+      case "no_attribute": {
+        const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
+        if (conv) {
+          const [contact] = await db.select().from(contacts).where(eq(contacts.id, conv.contactId));
+          const conditionValue = (action as any).conditionValue || "";
+          const conditionMet = !contact?.attributes?.some(a => a.toLowerCase() === conditionValue.toLowerCase());
+          return { conditionMet };
+        }
+        break;
       }
 
       default:

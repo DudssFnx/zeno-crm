@@ -116,14 +116,27 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 ### Robot Intelligence (Cerebro Unico)
 Sistema de automacao unificado que atua como cerebro central do sistema.
 Settings page at `/settings/robots`
+Visual Flow Editor at `/settings/robots/:id` (React Flow canvas)
+
+**Editor Visual (Typebot-style)**
+- Canvas drag-and-drop com React Flow
+- Painel lateral com blocos agrupados por categoria
+- Busca/filtro de blocos
+- Painel de configuracao de propriedades
+- Conexoes visuais entre blocos
+- Ordenacao topologica automatica
 
 **Tipos de Acoes**
 - **Envio de Mensagens**: send_text, send_image, send_audio, send_video, send_document
+- **Input**: ask_question, button_choice (aguarda resposta do usuario)
 - **Simulacao**: simulate_typing, simulate_recording, delay, random_delay
 - **Gestao de Tags**: add_tag, remove_tag, remove_all_tags
 - **Gestao de Atributos**: add_attribute, remove_attribute, remove_all_attributes
-- **Fluxo**: set_status, assign_agent, transfer, move_stage
-- **Inteligencia**: extract_data, schedule_followup, route_by_intent, ask_question, conditional
+- **Kanban**: move_stage (move conversa para estagio do funil)
+- **Agendamento**: schedule_followup (agenda mensagem de followup)
+- **Fluxo**: set_status, assign_agent, goto_robot, conditional
+- **Integracao**: webhook (chamada HTTP externa)
+- **Inteligencia**: extract_data, route_by_intent
 
 **Blocos Humanizados (Typebot-inspired)**
 - **smart_typing**: Digitacao inteligente proporcional ao tamanho da proxima mensagem (50-80ms por caractere, max 8s)
