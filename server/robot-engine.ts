@@ -175,6 +175,11 @@ class RobotEngine {
     };
 
     try {
+      let skipUntilNextCondition = false;
+      let executedConditionalBlock = false; // Flag para parar após executar um bloco condicional
+      let foundFirstCondition = false; // Flag para saber se já passou pela primeira condição
+      let lastConditionWasTrue = false; // Se a última condição avaliada foi verdadeira
+      
       for (let i = 0; i < actions.length; i++) {
         const controlState = this.activeExecutions.get(executionId);
         if (controlState?.cancelled) {
@@ -187,13 +192,81 @@ class RobotEngine {
           return { success: false, error: "Execução cancelada" };
         }
 
+        const action = actions[i];
+        
+        // Se encontrou uma nova condição após já ter executado um bloco condicional, para
+        if (action.type === "conditional" && executedConditionalBlock) {
+          logger.debug({ actionId: action.id }, "Parando fluxo - já executou um bloco condicional com sucesso");
+          break;
+        }
+        
+        // Se encontrou uma condição, reseta o skip e avalia
+        if (action.type === "conditional") {
+          skipUntilNextCondition = false;
+          foundFirstCondition = true;
+          lastConditionWasTrue = false;
+        }
+        
+        // Se estamos pulando ações após condição falsa, verifica se chegou em nova condição
+        if (skipUntilNextCondition && action.type !== "conditional") {
+          logger.debug({ actionId: action.id, actionType: action.type }, "Pulando ação (condição anterior falsa)");
+          continue;
+        }
+
         await db.update(robotExecutions)
           .set({ currentActionIndex: i })
           .where(eq(robotExecutions.id, executionId));
 
-        const action = actions[i];
         emitProgress(i + 1, action.type, "running");
-        await this.executeAction(action, enrichedContext, sendMessage, sendPresence);
+        const result = await this.executeAction(action, enrichedContext, sendMessage, sendPresence);
+        
+        // Se for condição, verifica resultado para decidir se pula próximas ações
+        if (action.type === "conditional") {
+          if (result.conditionMet === false) {
+            skipUntilNextCondition = true;
+            lastConditionWasTrue = false;
+            logger.debug({ actionId: action.id }, "Condição falsa - pulando ações até próxima condição");
+          } else {
+            skipUntilNextCondition = false;
+            lastConditionWasTrue = true;
+            logger.debug({ actionId: action.id }, "Condição verdadeira - executando bloco");
+          }
+        } else if (foundFirstCondition && lastConditionWasTrue && !skipUntilNextCondition) {
+          // Se executou uma ação real dentro de um bloco condicional verdadeiro
+          executedConditionalBlock = true;
+        }
+        
+        // Se ação indica para pausar e esperar resposta
+        if (result.waitForResponse) {
+          logger.info({ actionId: action.id, nextNodeId: result.nextNodeId }, "Fluxo pausado - aguardando resposta do cliente");
+          
+          // Salva estado da conversa para continuar depois
+          await db.insert(robotConversationState).values({
+            conversationId: context.conversationId,
+            robotId: robotId,
+            currentNodeId: result.nextNodeId || action.id,
+            waitingForInput: true,
+            isAwaitingResponse: true,
+            lastRobotMessageAt: new Date(),
+          }).onConflictDoUpdate({
+            target: robotConversationState.conversationId,
+            set: {
+              robotId: robotId,
+              currentNodeId: result.nextNodeId || action.id,
+              waitingForInput: true,
+              isAwaitingResponse: true,
+              lastRobotMessageAt: new Date(),
+              updatedAt: new Date(),
+            }
+          });
+          
+          // Para execução aqui, continuará quando cliente responder
+          await db.update(robotExecutions)
+            .set({ status: "completed", completedAt: new Date() })
+            .where(eq(robotExecutions.id, executionId));
+          this.activeExecutions.delete(executionId);
+          return { success: true };
+        }
       }
 
       await db.update(robotExecutions)
@@ -223,7 +296,7 @@ class RobotEngine {
     context: ExecutionContext,
     sendMessage: (conversationId: string, content: string, mediaType?: string, mediaUrl?: string) => Promise<void>,
     sendPresence: (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording" | "paused") => Promise<void>
-  ): Promise<void> {
+  ): Promise<{ skip?: boolean; skipUntilCondition?: boolean; conditionMet?: boolean; waitForResponse?: boolean; nextNodeId?: string }> {
     const { type } = action;
     
     logger.debug({ actionType: type, actionId: action.id }, "Executando ação do robô");
@@ -529,11 +602,13 @@ class RobotEngine {
       }
 
       case "wait_response": {
+        const nextNodeId = (action as any).nextNodeId || action.id;
         logger.info({ 
           timeout: (action as any).waitTimeoutSeconds || 60,
-          fallback: (action as any).fallbackAction || "continue"
-        }, "Aguardando resposta do cliente (estado salvo para continuar no proximo trigger)");
-        break;
+          fallback: (action as any).fallbackAction || "continue",
+          nextNodeId
+        }, "Aguardando resposta do cliente - pausando fluxo");
+        return { waitForResponse: true, nextNodeId };
       }
 
       case "conditional": {
@@ -562,15 +637,26 @@ class RobotEngine {
               conditionMet = contact.attributes.some(a => a.toLowerCase() === conditionValue.toLowerCase());
             }
           }
+        } else if (conditionType === "first_message") {
+          // Verifica se é a primeira mensagem (sem tag FILA ainda)
+          const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
+          if (conv) {
+            const contactTagsList = await db.select().from(contactTags)
+              .innerJoin(tags, eq(tags.id, contactTags.tagId))
+              .where(eq(contactTags.contactId, conv.contactId));
+            conditionMet = !contactTagsList.some(t => t.tags.name.toLowerCase() === "fila");
+          }
         }
 
         logger.info({ conditionType, conditionValue, conditionMet }, "Condicao avaliada");
-        break;
+        return { conditionMet };
       }
 
       default:
         logger.warn({ actionType: type }, "Tipo de ação desconhecido");
     }
+    
+    return {};
   }
 
   private processTemplateVariables(content: string, context: ExecutionContext): string {

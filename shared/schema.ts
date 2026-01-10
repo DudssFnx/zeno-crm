@@ -884,6 +884,12 @@ export const robotConversationState = pgTable("robot_conversation_state", {
   pendingFollowups: jsonb("pending_followups").notNull().default([]), // Follow-ups pendentes
   extractedData: jsonb("extracted_data").notNull().default({}), // Dados extraídos da conversa
   
+  // Controle de fluxo Typebot-style
+  currentNodeId: text("current_node_id"), // ID do nó atual no fluxo
+  flowVariables: jsonb("flow_variables").notNull().default({}), // Variáveis do fluxo
+  waitingForInput: boolean("waiting_for_input").notNull().default(false), // Aguardando input do usuário
+  waitTimeoutAt: timestamp("wait_timeout_at"), // Timeout do wait_response
+  
   // Controle
   isAwaitingResponse: boolean("is_awaiting_response").notNull().default(false),
   lastRobotMessageAt: timestamp("last_robot_message_at"),
