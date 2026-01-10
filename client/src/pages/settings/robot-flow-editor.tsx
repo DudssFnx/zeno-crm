@@ -344,17 +344,25 @@ export default function RobotFlowEditor() {
         actions,
       };
 
+      let response;
       if (isNew) {
-        return authFetch("/api/robots", {
+        response = await authFetch("/api/robots", {
           method: "POST",
           body: JSON.stringify(robotData),
         });
       } else {
-        return authFetch(`/api/robots/${robotId}`, {
+        response = await authFetch(`/api/robots/${robotId}`, {
           method: "PUT",
           body: JSON.stringify(robotData),
         });
       }
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Falha ao salvar robo");
+      }
+      
+      return response.json();
     },
     onSuccess: () => {
       toast({ title: "Robo salvo com sucesso!" });
