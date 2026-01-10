@@ -1,5 +1,4 @@
 import { useState, useRef } from "react";
-import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Bot, GripVertical, Clock, Timer, MessageSquare, Mic, Play, Tag as TagIcon, UserCircle, Image, FileText, Video, ArrowRight, Upload, X, ArrowDown, Circle, Zap, MessageCircle, Reply, Sun, Hash, Layers, Calendar, Search, Sparkles, Hourglass, MessageCircleQuestion, GitBranch } from "lucide-react";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -850,7 +849,6 @@ function RobotCard({ robot, isAdmin, onEdit, onDelete, onToggleActive }: RobotCa
 }
 
 export default function RobotsPage() {
-  const [, navigate] = useLocation();
   const authFetch = useAuthFetch();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -1051,14 +1049,6 @@ export default function RobotsPage() {
   };
 
   const handleOpenDialog = (robot?: Robot) => {
-    if (robot) {
-      navigate(`/settings/robots/${robot.id}`);
-    } else {
-      navigate("/settings/robots/new");
-    }
-  };
-
-  const handleOpenDialogLegacy = (robot?: Robot) => {
     if (robot) {
       setEditingRobot(robot);
       const actions = (robot.actions as RobotActionData[]) || [];
