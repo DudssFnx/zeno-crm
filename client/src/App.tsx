@@ -18,6 +18,7 @@ import ContactsPage from "@/pages/settings/contacts";
 import KanbanPage from "@/pages/kanban";
 import MacrosPage from "@/pages/settings/macros";
 import RobotsPage from "@/pages/settings/robots";
+import RobotFlowEditor from "@/pages/settings/robot-flow-editor";
 import RobotQueuePage from "@/pages/settings/robot-queue";
 import ProfilePage from "@/pages/settings/profile";
 import StagesPage from "@/pages/settings/stages";
@@ -121,6 +122,9 @@ function Router() {
       </Route>
       <Route path="/settings/robots">
         <AdminRoute component={RobotsPage} />
+      </Route>
+      <Route path="/settings/robots/:id">
+        <AdminRoute component={RobotFlowEditor} />
       </Route>
       <Route path="/settings/robot-queue">
         <AdminRoute component={RobotQueuePage} />
