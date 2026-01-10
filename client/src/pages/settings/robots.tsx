@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Bot, GripVertical, Clock, Timer, MessageSquare, Mic, Play, Tag as TagIcon, UserCircle, Image, FileText, Video, ArrowRight, Upload, X, ArrowDown, Circle, Zap, MessageCircle, Reply, Sun, Hash, Layers, Calendar, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Bot, GripVertical, Clock, Timer, MessageSquare, Mic, Play, Tag as TagIcon, UserCircle, Image, FileText, Video, ArrowRight, Upload, X, ArrowDown, Circle, Zap, MessageCircle, Reply, Sun, Hash, Layers, Calendar, Search, Sparkles, Hourglass, MessageCircleQuestion, GitBranch } from "lucide-react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -40,6 +40,10 @@ const actionTypes = [
   { value: "send_audio", label: "Enviar Audio", icon: Mic, color: "#EC4899", category: "mensagem" },
   { value: "send_video", label: "Enviar Video", icon: Video, color: "#F59E0B", category: "mensagem" },
   { value: "send_document", label: "Enviar Documento", icon: FileText, color: "#10B981", category: "mensagem" },
+  { value: "smart_typing", label: "Digitacao Inteligente", icon: Sparkles, color: "#1565C0", category: "humano" },
+  { value: "human_delay", label: "Pausa Humana", icon: Hourglass, color: "#059669", category: "humano" },
+  { value: "wait_response", label: "Aguardar Resposta", icon: MessageCircleQuestion, color: "#7C3AED", category: "humano" },
+  { value: "conditional", label: "Condicao", icon: GitBranch, color: "#F59E0B", category: "logica" },
   { value: "simulate_typing", label: "Simular Digitando", icon: MessageSquare, color: "#6366F1", category: "simulacao" },
   { value: "simulate_recording", label: "Simular Gravando", icon: Mic, color: "#D946EF", category: "simulacao" },
   { value: "delay", label: "Aguardar", icon: Clock, color: "#F97316", category: "tempo" },
@@ -68,6 +72,7 @@ const robotActionSchema = z.object({
   id: z.string(),
   type: z.enum([
     "send_text", "send_image", "send_audio", "send_video", "send_document",
+    "smart_typing", "human_delay", "wait_response", "conditional",
     "simulate_typing", "simulate_recording", "delay", "random_delay",
     "add_tag", "remove_tag", "remove_all_tags", 
     "add_attribute", "remove_attribute", "remove_all_attributes",
@@ -78,6 +83,8 @@ const robotActionSchema = z.object({
   mediaUrl: z.string().optional(),
   fileName: z.string().optional(),
   delayMs: z.number().optional(),
+  minDelayMs: z.number().optional(),
+  maxDelayMs: z.number().optional(),
   tagId: z.string().optional(),
   attributeId: z.string().optional(),
   status: z.enum(["open", "pending", "resolved"]).optional(),
@@ -85,6 +92,11 @@ const robotActionSchema = z.object({
   stageId: z.string().optional(),
   followupDelayMinutes: z.number().optional(),
   onlyIfNoResponse: z.boolean().optional(),
+  waitTimeoutSeconds: z.number().optional(),
+  fallbackAction: z.enum(["continue", "stop", "goto"]).optional(),
+  conditionType: z.enum(["keyword", "has_tag", "no_tag", "has_attribute"]).optional(),
+  conditionValue: z.string().optional(),
+  gotoRobotId: z.string().optional(),
   extractionRule: z.object({
     pattern: z.string(),
     extractName: z.boolean().optional(),
@@ -171,6 +183,14 @@ function FlowBlock({
         return `${(action.delayMs || 2000) / 1000}s`;
       case "random_delay":
         return "15-45s";
+      case "smart_typing":
+        return "auto";
+      case "human_delay":
+        return `${(action.minDelayMs || 1000)/1000}-${(action.maxDelayMs || 3000)/1000}s`;
+      case "wait_response":
+        return `${action.waitTimeoutSeconds || 60}s`;
+      case "conditional":
+        return action.conditionValue?.substring(0, 15) || "";
       case "add_tag":
       case "remove_tag":
         const tag = tags.find(t => t.id === action.tagId);
@@ -593,6 +613,145 @@ function FlowBlock({
                   </FormItem>
                 )}
               />
+            </div>
+          )}
+
+          {action.type === "smart_typing" && (
+            <div className="p-2 bg-muted/50 rounded text-xs text-muted-foreground">
+              <Sparkles className="h-3 w-3 inline mr-1" />
+              Simula digitacao proporcional ao tamanho da proxima mensagem (50-80ms por caractere + variacao)
+            </div>
+          )}
+
+          {action.type === "human_delay" && (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <FormField
+                  control={form.control}
+                  name={`actions.${index}.minDelayMs`}
+                  render={({ field: inputField }) => (
+                    <FormItem className="flex-1">
+                      <FormLabel className="text-xs">Min (ms)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number"
+                          value={inputField.value || 1000}
+                          onChange={(e) => inputField.onChange(parseInt(e.target.value) || 1000)}
+                          className="text-sm"
+                          data-testid={`input-block-min-delay-${index}`} 
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name={`actions.${index}.maxDelayMs`}
+                  render={({ field: inputField }) => (
+                    <FormItem className="flex-1">
+                      <FormLabel className="text-xs">Max (ms)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number"
+                          value={inputField.value || 3000}
+                          onChange={(e) => inputField.onChange(parseInt(e.target.value) || 3000)}
+                          className="text-sm"
+                          data-testid={`input-block-max-delay-${index}`} 
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground">Pausa aleatoria entre min e max para parecer humano</p>
+            </div>
+          )}
+
+          {action.type === "wait_response" && (
+            <div className="space-y-2">
+              <FormField
+                control={form.control}
+                name={`actions.${index}.waitTimeoutSeconds`}
+                render={({ field: inputField }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">Timeout (segundos)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number"
+                        value={inputField.value || 60}
+                        onChange={(e) => inputField.onChange(parseInt(e.target.value) || 60)}
+                        className="text-sm"
+                        data-testid={`input-block-timeout-${index}`} 
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name={`actions.${index}.fallbackAction`}
+                render={({ field: inputField }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">Se nao responder</FormLabel>
+                    <Select value={inputField.value || "continue"} onValueChange={inputField.onChange}>
+                      <FormControl>
+                        <SelectTrigger className="text-sm" data-testid={`select-fallback-${index}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="continue">Continuar fluxo</SelectItem>
+                        <SelectItem value="stop">Parar robo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
+
+          {action.type === "conditional" && (
+            <div className="space-y-2">
+              <FormField
+                control={form.control}
+                name={`actions.${index}.conditionType`}
+                render={({ field: inputField }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">Tipo de Condicao</FormLabel>
+                    <Select value={inputField.value || "keyword"} onValueChange={inputField.onChange}>
+                      <FormControl>
+                        <SelectTrigger className="text-sm" data-testid={`select-condition-type-${index}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="keyword">Palavra-chave na mensagem</SelectItem>
+                        <SelectItem value="has_tag">Contato tem etiqueta</SelectItem>
+                        <SelectItem value="no_tag">Contato NAO tem etiqueta</SelectItem>
+                        <SelectItem value="has_attribute">Contato tem atributo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name={`actions.${index}.conditionValue`}
+                render={({ field: inputField }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">Valor</FormLabel>
+                    <FormControl>
+                      <Input 
+                        {...inputField} 
+                        placeholder="palavra ou nome da etiqueta/atributo" 
+                        className="text-sm"
+                        data-testid={`input-condition-value-${index}`} 
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <p className="text-[10px] text-muted-foreground">Se a condicao for verdadeira, continua. Senao, pula para o proximo bloco.</p>
             </div>
           )}
         </div>

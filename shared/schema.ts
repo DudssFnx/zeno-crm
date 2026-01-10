@@ -809,6 +809,9 @@ export const robotActionSchema = z.object({
     "route_by_intent",      // Rotear baseado na intenção detectada
     "ask_question",         // Perguntar algo ao cliente
     "conditional",          // Ação condicional (if/else)
+    "smart_typing",         // Digitação inteligente proporcional ao tamanho
+    "human_delay",          // Pausa humanizada com variação aleatória
+    "wait_response",        // Aguardar resposta do cliente com timeout
   ]),
   // Campos específicos por tipo de ação
   content: z.string().optional(),         // Texto da mensagem ou URL do arquivo

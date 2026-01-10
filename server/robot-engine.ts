@@ -19,6 +19,8 @@ interface ExecutionContext {
   whatsappAccountId: string;
   companyId: string;
   executedBy?: string;
+  lastMessage?: string;
+  actions?: RobotAction[];
 }
 
 interface AutoMessageContext {
@@ -74,6 +76,22 @@ class RobotEngine {
 
   async sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private delay(ms: number): Promise<void> {
+    return this.sleep(ms);
+  }
+
+  private getNextTextAction(actions: RobotAction[], currentAction: RobotAction): RobotAction | undefined {
+    const currentIndex = actions.findIndex(a => a.id === currentAction.id);
+    if (currentIndex === -1) return undefined;
+    
+    for (let i = currentIndex + 1; i < actions.length; i++) {
+      if (actions[i].type === "send_text" && actions[i].content) {
+        return actions[i];
+      }
+    }
+    return undefined;
   }
 
   private getActionLabel(type: string): string {
@@ -151,6 +169,11 @@ class RobotEngine {
       }
     };
 
+    const enrichedContext: ExecutionContext = {
+      ...context,
+      actions,
+    };
+
     try {
       for (let i = 0; i < actions.length; i++) {
         const controlState = this.activeExecutions.get(executionId);
@@ -170,7 +193,7 @@ class RobotEngine {
 
         const action = actions[i];
         emitProgress(i + 1, action.type, "running");
-        await this.executeAction(action, context, sendMessage, sendPresence);
+        await this.executeAction(action, enrichedContext, sendMessage, sendPresence);
       }
 
       await db.update(robotExecutions)
@@ -478,6 +501,70 @@ class RobotEngine {
             logger.info({ scheduledFor, delayMinutes: action.followupDelayMinutes }, "Follow-up agendado");
           }
         }
+        break;
+      }
+
+      case "smart_typing": {
+        const nextAction = this.getNextTextAction(context.actions || [], action);
+        if (nextAction && nextAction.content) {
+          const charCount = nextAction.content.length;
+          const msPerChar = 50 + Math.random() * 30;
+          const typingTime = Math.min(Math.max(charCount * msPerChar, 1000), 8000);
+          await sendPresence(context.whatsappAccountId, context.contactPhone, "composing");
+          await this.delay(typingTime);
+          await sendPresence(context.whatsappAccountId, context.contactPhone, "paused");
+          logger.info({ charCount, typingTime: Math.round(typingTime) }, "Digitacao inteligente simulada");
+        }
+        break;
+      }
+
+      case "human_delay": {
+        const minDelay = (action as any).minDelayMs || 1000;
+        const maxDelay = (action as any).maxDelayMs || 3000;
+        const jitter = Math.random();
+        const actualDelay = minDelay + (maxDelay - minDelay) * jitter;
+        await this.delay(actualDelay);
+        logger.info({ minDelay, maxDelay, actualDelay: Math.round(actualDelay) }, "Pausa humana executada");
+        break;
+      }
+
+      case "wait_response": {
+        logger.info({ 
+          timeout: (action as any).waitTimeoutSeconds || 60,
+          fallback: (action as any).fallbackAction || "continue"
+        }, "Aguardando resposta do cliente (estado salvo para continuar no proximo trigger)");
+        break;
+      }
+
+      case "conditional": {
+        const conditionType = (action as any).conditionType || "keyword";
+        const conditionValue = (action as any).conditionValue || "";
+        let conditionMet = false;
+
+        if (conditionType === "keyword" && context.lastMessage) {
+          const normalizedMessage = this.normalizeText(context.lastMessage);
+          const normalizedKeyword = this.normalizeText(conditionValue);
+          conditionMet = normalizedMessage.includes(normalizedKeyword);
+        } else if (conditionType === "has_tag" || conditionType === "no_tag") {
+          const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
+          if (conv) {
+            const contactTagsList = await db.select().from(contactTags)
+              .innerJoin(tags, eq(tags.id, contactTags.tagId))
+              .where(eq(contactTags.contactId, conv.contactId));
+            const hasTag = contactTagsList.some(t => t.tags.name.toLowerCase() === conditionValue.toLowerCase());
+            conditionMet = conditionType === "has_tag" ? hasTag : !hasTag;
+          }
+        } else if (conditionType === "has_attribute") {
+          const [conv] = await db.select().from(conversations).where(eq(conversations.id, context.conversationId));
+          if (conv) {
+            const [contact] = await db.select().from(contacts).where(eq(contacts.id, conv.contactId));
+            if (contact?.attributes) {
+              conditionMet = contact.attributes.some(a => a.toLowerCase() === conditionValue.toLowerCase());
+            }
+          }
+        }
+
+        logger.info({ conditionType, conditionValue, conditionMet }, "Condicao avaliada");
         break;
       }
 

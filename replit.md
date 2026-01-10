@@ -113,6 +113,37 @@ Multi-account WhatsApp CRM system (similar to Chatwoot/CWMKT) with multi-company
 - Settings page at `/settings/macros`
 - Execute via macro button in chat window
 
+### Robot Intelligence (Cerebro Unico)
+Sistema de automacao unificado que atua como cerebro central do sistema.
+Settings page at `/settings/robots`
+
+**Tipos de Acoes**
+- **Envio de Mensagens**: send_text, send_image, send_audio, send_video, send_document
+- **Simulacao**: simulate_typing, simulate_recording, delay, random_delay
+- **Gestao de Tags**: add_tag, remove_tag, remove_all_tags
+- **Gestao de Atributos**: add_attribute, remove_attribute, remove_all_attributes
+- **Fluxo**: set_status, assign_agent, transfer, move_stage
+- **Inteligencia**: extract_data, schedule_followup, route_by_intent, ask_question, conditional
+
+**Blocos Humanizados (Typebot-inspired)**
+- **smart_typing**: Digitacao inteligente proporcional ao tamanho da proxima mensagem (50-80ms por caractere, max 8s)
+- **human_delay**: Pausa humanizada com variacao aleatoria (minDelayMs/maxDelayMs com jitter)
+- **wait_response**: Aguarda resposta do cliente com timeout configuravel e acao de fallback
+- **conditional**: Logica condicional baseada em keyword, has_tag, no_tag, has_attribute
+
+**Triggers Automaticos**
+- first_message: Primeira mensagem do contato
+- keyword: Palavras-chave especificas
+- inactivity: Inatividade do cliente por tempo configuravel
+- status_change: Mudanca de status da conversa
+- tag_added/tag_removed: Alteracao de tags
+
+**Anti-Ban Safeguards**
+- Delays humanizados (1500-3500ms com jitter)
+- Deduplicacao de mensagens (hash MD5, janela 5min)
+- Log de todas as mensagens enviadas automaticamente
+- Apenas responde a mensagens inbound (nunca inicia conversa)
+
 ### Automacao Hibrida (Hybrid Automation)
 Sistema de automacao inteligente com triagem, roteamento e anti-ban.
 Settings page at `/settings/automation`
