@@ -144,6 +144,7 @@ class RobotEngine {
     }
 
     const actions = robot[0].actions as RobotAction[];
+    const flowEdges = (robot[0].flowEdges || []) as Array<{ id: string; source: string; target: string; sourceHandle?: string }>;
     
     if (actions.length === 0) {
       return { success: false, error: "Robô não possui ações configuradas" };
@@ -160,7 +161,7 @@ class RobotEngine {
     const executionId = execution.id;
     this.activeExecutions.set(executionId, { cancelled: false });
 
-    logger.info({ robotId, executionId, conversationId: context.conversationId }, "Iniciando execução do robô");
+    logger.info({ robotId, executionId, conversationId: context.conversationId, hasFlowEdges: flowEdges.length > 0 }, "Iniciando execução do robô");
 
     const emitProgress = (currentStep: number, actionType: string, status: "running" | "completed" | "failed" | "cancelled") => {
       if (onProgress) {
@@ -184,10 +185,19 @@ class RobotEngine {
     };
 
     try {
+      // Se tem flowEdges, usa execução baseada em grafo
+      if (flowEdges.length > 0) {
+        return await this.executeRobotGraph(
+          robot[0], actions, flowEdges, enrichedContext, executionId, 
+          sendMessage, sendPresence, emitProgress
+        );
+      }
+      
+      // Fallback: execução linear para robôs sem flowEdges
       let skipUntilNextCondition = false;
-      let executedConditionalBlock = false; // Flag para parar após executar um bloco condicional
-      let foundFirstCondition = false; // Flag para saber se já passou pela primeira condição
-      let lastConditionWasTrue = false; // Se a última condição avaliada foi verdadeira
+      let executedConditionalBlock = false;
+      let foundFirstCondition = false;
+      let lastConditionWasTrue = false;
       
       for (let i = 0; i < actions.length; i++) {
         const controlState = this.activeExecutions.get(executionId);
@@ -203,20 +213,17 @@ class RobotEngine {
 
         const action = actions[i];
         
-        // Se encontrou uma nova condição após já ter executado um bloco condicional, para
         if (action.type === "conditional" && executedConditionalBlock) {
           logger.debug({ actionId: action.id }, "Parando fluxo - já executou um bloco condicional com sucesso");
           break;
         }
         
-        // Se encontrou uma condição, reseta o skip e avalia
         if (action.type === "conditional") {
           skipUntilNextCondition = false;
           foundFirstCondition = true;
           lastConditionWasTrue = false;
         }
         
-        // Se estamos pulando ações após condição falsa, verifica se chegou em nova condição
         if (skipUntilNextCondition && action.type !== "conditional") {
           logger.debug({ actionId: action.id, actionType: action.type }, "Pulando ação (condição anterior falsa)");
           continue;
@@ -229,7 +236,6 @@ class RobotEngine {
         emitProgress(i + 1, action.type, "running");
         const result = await this.executeAction(action, enrichedContext, sendMessage, sendPresence);
         
-        // Se for condição, verifica resultado para decidir se pula próximas ações
         if (action.type === "conditional") {
           if (result.conditionMet === false) {
             skipUntilNextCondition = true;
@@ -241,15 +247,12 @@ class RobotEngine {
             logger.debug({ actionId: action.id }, "Condição verdadeira - executando bloco");
           }
         } else if (foundFirstCondition && lastConditionWasTrue && !skipUntilNextCondition) {
-          // Se executou uma ação real dentro de um bloco condicional verdadeiro
           executedConditionalBlock = true;
         }
         
-        // Se ação indica para pausar e esperar resposta
         if (result.waitForResponse) {
           logger.info({ actionId: action.id, nextNodeId: result.nextNodeId }, "Fluxo pausado - aguardando resposta do cliente");
           
-          // Salva estado da conversa para continuar depois
           await db.insert(robotConversationState).values({
             conversationId: context.conversationId,
             robotId: robotId,
@@ -269,7 +272,6 @@ class RobotEngine {
             }
           });
           
-          // Para execução aqui, continuará quando cliente responder
           await db.update(robotExecutions)
             .set({ status: "completed", completedAt: new Date() })
             .where(eq(robotExecutions.id, executionId));
@@ -298,6 +300,153 @@ class RobotEngine {
       
       return { success: false, error: error.message };
     }
+  }
+
+  // Nova função: execução baseada em grafo usando flowEdges
+  private async executeRobotGraph(
+    robot: any,
+    actions: RobotAction[],
+    flowEdges: Array<{ id: string; source: string; target: string; sourceHandle?: string }>,
+    context: ExecutionContext,
+    executionId: string,
+    sendMessage: (conversationId: string, content: string, mediaType?: string, mediaUrl?: string) => Promise<void>,
+    sendPresence: (whatsappAccountId: string, contactPhone: string, type: "composing" | "recording" | "paused") => Promise<void>,
+    emitProgress: (currentStep: number, actionType: string, status: "running" | "completed" | "failed" | "cancelled") => void
+  ): Promise<{ success: boolean; error?: string }> {
+    // Cria mapa de ações por ID
+    const actionMap = new Map<string, RobotAction>();
+    actions.forEach(a => actionMap.set(a.id, a));
+    
+    // Cria mapa de conexões: source -> { target, sourceHandle }
+    const edgeMap = new Map<string, Array<{ target: string; sourceHandle?: string }>>();
+    flowEdges.forEach(e => {
+      const existing = edgeMap.get(e.source) || [];
+      existing.push({ target: e.target, sourceHandle: e.sourceHandle });
+      edgeMap.set(e.source, existing);
+    });
+    
+    // Encontra o nó inicial (sem conexões entrando)
+    const targetNodes = new Set(flowEdges.map(e => e.target));
+    let startNode = actions.find(a => !targetNodes.has(a.id));
+    if (!startNode && actions.length > 0) {
+      startNode = actions[0];
+    }
+    
+    if (!startNode) {
+      return { success: false, error: "Não foi possível encontrar o nó inicial" };
+    }
+    
+    logger.info({ startNodeId: startNode.id, startNodeType: startNode.type }, "Iniciando execução em grafo");
+    
+    let currentNode: RobotAction | undefined = startNode;
+    let stepCount = 0;
+    const maxSteps = 100; // Previne loops infinitos
+    
+    while (currentNode && stepCount < maxSteps) {
+      stepCount++;
+      
+      const controlState = this.activeExecutions.get(executionId);
+      if (controlState?.cancelled) {
+        await db.update(robotExecutions)
+          .set({ status: "cancelled", completedAt: new Date() })
+          .where(eq(robotExecutions.id, executionId));
+        this.activeExecutions.delete(executionId);
+        emitProgress(stepCount, currentNode.type, "cancelled");
+        return { success: false, error: "Execução cancelada" };
+      }
+      
+      logger.debug({ nodeId: currentNode.id, nodeType: currentNode.type, step: stepCount }, "Executando nó");
+      emitProgress(stepCount, currentNode.type, "running");
+      
+      const result = await this.executeAction(currentNode, context, sendMessage, sendPresence);
+      
+      // Se precisa aguardar resposta, para aqui
+      if (result.waitForResponse) {
+        logger.info({ nodeId: currentNode.id }, "Fluxo pausado - aguardando resposta");
+        
+        await db.insert(robotConversationState).values({
+          conversationId: context.conversationId,
+          robotId: robot.id,
+          currentNodeId: result.nextNodeId || currentNode.id,
+          waitingForInput: true,
+          isAwaitingResponse: true,
+          lastRobotMessageAt: new Date(),
+        }).onConflictDoUpdate({
+          target: robotConversationState.conversationId,
+          set: {
+            robotId: robot.id,
+            currentNodeId: result.nextNodeId || currentNode.id,
+            waitingForInput: true,
+            isAwaitingResponse: true,
+            lastRobotMessageAt: new Date(),
+            updatedAt: new Date(),
+          }
+        });
+        
+        await db.update(robotExecutions)
+          .set({ status: "completed", completedAt: new Date() })
+          .where(eq(robotExecutions.id, executionId));
+        this.activeExecutions.delete(executionId);
+        return { success: true };
+      }
+      
+      // Encontra próximo nó baseado nas conexões
+      const outgoingEdges = edgeMap.get(currentNode.id) || [];
+      
+      if (outgoingEdges.length === 0) {
+        // Sem conexões saindo - fim do fluxo
+        logger.info({ nodeId: currentNode.id }, "Fim do fluxo - sem conexões saindo");
+        break;
+      }
+      
+      // Se for condicional, escolhe a saída correta baseada no resultado
+      if (currentNode.type === "conditional") {
+        const conditionMet = result.conditionMet;
+        // Procura edge com sourceHandle correspondente
+        const trueEdge = outgoingEdges.find(e => e.sourceHandle === "true" || e.sourceHandle === undefined || e.sourceHandle === null);
+        const falseEdge = outgoingEdges.find(e => e.sourceHandle === "false");
+        
+        let nextEdge;
+        if (conditionMet) {
+          nextEdge = trueEdge;
+          logger.debug({ nodeId: currentNode.id }, "Condição verdadeira - seguindo caminho true");
+        } else {
+          nextEdge = falseEdge;
+          logger.debug({ nodeId: currentNode.id }, "Condição falsa - seguindo caminho false");
+        }
+        
+        if (nextEdge) {
+          currentNode = actionMap.get(nextEdge.target);
+        } else {
+          // Sem saída para este resultado - fim do fluxo
+          logger.info({ nodeId: currentNode.id, conditionMet }, "Fim do fluxo - condição sem saída correspondente");
+          break;
+        }
+      } else {
+        // Não é condicional - segue a primeira conexão
+        const nextEdge = outgoingEdges[0];
+        currentNode = actionMap.get(nextEdge.target);
+      }
+      
+      if (!currentNode) {
+        logger.warn({ step: stepCount }, "Próximo nó não encontrado - fim do fluxo");
+        break;
+      }
+    }
+    
+    if (stepCount >= maxSteps) {
+      logger.warn({ robotId: robot.id }, "Limite de passos atingido - possível loop infinito");
+    }
+    
+    await db.update(robotExecutions)
+      .set({ status: "completed", completedAt: new Date() })
+      .where(eq(robotExecutions.id, executionId));
+    
+    this.activeExecutions.delete(executionId);
+    emitProgress(stepCount, "completed", "completed");
+    logger.info({ robotId: robot.id, executionId, steps: stepCount }, "Robô executado com sucesso (grafo)");
+    
+    return { success: true };
   }
 
   private async executeAction(
