@@ -15,10 +15,13 @@ import {
   Handle,
   Position,
   NodeProps,
+  EdgeProps,
+  getBezierPath,
+  EdgeLabelRenderer,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Save, Plus, MessageSquare, Clock, Tag as TagIcon, GitBranch, Sparkles, Hourglass, MessageCircleQuestion, Mic, Image, Video, FileText, Play, UserCircle, Circle, Layers, Search, Calendar, Zap, Timer, Upload, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Plus, MessageSquare, Clock, Tag as TagIcon, GitBranch, Sparkles, Hourglass, MessageCircleQuestion, Mic, Image, Video, FileText, Play, UserCircle, Circle, Layers, Search, Calendar, Zap, Timer, Upload, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -221,6 +224,66 @@ const nodeTypes = {
   flowNode: FlowNode,
 };
 
+function DeletableEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style = {},
+  markerEnd,
+}: EdgeProps) {
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  });
+
+  return (
+    <>
+      <path
+        id={id}
+        style={style}
+        className="react-flow__edge-path stroke-muted-foreground stroke-2"
+        d={edgePath}
+        markerEnd={markerEnd}
+      />
+      <EdgeLabelRenderer>
+        <div
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            pointerEvents: 'all',
+          }}
+          className="nodrag nopan"
+        >
+          <button
+            className="w-5 h-5 bg-destructive hover:bg-destructive/80 text-destructive-foreground rounded-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity group-hover:opacity-100 shadow-sm"
+            style={{ opacity: 1 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              const event = new CustomEvent('deleteEdge', { detail: { id } });
+              window.dispatchEvent(event);
+            }}
+            data-testid={`button-delete-edge-${id}`}
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+const edgeTypes = {
+  deletable: DeletableEdge,
+};
+
 export default function RobotFlowEditor() {
   const [, navigate] = useLocation();
   const params = useParams<{ id: string }>();
@@ -335,11 +398,25 @@ export default function RobotFlowEditor() {
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => addEdge({ 
       ...params, 
-      type: "smoothstep",
+      type: "deletable",
       animated: true,
       markerEnd: { type: MarkerType.ArrowClosed } 
     }, eds));
   }, [setEdges]);
+
+  const deleteEdge = useCallback((edgeId: string) => {
+    setEdges((eds) => eds.filter((e) => e.id !== edgeId));
+  }, [setEdges]);
+
+  useEffect(() => {
+    const handleDeleteEdge = (event: CustomEvent<{ id: string }>) => {
+      deleteEdge(event.detail.id);
+    };
+    window.addEventListener('deleteEdge', handleDeleteEdge as EventListener);
+    return () => {
+      window.removeEventListener('deleteEdge', handleDeleteEdge as EventListener);
+    };
+  }, [deleteEdge]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNode(node as Node<FlowNodeData>);
@@ -609,6 +686,7 @@ export default function RobotFlowEditor() {
             onConnect={onConnect}
             onNodeClick={onNodeClick}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             fitView
             className="bg-muted/30"
           >
