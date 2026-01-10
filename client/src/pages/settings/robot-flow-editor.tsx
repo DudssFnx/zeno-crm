@@ -18,7 +18,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Save, Plus, MessageSquare, Clock, Tag as TagIcon, GitBranch, Sparkles, Hourglass, MessageCircleQuestion, Mic, Image, Video, FileText, Play, UserCircle, Circle, Layers, Search, Calendar, Zap, Timer } from "lucide-react";
+import { ArrowLeft, Save, Plus, MessageSquare, Clock, Tag as TagIcon, GitBranch, Sparkles, Hourglass, MessageCircleQuestion, Mic, Image, Video, FileText, Play, UserCircle, Circle, Layers, Search, Calendar, Zap, Timer, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -91,6 +91,7 @@ interface FlowNodeData {
 
 function FlowNode({ data, selected }: NodeProps<Node<FlowNodeData>>) {
   const Icon = data.icon;
+  const isConditional = data.type === "conditional";
   
   return (
     <div 
@@ -188,7 +189,30 @@ function FlowNode({ data, selected }: NodeProps<Node<FlowNodeData>>) {
         )}
       </div>
       
-      <Handle type="source" position={Position.Bottom} className="!bg-muted-foreground !w-3 !h-3" />
+      {isConditional ? (
+        <>
+          <div className="flex justify-around px-2 pb-1 gap-4">
+            <span className="text-[10px] text-green-600 font-medium">SIM</span>
+            <span className="text-[10px] text-red-500 font-medium">NAO</span>
+          </div>
+          <Handle 
+            type="source" 
+            position={Position.Bottom} 
+            id="true" 
+            className="!bg-green-500 !w-3 !h-3"
+            style={{ left: '30%' }}
+          />
+          <Handle 
+            type="source" 
+            position={Position.Bottom} 
+            id="false" 
+            className="!bg-red-500 !w-3 !h-3"
+            style={{ left: '70%' }}
+          />
+        </>
+      ) : (
+        <Handle type="source" position={Position.Bottom} className="!bg-muted-foreground !w-3 !h-3" />
+      )}
     </div>
   );
 }
@@ -216,8 +240,37 @@ export default function RobotFlowEditor() {
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null);
   const [showBlockSelector, setShowBlockSelector] = useState(false);
   const [blockSearch, setBlockSearch] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (file: File, nodeId: string) => {
+    if (!nodeId) return;
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await authFetch("/api/upload", {
+        method: "POST",
+        body: formData,
+        headers: {},
+      });
+
+      if (!res.ok) {
+        throw new Error("Falha ao enviar arquivo");
+      }
+
+      const data = await res.json();
+      updateNodeData(nodeId, { mediaUrl: data.url, fileName: file.name });
+      toast({ title: "Arquivo enviado com sucesso" });
+    } catch (error: any) {
+      toast({ title: error.message || "Erro ao enviar arquivo", variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const { data: robot } = useQuery<Robot>({
     queryKey: ["/api/robots", robotId],
@@ -290,6 +343,7 @@ export default function RobotFlowEditor() {
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNode(node as Node<FlowNodeData>);
+    setIsUploading(false);
   }, []);
 
   const addBlock = (blockType: typeof blockTypes[0]) => {
@@ -884,6 +938,47 @@ export default function RobotFlowEditor() {
                 selectedNode.data.type === "send_video" || selectedNode.data.type === "send_document") && (
                 <>
                   <div className="space-y-2">
+                    <Label>Enviar Arquivo</Label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      data-node-id={selectedNode.id}
+                      accept={
+                        selectedNode.data.type === "send_image" ? "image/*" :
+                        selectedNode.data.type === "send_audio" ? "audio/*" :
+                        selectedNode.data.type === "send_video" ? "video/*" :
+                        "*/*"
+                      }
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        const nodeId = e.currentTarget.dataset.nodeId;
+                        if (file && nodeId) handleFileUpload(file, nodeId);
+                        e.target.value = "";
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      data-testid="button-upload-media"
+                    >
+                      {isUploading ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4 mr-2" />
+                      )}
+                      {isUploading ? "Enviando..." : "Escolher Arquivo"}
+                    </Button>
+                    {selectedNode.data.fileName && (
+                      <p className="text-xs text-muted-foreground truncate" data-testid="text-media-filename">
+                        Arquivo: {selectedNode.data.fileName}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
                     <Label>URL do Arquivo</Label>
                     <Input
                       value={selectedNode.data.mediaUrl || ""}
@@ -901,13 +996,13 @@ export default function RobotFlowEditor() {
                       data-testid="input-media-filename"
                     />
                   </div>
-                  {selectedNode.data.type === "send_image" && (
+                  {(selectedNode.data.type === "send_image" || selectedNode.data.type === "send_video") && (
                     <div className="space-y-2">
                       <Label>Legenda (opcional)</Label>
                       <Input
                         value={selectedNode.data.content || ""}
                         onChange={(e) => updateNodeData(selectedNode.id, { content: e.target.value })}
-                        placeholder="Legenda da imagem"
+                        placeholder="Legenda da midia"
                         data-testid="input-media-caption"
                       />
                     </div>
