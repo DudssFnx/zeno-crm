@@ -26,8 +26,10 @@ import {
   Users,
   Activity,
   Shield,
-  RefreshCw
+  RefreshCw,
+  ArrowLeft
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -66,6 +68,7 @@ interface QueueStatus {
 }
 
 export default function RobotQueuePage() {
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const [countdown, setCountdown] = useState<number | null>(null);
   const [currentProgress, setCurrentProgress] = useState<{
@@ -245,6 +248,14 @@ export default function RobotQueuePage() {
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6 max-w-6xl">
       <div className="flex items-center gap-3">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={() => navigate("/settings/robots")}
+          data-testid="button-back"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
         <Shield className="w-8 h-8 text-primary" />
         <div>
           <h1 className="text-2xl font-bold">Fila de Envio Anti-Spam</h1>
