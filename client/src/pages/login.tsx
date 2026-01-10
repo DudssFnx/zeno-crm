@@ -1,21 +1,33 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Mail, Lock } from "lucide-react";
+import { LoadingSpinner } from "@/components/loading-spinner";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { LoadingSpinner } from "@/components/loading-spinner";
-import zenoLogo from "@assets/image_1767464880710.png";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Lock, Mail } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { useLocation } from "wouter";
+import { z } from "zod";
 
 const loginSchema = z.object({
-  email: z.string().email("Digite um email valido"),
+  email: z.string().email("Digite um email válido"),
   password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres"),
 });
 
@@ -40,7 +52,10 @@ export default function LoginPage() {
     } catch (error) {
       toast({
         title: "Falha no login",
-        description: error instanceof Error ? error.message : "Credenciais invalidas",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Credenciais inválidas",
         variant: "destructive",
       });
     } finally {
@@ -49,10 +64,12 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <header className="flex items-center justify-between p-4 border-b">
+    <div
+      className="min-h-screen flex flex-col bg-background"
+      style={{ backgroundImage: "url(/login-bg.png)" }}
+    >
+      <header className="flex items-center justify-between p-4 border-b bg-background/80 backdrop-blur">
         <div className="flex items-center gap-2">
-          <img src={zenoLogo} alt="Zeno" className="h-10 w-auto rounded-md" />
           <span className="text-lg font-semibold">Zeno CRM</span>
         </div>
         <ThemeToggle />
@@ -61,14 +78,20 @@ export default function LoginPage() {
       <main className="flex-1 flex items-center justify-center p-6">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center pb-2">
-            <CardTitle className="text-2xl font-semibold">Bem-vindo</CardTitle>
+            <CardTitle className="text-2xl font-semibold">
+              Bem-vindo
+            </CardTitle>
             <CardDescription>
               Entre para acessar sua conta
             </CardDescription>
           </CardHeader>
+
           <CardContent>
             <Form {...loginForm}>
-              <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
+              <form
+                onSubmit={loginForm.handleSubmit(handleLogin)}
+                className="space-y-4"
+              >
                 <FormField
                   control={loginForm.control}
                   name="email"
@@ -83,7 +106,6 @@ export default function LoginPage() {
                             type="email"
                             placeholder="seu@email.com"
                             className="pl-10"
-                            data-testid="input-login-email"
                           />
                         </div>
                       </FormControl>
@@ -91,6 +113,7 @@ export default function LoginPage() {
                     </FormItem>
                   )}
                 />
+
                 <FormField
                   control={loginForm.control}
                   name="password"
@@ -105,7 +128,6 @@ export default function LoginPage() {
                             type="password"
                             placeholder="Digite sua senha"
                             className="pl-10"
-                            data-testid="input-login-password"
                           />
                         </div>
                       </FormControl>
@@ -113,13 +135,20 @@ export default function LoginPage() {
                     </FormItem>
                   )}
                 />
+
                 <Button
                   type="submit"
                   className="w-full"
                   disabled={isLoading}
-                  data-testid="button-login-submit"
                 >
-                  {isLoading ? <LoadingSpinner size="sm" className="text-primary-foreground" /> : "Entrar"}
+                  {isLoading ? (
+                    <LoadingSpinner
+                      size="sm"
+                      className="text-primary-foreground"
+                    />
+                  ) : (
+                    "Entrar"
+                  )}
                 </Button>
               </form>
             </Form>
@@ -127,7 +156,7 @@ export default function LoginPage() {
         </Card>
       </main>
 
-      <footer className="py-4 text-center text-sm text-muted-foreground border-t">
+      <footer className="py-4 text-center text-sm text-muted-foreground border-t bg-background/80 backdrop-blur">
         CRM WhatsApp multi-contas para equipes
       </footer>
     </div>
