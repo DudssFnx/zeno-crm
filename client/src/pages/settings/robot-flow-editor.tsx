@@ -263,16 +263,16 @@ function DeletableEdge({
           className="nodrag nopan"
         >
           <button
-            className="w-5 h-5 bg-destructive hover:bg-destructive/80 text-destructive-foreground rounded-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity group-hover:opacity-100 shadow-sm"
-            style={{ opacity: 1 }}
+            className="w-6 h-6 bg-destructive hover:bg-destructive/80 text-destructive-foreground rounded-full flex items-center justify-center shadow-md border-2 border-background"
             onClick={(e) => {
               e.stopPropagation();
               const event = new CustomEvent('deleteEdge', { detail: { id } });
               window.dispatchEvent(event);
             }}
+            title="Remover conexão"
             data-testid={`button-delete-edge-${id}`}
           >
-            <X className="w-3 h-3" />
+            <X className="w-4 h-4" />
           </button>
         </div>
       </EdgeLabelRenderer>
@@ -355,16 +355,25 @@ export default function RobotFlowEditor() {
       setTriggers(robot.triggers as any[] || []);
       
       const actions = (robot.actions as any[]) || [];
+      const savedEdges = (robot as any).flowEdges as any[] || [];
+      
       const newNodes: Node<FlowNodeData>[] = actions.map((action, index) => {
         const blockType = blockTypes.find(b => b.type === action.type);
         const tag = tags.find(t => t.id === action.tagId);
         const attr = contactAttributes.find(a => a.id === action.attributeId);
         const gotoRobot = allRobots.find(r => r.id === action.gotoRobotId);
         const stage = stages.find(s => s.id === action.stageId);
+        
+        // Usar posição salva ou gerar posição padrão
+        const hasPosition = action.positionX !== undefined && action.positionY !== undefined;
+        const position = hasPosition 
+          ? { x: action.positionX, y: action.positionY }
+          : { x: 300, y: 100 + index * 150 };
+          
         return {
           id: action.id || `node_${index}`,
           type: "flowNode",
-          position: { x: 300, y: 100 + index * 150 },
+          position,
           data: {
             ...action,
             label: blockType?.label || action.type,
@@ -378,16 +387,31 @@ export default function RobotFlowEditor() {
         };
       });
       
-      const newEdges: Edge[] = [];
-      for (let i = 0; i < newNodes.length - 1; i++) {
-        newEdges.push({
-          id: `edge_${i}`,
-          source: newNodes[i].id,
-          target: newNodes[i + 1].id,
-          type: "smoothstep",
+      // Usar edges salvas ou gerar edges sequenciais
+      let newEdges: Edge[] = [];
+      if (savedEdges.length > 0) {
+        newEdges = savedEdges.map((edge) => ({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+          type: "deletable",
           animated: true,
           markerEnd: { type: MarkerType.ArrowClosed },
-        });
+        }));
+      } else {
+        // Fallback: criar edges sequenciais para robôs antigos
+        for (let i = 0; i < newNodes.length - 1; i++) {
+          newEdges.push({
+            id: `edge_${i}`,
+            source: newNodes[i].id,
+            target: newNodes[i + 1].id,
+            type: "deletable",
+            animated: true,
+            markerEnd: { type: MarkerType.ArrowClosed },
+          });
+        }
       }
       
       setNodes(newNodes);
@@ -550,6 +574,17 @@ export default function RobotFlowEditor() {
         attributeId: node.data.attributeId,
         stageId: node.data.stageId,
         followupDelayMinutes: node.data.followupDelayMinutes,
+        positionX: node.position.x,
+        positionY: node.position.y,
+      }));
+
+      // Salvar conexões entre blocos
+      const flowEdges = edges.map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
       }));
 
       const robotData = {
@@ -559,6 +594,7 @@ export default function RobotFlowEditor() {
         isAutomatic,
         triggers: triggers.length > 0 ? triggers : [{ type: "first_message", isActive: true }],
         actions,
+        flowEdges,
       };
 
       let response;

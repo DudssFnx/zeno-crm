@@ -2575,7 +2575,7 @@ export async function registerRoutes(
 
   app.post("/api/robots", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
-      const { name, description, actions, isActive, isAutomatic, triggers } = req.body;
+      const { name, description, actions, isActive, isAutomatic, triggers, flowEdges } = req.body;
       if (!name) {
         return res.status(400).json({ error: "Robot name is required" });
       }
@@ -2587,6 +2587,7 @@ export async function registerRoutes(
         isActive: isActive !== false,
         isAutomatic: isAutomatic !== false,
         triggers: triggers || [],
+        flowEdges: flowEdges || [],
       });
       res.status(201).json(robot);
     } catch (error) {
@@ -2597,7 +2598,7 @@ export async function registerRoutes(
 
   app.put("/api/robots/:id", authMiddleware(storage), notOperatorMiddleware, async (req: AuthRequest, res) => {
     try {
-      const { name, description, actions, isActive, isAutomatic, triggers } = req.body;
+      const { name, description, actions, isActive, isAutomatic, triggers, flowEdges } = req.body;
       const existing = await storage.getRobot(req.params.id);
       if (!existing || existing.companyId !== req.user!.companyId) {
         return res.status(404).json({ error: "Robot not found" });
@@ -2609,6 +2610,7 @@ export async function registerRoutes(
         isActive,
         isAutomatic,
         triggers,
+        flowEdges,
       });
       res.json(updated);
     } catch (error) {

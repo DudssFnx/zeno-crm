@@ -862,6 +862,9 @@ export const robots = pgTable("robots", {
   // Ações do robô
   actions: jsonb("actions").notNull().default([]), // Array de RobotAction
   
+  // Conexões visuais do editor de fluxo
+  flowEdges: jsonb("flow_edges").notNull().default([]), // Array de {id, source, target, sourceHandle, targetHandle}
+  
   // Configurações
   isActive: boolean("is_active").notNull().default(true),
   isAutomatic: boolean("is_automatic").notNull().default(false), // Se executa automaticamente
