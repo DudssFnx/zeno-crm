@@ -1,6 +1,7 @@
 FROM node:20-slim
 
 RUN apt-get update && apt-get install -y \
+    git \
     chromium \
     fonts-liberation \
     libasound2 \
@@ -34,7 +35,6 @@ RUN npm run build
 ENV NODE_ENV=production
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
 
 EXPOSE 3001
 
