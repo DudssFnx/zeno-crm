@@ -2,6 +2,7 @@ FROM node:20-slim
 
 RUN apt-get update && apt-get install -y \
     git \
+    ca-certificates \
     chromium \
     fonts-liberation \
     libasound2 \
@@ -20,9 +21,10 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     xdg-utils \
     --no-install-recommends \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# 🔥 FORÇA GIT A USAR HTTPS (resolve o erro ssh)
+# 🔥 força HTTPS (mantemos por segurança)
 RUN git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
 
 WORKDIR /app
