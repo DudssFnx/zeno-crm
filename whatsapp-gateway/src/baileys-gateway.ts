@@ -1,23 +1,23 @@
-import makeWASocket, {
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  WASocket,
-  proto,
-  getContentType,
-  jidNormalizedUser,
-  isLidUser,
-  downloadMediaMessage,
-} from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
+import makeWASocket, {
+  DisconnectReason,
+  downloadMediaMessage,
+  fetchLatestBaileysVersion,
+  getContentType,
+  isLidUser,
+  jidNormalizedUser,
+  proto,
+  useMultiFileAuthState,
+  WASocket,
+} from "@whiskeysockets/baileys";
 import fs from "fs";
+import NodeCache from "node-cache";
 import path from "path";
 import pino from "pino";
-import NodeCache from "node-cache";
 import QRCode from "qrcode";
 import { config } from "./config";
-import { sendMessageCreatedEvent, sendStatusUpdateEvent, sendQRCodeEvent } from "./webhook";
-import { normalizeJid, extractPhoneFromJid, normalizePhone, isValidChatJid } from "./jid-utils";
+import { extractPhoneFromJid, isValidChatJid, normalizeJid, normalizePhone } from "./jid-utils";
+import { sendMessageCreatedEvent, sendQRCodeEvent, sendStatusUpdateEvent } from "./webhook";
 
 const SESSION_STATUS_FILE = path.join(config.sessionDir, "session-status.json");
 const LID_MAPPING_FILE = path.join(config.sessionDir, "lid-mapping.json");
@@ -499,63 +499,70 @@ class BaileysGateway {
   }
 
   async sendMessage(
-    accountId: string,
-    phoneNumber: string,
-    content: string,
-    mediaUrl?: string,
-    mediaType?: string
-  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    const session = this.sessions.get(accountId);
-    if (!session?.socket || session.status !== "connected") {
-      return { success: false, error: "Not connected" };
-    }
+  accountId: string,
+  phoneNumber: string,
+  content: string,
+  mediaUrl?: string,
+  mediaType?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const session = this.sessions.get(accountId);
+  if (!session?.socket || session.status !== "connected") {
+    return { success: false, error: "Not connected" };
+  }
 
-    try {
-      const jid = normalizeJid(phoneNumber);
-      let result: proto.WebMessageInfo;
+  try {
+    const jid = normalizeJid(phoneNumber);
+    let result: proto.WebMessageInfo | undefined;
 
-      if (mediaUrl && mediaType) {
-        const mediaBuffer = await this.fetchMediaBuffer(mediaUrl);
-        if (!mediaBuffer) {
-          return { success: false, error: "Failed to fetch media" };
-        }
-
-        if (mediaType === "image") {
-          result = await session.socket.sendMessage(jid, {
-            image: mediaBuffer,
-            caption: content || undefined,
-          });
-        } else if (mediaType === "audio") {
-          result = await session.socket.sendMessage(jid, {
-            audio: mediaBuffer,
-            mimetype: "audio/mp4",
-            ptt: true,
-          });
-        } else if (mediaType === "video") {
-          result = await session.socket.sendMessage(jid, {
-            video: mediaBuffer,
-            caption: content || undefined,
-          });
-        } else {
-          result = await session.socket.sendMessage(jid, {
-            document: mediaBuffer,
-            fileName: path.basename(mediaUrl) || "file",
-            mimetype: "application/octet-stream",
-            caption: content || undefined,
-          });
-        }
-      } else {
-        result = await session.socket.sendMessage(jid, { text: content });
+    if (mediaUrl && mediaType) {
+      const mediaBuffer = await this.fetchMediaBuffer(mediaUrl);
+      if (!mediaBuffer) {
+        return { success: false, error: "Failed to fetch media" };
       }
 
-      console.log(`[Gateway] Message sent to ${phoneNumber}: ${content.substring(0, 30)}...`);
-      return { success: true, messageId: result.key.id || undefined };
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[Gateway] Error sending message:`, errorMsg);
-      return { success: false, error: errorMsg };
+      if (mediaType === "image") {
+        result = await session.socket.sendMessage(jid, {
+          image: mediaBuffer,
+          caption: content || undefined,
+        });
+      } else if (mediaType === "audio") {
+        result = await session.socket.sendMessage(jid, {
+          audio: mediaBuffer,
+          mimetype: "audio/mp4",
+          ptt: true,
+        });
+      } else if (mediaType === "video") {
+        result = await session.socket.sendMessage(jid, {
+          video: mediaBuffer,
+          caption: content || undefined,
+        });
+      } else {
+        result = await session.socket.sendMessage(jid, {
+          document: mediaBuffer,
+          fileName: path.basename(mediaUrl) || "file",
+          mimetype: "application/octet-stream",
+          caption: content || undefined,
+        });
+      }
+    } else {
+      result = await session.socket.sendMessage(jid, { text: content });
     }
+
+    if (!result || !result.key?.id) {
+      throw new Error("Baileys did not return message info");
+    }
+
+    return {
+      success: true,
+      messageId: result.key.id,
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error("[Gateway] Error sending message:", errorMsg);
+    return { success: false, error: errorMsg };
   }
+}
+
 
   private async fetchMediaBuffer(url: string): Promise<Buffer | null> {
     try {
