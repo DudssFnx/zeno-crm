@@ -1,6 +1,6 @@
-import { Router, Request, Response } from "express";
-import { baileysGateway } from "./baileys-gateway";
+import { Request, Response, Router } from "express";
 import { authMiddleware } from "./auth";
+import { baileysGateway } from "./baileys-gateway";
 
 const router = Router();
 
@@ -53,16 +53,17 @@ router.post("/send", authMiddleware, async (req: Request, res: Response): Promis
 });
 
 router.get("/status/:accountId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { accountId } = req.params;
+  const accountIdParam = req.params.accountId;
 
-  if (!accountId) {
+  if (!accountIdParam || Array.isArray(accountIdParam)) {
     res.status(400).json({ error: "accountId is required" });
     return;
   }
 
-  const status = baileysGateway.getStatus(accountId);
+  const status = baileysGateway.getStatus(accountIdParam);
   res.json(status);
 });
+
 
 router.get("/sessions", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   const sessions = baileysGateway.getAllSessions();
