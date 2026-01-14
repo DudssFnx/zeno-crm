@@ -11,7 +11,7 @@ export function authMiddleware(
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
-    return res.status(401).json({ message: "Token ausente" });
+    return res.status(401).json({ message: "Token não informado" });
   }
 
   const [, token] = authHeader.split(" ");

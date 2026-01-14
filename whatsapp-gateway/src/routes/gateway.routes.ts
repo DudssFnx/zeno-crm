@@ -1,6 +1,6 @@
 import { Request, Response, Router } from "express";
-import { authMiddleware } from "./auth";
-import { baileysGateway } from "./baileys-gateway";
+import { authMiddleware } from "../auth";
+import { baileysGateway } from "../baileys-gateway";
 
 const router = Router();
 
