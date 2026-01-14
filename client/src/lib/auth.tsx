@@ -7,6 +7,10 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
  */
 const API_URL = import.meta.env.VITE_API_URL;
 
+if (!API_URL) {
+  throw new Error("VITE_API_URL não definida. Configure no Railway.");
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -52,7 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const data = await res.json();
       setUser(data.user);
-    } catch {
+    } catch (err) {
+      console.error("[Auth] fetchUser error:", err);
       localStorage.removeItem("token");
       setToken(null);
       setUser(null);
@@ -75,7 +80,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
 
-    const data = await res.json();
+    const text = await res.text();
+    let data: any = {};
+
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error("Resposta inválida do servidor");
+    }
 
     if (!res.ok) {
       throw new Error(data.message || "Falha no login");
@@ -101,7 +113,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ companyName, name, email, password }),
     });
 
-    const data = await res.json();
+    const text = await res.text();
+    let data: any = {};
+
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error("Resposta inválida do servidor");
+    }
 
     if (!res.ok) {
       throw new Error(data.message || "Falha no cadastro");
