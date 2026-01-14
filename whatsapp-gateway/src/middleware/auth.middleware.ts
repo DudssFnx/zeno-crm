@@ -1,12 +1,9 @@
-import { Request, Response, NextFunction } from "express";
+import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
-import { db } from "../db";
-import { users } from "../schema";
-import { eq } from "drizzle-orm";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
-export async function authMiddleware(
+export function authMiddleware(
   req: Request,
   res: Response,
   next: NextFunction
@@ -14,31 +11,14 @@ export async function authMiddleware(
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
-    return res.status(401).json({ message: "Token não informado" });
+    return res.status(401).json({ message: "Token ausente" });
   }
 
   const [, token] = authHeader.split(" ");
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as any;
-
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, payload.userId))
-      .limit(1);
-
-    if (!user) {
-      return res.status(401).json({ message: "Usuário inválido" });
-    }
-
-    (req as any).user = {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      company_id: user.company_id,
-    };
-
+    const decoded = jwt.verify(token, JWT_SECRET);
+    (req as any).user = decoded;
     next();
   } catch {
     return res.status(401).json({ message: "Token inválido" });
