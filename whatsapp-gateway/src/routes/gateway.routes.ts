@@ -4,73 +4,105 @@ import { baileysGateway } from "../baileys-gateway";
 
 const router = Router();
 
-router.post("/connect", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { accountId } = req.body;
+/**
+ * Conectar sessão
+ */
+router.post(
+  "/connect",
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { accountId } = req.body;
 
-  if (!accountId) {
-    res.status(400).json({ error: "accountId is required" });
-    return;
+    if (!accountId) {
+      res.status(400).json({ error: "accountId is required" });
+      return;
+    }
+
+    const result = await baileysGateway.startSession(accountId);
+    res.json(result);
   }
+);
 
-  const result = await baileysGateway.startSession(accountId);
-  res.json(result);
-});
+/**
+ * Desconectar sessão
+ */
+router.post(
+  "/disconnect",
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { accountId } = req.body;
 
-router.post("/disconnect", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { accountId } = req.body;
+    if (!accountId) {
+      res.status(400).json({ error: "accountId is required" });
+      return;
+    }
 
-  if (!accountId) {
-    res.status(400).json({ error: "accountId is required" });
-    return;
+    await baileysGateway.disconnect(accountId);
+    res.json({ success: true });
   }
+);
 
-  await baileysGateway.disconnect(accountId);
-  res.json({ success: true });
-});
+/**
+ * Enviar mensagem (TEXTO)
+ */
+router.post(
+  "/send",
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { accountId, phoneNumber, content } = req.body;
 
-router.post("/send", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { accountId, phoneNumber, content, mediaUrl, mediaType } = req.body;
+    if (!accountId || !phoneNumber || !content) {
+      res.status(400).json({
+        error: "accountId, phoneNumber and content are required",
+      });
+      return;
+    }
 
-  if (!accountId || !phoneNumber) {
-    res.status(400).json({ error: "accountId and phoneNumber are required" });
-    return;
+    const result = await baileysGateway.sendMessage(
+      accountId,
+      phoneNumber,
+      content
+    );
+
+    res.json(result);
   }
+);
 
-  if (!content && !mediaUrl) {
-    res.status(400).json({ error: "content or mediaUrl is required" });
-    return;
+/**
+ * Status da sessão
+ */
+router.get(
+  "/status/:accountId",
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const accountIdParam = req.params.accountId;
+
+    if (!accountIdParam || Array.isArray(accountIdParam)) {
+      res.status(400).json({ error: "accountId is required" });
+      return;
+    }
+
+    const status = baileysGateway.getStatus(accountIdParam);
+    res.json(status);
   }
+);
 
-  const result = await baileysGateway.sendMessage(
-    accountId,
-    phoneNumber,
-    content || "",
-    mediaUrl,
-    mediaType
-  );
-
-  res.json(result);
-});
-
-router.get("/status/:accountId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const accountIdParam = req.params.accountId;
-
-  if (!accountIdParam || Array.isArray(accountIdParam)) {
-    res.status(400).json({ error: "accountId is required" });
-    return;
+/**
+ * Listar sessões
+ */
+router.get(
+  "/sessions",
+  authMiddleware,
+  async (_req: Request, res: Response): Promise<void> => {
+    const sessions = baileysGateway.getAllSessions();
+    res.json({ sessions });
   }
+);
 
-  const status = baileysGateway.getStatus(accountIdParam);
-  res.json(status);
-});
-
-
-router.get("/sessions", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const sessions = baileysGateway.getAllSessions();
-  res.json({ sessions });
-});
-
-router.get("/health", (req: Request, res: Response): void => {
+/**
+ * Healthcheck
+ */
+router.get("/health", (_req: Request, res: Response): void => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
