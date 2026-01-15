@@ -1,23 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, MessageSquare, Trash2, X, MessageCircle, Users } from "lucide-react";
-import { useDebounce } from "@/hooks/use-debounce";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Checkbox } from "@/components/ui/checkbox";
+import { AttributeChip } from "@/components/attribute-chip";
 import { AvatarWithFallback } from "@/components/avatar-with-fallback";
+import { EmptyState } from "@/components/empty-state";
+import { LoadingSpinner } from "@/components/loading-spinner";
+import { PriorityBadge, getPriorityLevel } from "@/components/priority-badge";
 import { StatusBadge } from "@/components/status-badge";
 import { TagChip } from "@/components/tag-chip";
-import { AttributeChip } from "@/components/attribute-chip";
-import { LoadingSpinner } from "@/components/loading-spinner";
-import { EmptyState } from "@/components/empty-state";
-import { PriorityBadge, getPriorityLevel } from "@/components/priority-badge";
-import { useAuthFetch } from "@/lib/auth";
-import { cn, formatPhoneNumber } from "@/lib/utils";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,8 +15,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { ConversationWithDetails, WhatsappAccount, User, Tag } from "@shared/schema";
-import { useAuth } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useDebounce } from "@/hooks/use-debounce";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth, useAuthFetch } from "@/lib/auth";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { cn, formatPhoneNumber } from "@/lib/utils";
+import type { ConversationWithDetails, Tag, WhatsappAccount } from "@shared/schema";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { MessageCircle, MessageSquare, Search, Trash2, Users, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface ConversationListProps {
   selectedId: string | null;
@@ -150,6 +148,17 @@ export function ConversationList({ selectedId, onSelect, currentUserId }: Conver
     if (unreadFilter) {
       if (!conv.isUnread) return false;
     }
+
+        useEffect(() => {
+      if (
+        !selectedId &&
+        filteredConversations.length > 0 &&
+        !selectionMode
+      ) {
+        onSelect(filteredConversations[0].id);
+      }
+    }, [filteredConversations, selectedId, selectionMode, onSelect]);
+
     
     // Filtro de grupos
     if (groupFilter === "groups") {

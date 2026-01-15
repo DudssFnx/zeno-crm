@@ -1,15 +1,23 @@
 import type { User } from "@shared/schema";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 /**
- * URL do backend (Railway)
+ * URL do backend
  * Ex: https://adorable-connection-production-5421.up.railway.app
  */
 const API_URL = import.meta.env.VITE_API_URL;
 
 if (!API_URL) {
-  throw new Error("VITE_API_URL não definida. Configure no Railway.");
+  throw new Error("VITE_API_URL não definida. Configure o .env do client.");
 }
+
+/* ================= CONTEXT ================= */
 
 interface AuthContextType {
   user: User | null;
@@ -27,6 +35,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+/* ================= PROVIDER ================= */
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() =>
@@ -34,9 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
   const [isLoading, setIsLoading] = useState(true);
 
-  /**
-   * Busca usuário logado
-   */
+  /* -------- Busca usuário logado -------- */
   const fetchUser = useCallback(async () => {
     if (!token) {
       setIsLoading(false);
@@ -70,9 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchUser();
   }, [fetchUser]);
 
-  /**
-   * Login
-   */
+  /* -------- Login -------- */
   const login = async (email: string, password: string) => {
     const res = await fetch(`${API_URL}/api/auth/login`, {
       method: "POST",
@@ -98,9 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user);
   };
 
-  /**
-   * Registro
-   */
+  /* -------- Register -------- */
   const register = async (
     companyName: string,
     name: string,
@@ -131,9 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user);
   };
 
-  /**
-   * Logout
-   */
+  /* -------- Logout -------- */
   const logout = () => {
     localStorage.removeItem("token");
     setToken(null);
@@ -149,9 +151,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-/**
- * Hook principal
- */
+/* ================= HOOKS ================= */
+
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
@@ -161,7 +162,8 @@ export function useAuth() {
 }
 
 /**
- * Fetch autenticado
+ * Hook de fetch autenticado
+ * 👉 usar em TODAS as páginas
  */
 export function useAuthFetch() {
   const { token } = useAuth();
